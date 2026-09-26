@@ -1,0 +1,119 @@
+# Production stack: Postgres, the Django app (gunicorn) and Caddy (HTTPS, static files).
+# Run from the checkout on the server; settings come from ./.env (template: .env.prod.example),
+# which Compose reads for the ${...} values below. Each service gets only the variables it needs.
+# See docs/deploy.md.
+
+name: traktorist
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    # Sized for a 1 GB VPS: see "Resource budget" in docs/deploy.md.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=256MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=20
+      # The default 1GB of WAL is far more than this small database ever writes between checkpoints.
+      - -c
+      - max_wal_size=256MB
+    environment:
+      POSTGRES_DB: traktorist_club
+      POSTGRES_USER: traktorist
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U traktorist -d traktorist_club"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # No ports: only containers on the internal network reach the database.
+    networks:
+      - backend
+    logging: *logging
+
+  web:
+    # deploy/server-deploy.sh builds without attestations, so an unchanged checkout keeps its
+    # image ID and the container is not restarted.
+    build: .
+    image: traktorist-web:latest
+    restart: unless-stopped
+    environment:
+      # Literal, not read from .env: this stack never runs in development mode.
+      ENVIRONMENT: production
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      ADMIN_URL: ${ADMIN_URL:?set ADMIN_URL in .env}
+      ALLOWED_HOSTS: ${SITE_DOMAIN:?set SITE_DOMAIN in .env}
+      DATABASE_URL: postgresql://traktorist:${POSTGRES_PASSWORD}@db:5432/traktorist_club
+      SITE_INDEXING: ${SITE_INDEXING:-False}
+      ADMIN_REQUIRE_2FA: ${ADMIN_REQUIRE_2FA:-False}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Reachable from Caddy only, never published on the host.
+    expose:
+      - "8000"
+    volumes:
+      - static:/srv/static
+    healthcheck:
+      test: ["CMD", "python", "/app/deploy/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - backend
+      - frontend
+    logging: *logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      # The directory, not the file: git replaces files on checkout, and a bind-mounted file
+      # would keep showing the old version. deploy.sh reloads Caddy after each checkout.
+      - ./deploy/caddy:/etc/caddy:ro
+      - static:/srv/static:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - frontend
+    logging: *logging
+
+networks:
+  # No route to the outside world: the database only talks to the app.
+  backend:
+    internal: true
+  frontend: {}
+
+volumes:
+  pgdata:
+  static:
+  # Certificates and the ACME account. Losing it means new certificates (rate limited).
+  caddy_data:
+  caddy_config:

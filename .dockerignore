@@ -1,0 +1,33 @@
+# Keep the build context to code and assets. Real club data (spreadsheets, aliases, dumps) and
+# secrets must never reach an image layer.
+.git
+.github
+.venv
+.env
+.env.*
+!.env.example
+!.env.prod.example
+data/
+*.xlsx
+*.xlsm
+*.xls
+*.ods
+*.csv
+*.dump
+*.dump.gz
+*.sql
+*.sql.gz
+*.backup
+*.age
+aliases.yaml
+dumps/
+staticfiles/
+.django_tailwind_cli/
+assets/css/tailwind.css
+locale/**/*.mo
+**/__pycache__
+.pytest_cache
+.ruff_cache
+.claude
+CLAUDE.md
+PLAN.md

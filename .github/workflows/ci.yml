@@ -55,13 +55,21 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
+      - name: Compile translations
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gettext
+          uv run python manage.py compilemessages --ignore=.venv
+
       - name: Install Chromium for browser tests
         run: uv run playwright install --with-deps chromium
 
       - name: Run pytest
         env:
-          # Browser tests skip locally without Chromium; in CI a missing browser is a failure.
+          # Browser tests skip locally without Chromium, the translation test without compiled
+          # .mo files; in CI either one missing is a failure.
           REQUIRE_BROWSER_TESTS: "1"
+          REQUIRE_COMPILED_MESSAGES: "1"
         run: uv run pytest -v
 
       - name: Django deployment check
@@ -73,3 +81,20 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/traktorist_club
           ADMIN_URL: hq-7f3k/
         run: uv run python manage.py check --deploy --fail-level WARNING
+
+  docker-image:
+    # The production image must build (Tailwind, compilemessages, collectstatic) and refuse to run
+    # outside production mode.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the production image
+        run: docker build -t traktorist-web:ci .
+
+      - name: Refuses to start in development mode
+        run: |
+          if docker run --rm -e ENVIRONMENT=development traktorist-web:ci; then
+            echo "The image started with ENVIRONMENT=development" >&2
+            exit 1
+          fi

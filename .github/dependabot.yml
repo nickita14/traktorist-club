@@ -8,3 +8,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+  # Version pins in the Dockerfile (uv image). python:3.13-slim, postgres:17 and caddy:2-alpine
+  # follow their tags: deploy/server-deploy.sh pulls them on every deploy.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
