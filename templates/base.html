@@ -1,0 +1,44 @@
+{% load static tailwind_cli %}<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}{% endblock %} · Кочующий Клуб Тракториста</title>
+  <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+  {% tailwind_css %}
+</head>
+<body>
+  <div class="mx-auto flex min-h-screen max-w-page flex-col px-4 md:px-8">
+    <header class="flex flex-wrap items-center justify-between gap-x-10 border-b border-ink pt-3 pb-2">
+      {# Ruslan Display's accents reach its ascent line: keep the text scale's own line height (no leading-*) and the padding, or the first line touches the viewport top when the name wraps. #}
+      <a class="flex min-h-11 items-center py-1 font-display text-lg uppercase no-underline md:text-xl"
+         href="{% if latest_tour_year %}{% url 'tour_standings' latest_tour_year %}{% else %}/{% endif %}">Кочующий Клуб Тракториста</a>
+      <nav class="site-nav" aria-label="Разделы">
+        <ul class="flex flex-wrap gap-x-6">
+          <li>
+            {% if latest_tour_year %}
+              <a href="{% url 'tour_standings' latest_tour_year %}"{% if nav_section == "tour" %} aria-current="true"{% endif %}>Турниры</a>
+            {% else %}
+              <span>Турниры</span>
+            {% endif %}
+          </li>
+          {# Sections below arrive in Stage 5. #}
+          <li><span>Кэш</span></li>
+          <li><span>За всё время</span></li>
+          <li><span>Игроки</span></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="flex-1">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="mt-12 flex flex-wrap justify-between gap-x-6 border-t border-ink py-3 font-head text-xs tracking-label text-muted uppercase">
+      <span>Лист 1</span>
+      {% block footer_meta %}{% endblock %}
+    </footer>
+  </div>
+</body>
+</html>

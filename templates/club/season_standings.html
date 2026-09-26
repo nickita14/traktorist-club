@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% load ledger %}
+
+{% block title %}Турниры {{ season.year }}{% endblock %}
+
+{% block content %}
+  <section class="doc-head pt-6 pb-5" aria-labelledby="doc-title">
+    <p class="font-head text-sm tracking-label text-muted uppercase">Форма № 1-Т · Сводная по сезону</p>
+    <div class="mt-2 flex flex-wrap items-center gap-x-10 gap-y-4">
+      <h1 id="doc-title" class="font-head text-2xl font-bold uppercase md:text-3xl">Ведомость турниров</h1>
+      <p class="stamp">{% if is_ongoing %}Сезон идёт{% else %}Сезон закрыт{% endif %}</p>
+    </div>
+    <p class="mt-3 text-muted italic">
+      <span class="whitespace-nowrap">Сезон <span class="font-num not-italic">{{ season.year }}</span></span>
+      · <span class="whitespace-nowrap"><span class="font-num num-run not-italic">{{ season.games_count|money }}</span> {{ season.games_count|plural:"игра,игры,игр" }}</span>
+      · <span class="whitespace-nowrap"><span class="font-num num-run not-italic">{{ season.players_count|money }}</span> {{ season.players_count|plural:"участник,участника,участников" }}</span>
+      · <span class="whitespace-nowrap">закупки на <span class="font-num num-run not-italic">{{ season.buyin_total|money }}</span> лей</span>
+    </p>
+    {% if years|length > 1 %}
+      <nav class="mt-4" aria-label="Сезоны по годам">
+        <ul class="segmented">
+          {% for year in years %}
+            <li><a href="{% url 'tour_standings' year %}"{% if year == season.year %} aria-current="page"{% endif %}>{{ year }}</a></li>
+          {% endfor %}
+        </ul>
+      </nav>
+    {% endif %}
+  </section>
+
+  <div class="page-grid mt-6">
+    {% include "club/includes/standings_table.html" %}
+    {% include "club/includes/recent_games.html" %}
+  </div>
+{% endblock %}
+
+{% block footer_meta %}
+  {% if season.last_game_date %}
+    <span>По состоянию на <time class="font-num" datetime="{{ season.last_game_date|date:'Y-m-d' }}">{{ season.last_game_date|date:"d.m.Y" }}</time></span>
+  {% endif %}
+{% endblock %}

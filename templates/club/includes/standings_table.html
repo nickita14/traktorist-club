@@ -1,0 +1,41 @@
+{% load ledger %}
+<section aria-labelledby="standings-title">
+  <h2 id="standings-title" class="sr-only">Сводная таблица сезона</h2>
+  <div class="ledger-scroll">
+    <table class="ledger">
+      <thead>
+        <tr>
+          <th scope="col" class="col-rank num">№</th>
+          <th scope="col" class="col-player">Участник</th>
+          <th scope="col" class="num max-md:hidden">Игр</th>
+          <th scope="col" class="num max-md:hidden">ITM</th>
+          <th scope="col" class="num max-md:hidden"><span aria-hidden="true">1</span><span class="sr-only">Первых мест</span></th>
+          <th scope="col" class="num max-md:hidden"><span aria-hidden="true">2</span><span class="sr-only">Вторых мест</span></th>
+          <th scope="col" class="num max-md:hidden"><span aria-hidden="true">3</span><span class="sr-only">Третьих мест</span></th>
+          <th scope="col" class="num">Итог, лей</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for player in standings %}
+          <tr>
+            <td class="col-rank num">{% if player.rank == 1 %}<span class="rank-leader">1</span>{% else %}{{ player.rank }}{% endif %}</td>
+            <td class="col-player">
+              {{ player.name }}{% if player.nickname %} <span class="text-muted">{{ player.nickname }}</span>{% endif %}
+              <span class="block font-num text-xs text-muted md:hidden">{{ player.games_played|money }} {{ player.games_played|plural:"игра,игры,игр" }} · ITM {{ player.itm }} · {{ player.first_places }}/{{ player.second_places }}/{{ player.third_places }}</span>
+            </td>
+            <td class="num max-md:hidden">{{ player.games_played|money }}</td>
+            <td class="num max-md:hidden">{% count_value player.itm %}</td>
+            <td class="num max-md:hidden">{% place_count player.first_places %}</td>
+            <td class="num max-md:hidden">{% place_count player.second_places %}</td>
+            <td class="num max-md:hidden">{% place_count player.third_places %}</td>
+            <td class="num">{% net_value player.net %}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="8" class="text-muted italic">В этом сезоне ещё не было игр.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
