@@ -306,3 +306,15 @@ class TestLeftoverWarning:
         assert [g.pk for g in only_bad.result_list] == [bad.pk]
         only_ok = admin_client.get(url, {"leftover_mismatch": "no"}).context["cl"]
         assert [g.pk for g in only_ok.result_list] == [cash_game.pk]
+
+
+class TestTheme:
+    def test_admin_loads_project_tokens_and_palette(self, admin_client):
+        html = admin_client.get(reverse("admin:index")).content.decode()
+
+        assert "/static/css/tokens.css" in html
+        assert "/static/css/admin.css" in html
+        # Unfold must pass the token mixes through untouched.
+        assert "--color-primary-600: var(--accent);" in html
+        assert "--color-base-500: color-mix(in oklab, var(--ink) 56%, var(--paper));" in html
+        assert "#" not in html.split('id="unfold-theme-colors"')[1].split("</style>")[0]

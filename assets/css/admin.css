@@ -1,0 +1,27 @@
+/*
+ * Admin typography over Unfold (colors come from UNFOLD["COLORS"] in settings). Unfold ships all
+ * of its CSS inside @layer, so these unlayered rules win without specificity tricks. Keep this
+ * small: the admin is a work tool, not a ledger page.
+ */
+
+:root {
+  --font-sans: var(--font-stack-body);
+  --font-mono: var(--font-stack-num);
+}
+
+/* Structure (headings, navigation, table headers, buttons) in the narrow grotesque. */
+h1,
+h2,
+h3,
+legend,
+thead th,
+button,
+#site-name,
+#nav-sidebar-inner {
+  font-family: var(--font-stack-head);
+}
+
+thead th {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}

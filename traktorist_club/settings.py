@@ -4,6 +4,7 @@ from pathlib import Path
 
 import environ
 from django.core.exceptions import ImproperlyConfigured
+from django.templatetags.static import static
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -14,6 +15,11 @@ DEV_SECRET_KEY = "django-insecure-dev-only-key-never-use-in-production"
 def normalize_admin_url(value: str) -> str:
     """Return the admin prefix without a leading slash and with a trailing one."""
     return f"{str(value).strip().strip('/')}/"
+
+
+def token_mix(token: str, percent: int, towards: str) -> str:
+    """CSS color: ``percent`` of the design token ``token`` mixed into the token ``towards``."""
+    return f"color-mix(in oklab, var(--{token}) {percent}%, var(--{towards}))"
 
 
 def validate_production_configuration(config: dict[str, object]) -> None:
@@ -159,12 +165,59 @@ TAILWIND_CLI_DIST_CSS = "css/tailwind.css"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Admin theme: Unfold defaults for now; project colors and fonts arrive with the Stage 4 tokens.
+
+# Admin theme. Raw colors live only in assets/css/tokens.css (loaded through STYLES); Unfold's
+# 50-950 scales are mixed from those tokens: base runs paper -> ink, primary is the stamp red
+# (600) lightened towards paper and darkened towards ink. Unfold passes color-mix() through
+# unchanged. Fonts: Unfold has no font setting, so assets/css/admin.css overrides its font
+# variables.
 UNFOLD = {
     "SITE_TITLE": "Клуб Тракториста",
     "SITE_HEADER": "Клуб Тракториста",
     "SITE_URL": "/",
     "SHOW_VIEW_ON_SITE": False,
+    "THEME": "light",
+    "BORDER_RADIUS": "2px",
+    "STYLES": [
+        lambda request: static("css/tokens.css"),
+        lambda request: static("css/admin.css"),
+    ],
+    "COLORS": {
+        "base": {
+            "50": "var(--paper)",
+            "100": token_mix("ink", 5, "paper"),
+            "200": token_mix("ink", 12, "paper"),
+            "300": token_mix("ink", 24, "paper"),
+            "400": token_mix("ink", 42, "paper"),
+            "500": token_mix("ink", 56, "paper"),
+            "600": token_mix("ink", 68, "paper"),
+            "700": token_mix("ink", 78, "paper"),
+            "800": token_mix("ink", 87, "paper"),
+            "900": token_mix("ink", 94, "paper"),
+            "950": "var(--ink)",
+        },
+        "primary": {
+            "50": token_mix("accent", 6, "paper"),
+            "100": token_mix("accent", 12, "paper"),
+            "200": token_mix("accent", 24, "paper"),
+            "300": token_mix("accent", 40, "paper"),
+            "400": token_mix("accent", 62, "paper"),
+            "500": token_mix("accent", 82, "paper"),
+            "600": "var(--accent)",
+            "700": token_mix("accent", 85, "ink"),
+            "800": token_mix("accent", 70, "ink"),
+            "900": token_mix("accent", 55, "ink"),
+            "950": token_mix("accent", 40, "ink"),
+        },
+        "font": {
+            "subtle-light": "var(--muted)",
+            "subtle-dark": "var(--muted)",
+            "default-light": "var(--color-base-800)",
+            "default-dark": "var(--color-base-800)",
+            "important-light": "var(--ink)",
+            "important-dark": "var(--ink)",
+        },
+    },
 }
 
 if IS_PRODUCTION:
