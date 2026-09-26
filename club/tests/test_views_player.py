@@ -22,8 +22,8 @@ class TestPlayerCard:
         assert "Форма № 2-И · Личная карточка участника" in html
         assert 'Альфа <span class="font-normal text-muted normal-case">Трактор</span>' in html
         assert (
-            f'<p class="stamp stamp-ink">В клубе с <span class="font-num">{PAST_YEAR - 1}</span>'
-            " года</p>"
+            # The year keeps the stamp's own font.
+            f'<p class="stamp stamp-ink">В клубе с {PAST_YEAR - 1} года</p>'
         ) in html
         assert '<span class="font-num num-run not-italic">6</span> игр' in html
         assert f">10.11.{PAST_YEAR - 1}</time>" in html
@@ -66,6 +66,12 @@ class TestPlayerCard:
         tfoot = table.split("<tfoot>")[1]
         assert '<td class="num max-md:hidden">400</td>' in tfoot
         assert '<td class="num">+190</td>' in tfoot
+
+    def test_tour_caption_omits_zero_itm(self, client, club):
+        html = get_card(client, club["players"]["B"]).content.decode()
+
+        assert '<dd class="stat-caption">4 игры</dd>' in html
+        assert "ITM 0" not in html
 
     def test_zero_itm_is_a_faint_dot_like_the_places(self, client, club):
         html = get_card(client, club["players"]["B"]).content.decode()

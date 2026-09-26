@@ -110,7 +110,8 @@ class TestTourGame:
 
         assert f'<a class="link-box mt-4" href="/games/{c1.pk}/">' in html
         assert "В этот вечер также" in html
-        assert 'Кэш-вечер №&nbsp;<span class="font-num">1</span> →' in html
+        # The number stays in the box's bold narrow font, no PT Mono.
+        assert '<span class="link-box-target">Кэш-вечер №&nbsp;1 →</span>' in html
 
     def test_no_link_box_without_a_game_of_the_other_kind(self, client, club):
         assert "В этот вечер также" not in html_of(client, club["games"]["t1"])
@@ -227,7 +228,7 @@ class TestCashGame:
         html = html_of(client, club["games"]["c1"])
 
         assert f'href="/games/{t2.pk}/">' in html
-        assert 'Турнир №&nbsp;<span class="font-num">2</span> →' in html
+        assert '<span class="link-box-target">Турнир №&nbsp;2 →</span>' in html
 
     def test_nav_marks_cash(self, client, club):
         assert 'aria-current="true">Кэш</a>' in html_of(client, club["games"]["c1"])

@@ -172,6 +172,42 @@ class TestTourStandings:
         assert f'href="/{season.year}/tour/games/">Все игры сезона →</a>' in html
 
 
+ZERO_DOT = (
+    '<span class="val-zero"><span aria-hidden="true">·</span><span class="sr-only">0</span></span>'
+)
+
+
+def standings_rows(html):
+    body = html.split('id="standings-title"')[1].split("<tbody>")[1].split("</tbody>")[0]
+    return body.split("<tr>")[1:]
+
+
+def test_mobile_line_omits_itm_and_places_when_itm_is_zero(client, club):
+    html = get_page(client, PAST_YEAR).content.decode()
+
+    assert (
+        '<span class="block font-num text-xs text-muted md:hidden">3 игры · ITM 3 · 3/0/0</span>'
+        in html
+    )
+    # Браво and Чарли never finished in the money: games only.
+    assert '<span class="block font-num text-xs text-muted md:hidden">3 игры</span>' in html
+    assert '<span class="block font-num text-xs text-muted md:hidden">1 игра</span>' in html
+    assert "ITM 0" not in html
+
+
+def test_zero_itm_in_tour_standings_is_a_faint_dot(client, club):
+    html = get_page(client, PAST_YEAR).content.decode()
+
+    # Альфа, then Чарли and Браво: both without ITM or places (4 dots each).
+    alpha, *others = standings_rows(html)
+    assert ZERO_DOT not in alpha.split("</td>")[3]  # ITM 3
+    for row in others:
+        itm_cell = row.split("</td>")[3]
+        assert itm_cell.endswith(ZERO_DOT)
+        assert row.count(ZERO_DOT) == 4
+    assert '<span class="val-zero">0</span>' not in "".join(others)
+
+
 @pytest.fixture
 def cash_season(club):
     return club["seasons"]["cash"]

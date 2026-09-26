@@ -122,16 +122,13 @@ class TestTemplateTags:
     def test_net_value_zero_is_faint(self):
         assert render("{% net_value v %}", v=0) == '<span class="val-zero">0</span>'
 
-    def test_count_value(self):
-        assert render("{% count_value v %}", v=13) == "13"
-        assert render("{% count_value v %}", v=0) == '<span class="val-zero">0</span>'
-
-    def test_place_count_zero_is_a_faint_dot_read_as_zero(self):
-        html = render("{% place_count v %}", v=0)
+    def test_count_value_zero_is_a_faint_dot_read_as_zero(self):
+        html = render("{% count_value v %}", v=0)
         assert 'class="val-zero"' in html
         assert '<span aria-hidden="true">·</span>' in html
         assert '<span class="sr-only">0</span>' in html
-        assert render("{% place_count v %}", v=3) == "3"
+        assert render("{% count_value v %}", v=3) == "3"
+        assert render("{% count_value v %}", v=1250) == f"1{NBSP}250"
 
     def test_pot_value(self):
         assert render("{% pot_value v %}", v=Fraction(23, 10)) == "2,30"

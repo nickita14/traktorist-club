@@ -30,7 +30,7 @@
               {% if cash %}
                 <span class="block font-num text-xs text-muted md:hidden">{{ player.games_played|money }} {{ player.games_played|plural:"игра,игры,игр" }} · {{ player.buyin_total|money }} → {{ player.payout_total|money }}</span>
               {% else %}
-                <span class="block font-num text-xs text-muted md:hidden">{{ player.games_played|money }} {{ player.games_played|plural:"игра,игры,игр" }} · ITM {{ player.itm }} · {{ player.first_places }}/{{ player.second_places }}/{{ player.third_places }}</span>
+                <span class="block font-num text-xs text-muted md:hidden">{{ player.games_played|money }} {{ player.games_played|plural:"игра,игры,игр" }}{% if player.itm %} · ITM {{ player.itm }} · {{ player.first_places }}/{{ player.second_places }}/{{ player.third_places }}{% endif %}</span>
               {% endif %}
             </td>
             <td class="num max-md:hidden">{{ player.games_played|money }}</td>
@@ -39,9 +39,9 @@
               <td class="num max-md:hidden">{{ player.payout_total|money }}</td>
             {% else %}
               <td class="num max-md:hidden">{% count_value player.itm %}</td>
-              <td class="num max-md:hidden">{% place_count player.first_places %}</td>
-              <td class="num max-md:hidden">{% place_count player.second_places %}</td>
-              <td class="num max-md:hidden">{% place_count player.third_places %}</td>
+              <td class="num max-md:hidden">{% count_value player.first_places %}</td>
+              <td class="num max-md:hidden">{% count_value player.second_places %}</td>
+              <td class="num max-md:hidden">{% count_value player.third_places %}</td>
             {% endif %}
             <td class="num">{% net_value player.net %}</td>
           </tr>

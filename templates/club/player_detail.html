@@ -7,7 +7,7 @@
 {% block doc_title %}{% include "club/includes/player_head.html" %}{% endblock %}
 {% block stamp %}
   {% if player.games_played %}
-    <p class="stamp stamp-ink">В клубе с <span class="font-num">{{ player.first_game_date|date:"Y" }}</span> года</p>
+    <p class="stamp stamp-ink">В клубе с {{ player.first_game_date|date:"Y" }} года</p>
   {% endif %}
 {% endblock %}
 
@@ -34,7 +34,7 @@
       <div>
         <dt>Турниры, лей</dt>
         <dd class="stat-value">{% net_value player.tour_net %}</dd>
-        <dd class="stat-caption">{{ player.tour_games_played|money }} {{ player.tour_games_played|plural:"игра,игры,игр" }} · ITM {{ player.tour_itm }}</dd>
+        <dd class="stat-caption">{{ player.tour_games_played|money }} {{ player.tour_games_played|plural:"игра,игры,игр" }}{% if player.tour_itm %} · ITM {{ player.tour_itm }}{% endif %}</dd>
       </div>
       <div>
         <dt>Кэш, лей</dt>
@@ -43,7 +43,7 @@
       </div>
       <div>
         <dt>Призовые места 1 · 2 · 3</dt>
-        <dd class="stat-value">{% place_count player.first_places %} · {% place_count player.second_places %} · {% place_count player.third_places %}</dd>
+        <dd class="stat-value">{% count_value player.first_places %} · {% count_value player.second_places %} · {% count_value player.third_places %}</dd>
       </div>
     </dl>
 
@@ -92,10 +92,10 @@
                 <td>{{ season.get_kind_display }}</td>
                 <td class="num">{{ season.games_played|money }}</td>
                 {% if season.kind == "tour" %}
-                  <td class="num">{% place_count season.itm %}</td>
-                  <td class="num">{% place_count season.first_places %}</td>
-                  <td class="num">{% place_count season.second_places %}</td>
-                  <td class="num">{% place_count season.third_places %}</td>
+                  <td class="num">{% count_value season.itm %}</td>
+                  <td class="num">{% count_value season.first_places %}</td>
+                  <td class="num">{% count_value season.second_places %}</td>
+                  <td class="num">{% count_value season.third_places %}</td>
                 {% else %}
                   <td class="num">{% no_value %}</td>
                   <td class="num">{% no_value %}</td>
@@ -112,10 +112,10 @@
             <tr>
               <td colspan="2" class="font-head tracking-label uppercase">Итого</td>
               <td class="num">{{ player.games_played|money }}</td>
-              <td class="num">{% place_count player.itm %}</td>
-              <td class="num">{% place_count player.first_places %}</td>
-              <td class="num">{% place_count player.second_places %}</td>
-              <td class="num">{% place_count player.third_places %}</td>
+              <td class="num">{% count_value player.itm %}</td>
+              <td class="num">{% count_value player.first_places %}</td>
+              <td class="num">{% count_value player.second_places %}</td>
+              <td class="num">{% count_value player.third_places %}</td>
               <td class="num max-md:hidden">{{ player.buyin_total|money }}</td>
               <td class="num max-md:hidden">{{ player.payout_total|money }}</td>
               <td class="num">{% net_value player.net %}</td>

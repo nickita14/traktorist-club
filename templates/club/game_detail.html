@@ -38,7 +38,7 @@
   {% if same_evening %}
     <a class="link-box mt-4" href="{{ same_evening.get_absolute_url }}">
       <span class="link-box-label">В этот вечер также</span>
-      <span class="link-box-target">{% if same_evening.season.kind == "cash" %}Кэш-вечер{% else %}Турнир{% endif %} №&nbsp;<span class="font-num">{{ same_evening.number }}</span> →</span>
+      <span class="link-box-target">{% if same_evening.season.kind == "cash" %}Кэш-вечер{% else %}Турнир{% endif %} №&nbsp;{{ same_evening.number }} →</span>
     </a>
   {% endif %}
 {% endblock %}

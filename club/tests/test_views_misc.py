@@ -57,6 +57,16 @@ class TestAllTime:
         assert "Первых мест" not in html
         assert ">Закупки</th>" in html
 
+    def test_zero_itm_is_a_faint_dot(self, client, club):
+        html = get_all_time(client, kind="tour").content.decode()
+        body = html.split("<tbody>")[1].split("</tbody>")[0]
+        # Чарли and Браво never finished in the money.
+        rows = body.split("<tr>")[2:]
+
+        for row in rows:
+            assert row.split("</td>")[3].endswith('<span class="sr-only">0</span></span>')
+        assert '<span class="val-zero">0</span>' not in body
+
     def test_unknown_kind_is_404(self, client, club):
         assert get_all_time(client, kind="poker").status_code == 404
 

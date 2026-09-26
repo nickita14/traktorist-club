@@ -51,15 +51,7 @@ def net_value(value: int) -> str:
 
 @register.simple_tag
 def count_value(value: int) -> str:
-    """A count such as ITM; zero is faint."""
-    if value == 0:
-        return format_html('<span class="val-zero">{}</span>', 0)
-    return format_money(value)
-
-
-@register.simple_tag
-def place_count(value: int) -> str:
-    """Number of 1st/2nd/3rd places; zero is a faint middle dot (read out as 0)."""
+    """A count (ITM, 1st/2nd/3rd places); zero is a faint middle dot (read out as 0)."""
     if value == 0:
         return _faint_dot("0")
     return format_money(value)
