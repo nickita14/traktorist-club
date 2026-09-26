@@ -8,15 +8,17 @@ dependencies = [
     "Django>=6.0,<7.0",
     "django-environ>=0.12.0",
     "django-tailwind-cli>=4.0.0",
-    "django-unfold>=0.19.0",
+    "django-unfold>=0.108.0",
+    "openpyxl>=3.1.5",
     "psycopg[binary]>=3.2.0",
+    "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3.0",
     "pytest-django>=4.9.0",
-    "ruff>=0.8.0",
+    "ruff>=0.16.9",
     "pre-commit>=4.0.0",
 ]
 
@@ -42,4 +44,4 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["club", "traktorist_club"]
+known-first-party = ["club", "importer", "traktorist_club"]
