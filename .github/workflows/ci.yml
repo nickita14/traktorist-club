@@ -55,7 +55,13 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
+      - name: Install Chromium for browser tests
+        run: uv run playwright install --with-deps chromium
+
       - name: Run pytest
+        env:
+          # Browser tests skip locally without Chromium; in CI a missing browser is a failure.
+          REQUIRE_BROWSER_TESTS: "1"
         run: uv run pytest -v
 
       - name: Django deployment check

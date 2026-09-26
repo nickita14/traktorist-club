@@ -20,6 +20,7 @@ dev = [
     "pytest-django>=4.9.0",
     "ruff>=0.16.9",
     "pre-commit>=4.0.0",
+    "playwright>=1.63.0",
 ]
 
 [tool.uv]
@@ -29,6 +30,9 @@ package = false
 DJANGO_SETTINGS_MODULE = "traktorist_club.settings"
 python_files = ["tests.py", "test_*.py"]
 addopts = "-ra --strict-markers"
+markers = [
+    "browser: renders pages in headless Chromium (Playwright); skipped when it is not installed",
+]
 
 [tool.ruff]
 line-length = 100
