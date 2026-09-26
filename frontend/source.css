@@ -1,3 +1,245 @@
 @import "tailwindcss";
 
-/* Project theme tokens are added in Stage 4. */
+/*
+ * Tailwind theme over the design tokens in assets/css/tokens.css (linked before this file).
+ * The default palettes, font stacks and type scale are removed, so only project values exist:
+ * `bg-blue-500` or `font-sans` simply do not compile.
+ */
+@theme inline {
+  --color-*: initial;
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-rule: var(--rule);
+  --color-accent: var(--accent);
+
+  --font-*: initial;
+  --font-display: var(--font-stack-display);
+  --font-head: var(--font-stack-head);
+  --font-body: var(--font-stack-body);
+  --font-num: var(--font-stack-num);
+
+  --text-*: initial;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.35;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.35;
+  --text-base: 1rem;
+  --text-base--line-height: 1.45;
+  --text-lg: 1.1875rem;
+  --text-lg--line-height: 1.35;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 1.2;
+  --text-2xl: 2rem;
+  --text-2xl--line-height: 1.1;
+  --text-3xl: 2.75rem;
+  --text-3xl--line-height: 1;
+
+  --tracking-label: 0.08em;
+  --tracking-caps: 0.12em;
+
+  --container-page: 76rem;
+}
+
+@layer base {
+  html {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-stack-body);
+    font-variant-numeric: lining-nums tabular-nums;
+  }
+
+  a {
+    color: inherit;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Header navigation: uppercase narrow caps, the current section underlined in accent. */
+  .site-nav a,
+  .site-nav span {
+    display: flex;
+    align-items: center;
+    min-height: 2.75rem;
+    font-family: var(--font-stack-head);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    text-decoration: none;
+  }
+
+  .site-nav a:hover {
+    text-decoration: underline;
+  }
+
+  .site-nav span {
+    color: var(--muted);
+  }
+
+  .site-nav [aria-current] {
+    text-decoration: underline 2px var(--accent);
+    text-underline-offset: 0.35em;
+  }
+
+  /* Document heading block, closed by a double rule. */
+  .doc-head {
+    border-bottom: 3px double var(--ink);
+  }
+
+  .stamp {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border: 3px double var(--accent);
+    color: var(--accent);
+    font-family: var(--font-stack-head);
+    font-weight: 700;
+    letter-spacing: var(--tracking-caps);
+    line-height: 1.2;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transform: rotate(-6deg);
+  }
+
+  /* Segmented links (year switcher); the current one is printed in reverse. */
+  .segmented {
+    display: inline-flex;
+    flex-wrap: wrap;
+    border: 1px solid var(--ink);
+  }
+
+  .segmented li + li {
+    border-left: 1px solid var(--ink);
+  }
+
+  .segmented a {
+    display: flex;
+    align-items: center;
+    min-height: 2.75rem;
+    padding: 0 0.875rem;
+    font-family: var(--font-stack-num);
+    text-decoration: none;
+  }
+
+  .segmented a:hover {
+    text-decoration: underline;
+  }
+
+  .segmented [aria-current="page"] {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  /* Ledger table. The wrapper scrolls sideways, the page never does. */
+  .ledger-scroll {
+    overflow-x: auto;
+  }
+
+  .ledger {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .ledger th {
+    padding: 0.5rem 0.5rem 0.375rem;
+    border-bottom: 1px solid var(--ink);
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    letter-spacing: var(--tracking-label);
+    text-align: left;
+    text-transform: uppercase;
+    vertical-align: bottom;
+    white-space: nowrap;
+  }
+
+  .ledger td {
+    height: 2.75rem;
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: baseline;
+  }
+
+  .ledger .num {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .ledger td.num {
+    font-family: var(--font-stack-num);
+  }
+
+  /* Number-only elements: thin thousands separator (see tokens.css). */
+  .ledger td.num,
+  .num-run {
+    word-spacing: var(--number-word-spacing);
+  }
+
+  /* Rank and player stay in view while the other columns scroll. */
+  .ledger .col-rank,
+  .ledger .col-player {
+    position: sticky;
+    background: var(--paper);
+  }
+
+  .ledger .col-rank {
+    left: 0;
+    width: 3rem;
+    min-width: 3rem;
+  }
+
+  .ledger .col-player {
+    left: 3rem;
+  }
+
+  /* Narrow variant for sidebars: no sticky columns, tighter cells. */
+  .ledger-compact td {
+    height: auto;
+    padding: 0.375rem;
+    font-size: var(--text-sm);
+  }
+
+  .ledger-compact th {
+    padding-inline: 0.375rem;
+  }
+
+  .val-neg {
+    color: var(--accent);
+  }
+
+  .val-zero {
+    color: var(--faint);
+  }
+
+  /* Season leader: the rank circled by hand in red. */
+  .rank-leader {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    margin: -0.375rem -0.375rem -0.375rem 0;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    transform: rotate(-8deg);
+  }
+
+  /* Two-column page: ledger plus a 330px sidebar from the lg breakpoint. */
+  .page-grid {
+    display: grid;
+    gap: 2.5rem;
+  }
+
+  @media (width >= 64rem) {
+    .page-grid {
+      grid-template-columns: minmax(0, 1fr) 330px;
+    }
+  }
+}

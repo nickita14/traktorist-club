@@ -26,4 +26,6 @@ repos:
         language: pygrep
         # UTF-8 bytes of U+2014 (pygrep uses a bytes regex); this file never contains the character.
         entry: '\xe2\x80\x94'
+        # Text only: the bytes occur by chance inside binary files such as woff2 fonts.
+        types: [text]
         exclude: ^uv\.lock$
