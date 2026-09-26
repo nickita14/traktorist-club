@@ -5,7 +5,10 @@ so each helper is a single query with no fan-out and no N+1. Scopes go into the 
 ``filter=`` rather than ``.filter()``, which keeps rows without results (they get zeros).
 """
 
+import datetime
 from collections.abc import Hashable, Mapping
+from dataclasses import dataclass
+from fractions import Fraction
 
 from django.db.models import (
     BooleanField,
@@ -14,13 +17,16 @@ from django.db.models import (
     F,
     IntegerField,
     Max,
+    Min,
+    OuterRef,
     Prefetch,
     Q,
     QuerySet,
+    Subquery,
     Sum,
     Window,
 )
-from django.db.models.functions import Coalesce, Rank, RowNumber
+from django.db.models.functions import Coalesce, Rank
 
 from club.models import Game, Player, Result, Season, SeasonKind
 
@@ -31,8 +37,11 @@ def _difference(minuend: str, subtrahend: str) -> ExpressionWrapper:
     return ExpressionWrapper(F(minuend) - F(subtrahend), output_field=IntegerField())
 
 
-def _player_totals(path: str, scope: Q) -> dict:
-    """Annotations for a model that reaches Result through ``path``, limited to ``scope``."""
+def _player_totals(path: str, scope: Q, prefix: str = "") -> dict:
+    """Annotations for a model that reaches Result through ``path``, limited to ``scope``.
+
+    ``prefix`` goes in front of every annotation name, so several scopes fit on one row.
+    """
 
     def only(extra: Q | None = None) -> Q | None:
         condition = scope & extra if extra is not None else scope
@@ -47,16 +56,17 @@ def _player_totals(path: str, scope: Q) -> dict:
             f"{path}__place__lte": F(f"{path}__game__season__paid_places"),
         }
     )
-    return {
+    totals = {
         "games_played": Count(path, filter=only()),
         "buyin_total": Coalesce(Sum(f"{path}__buyin", filter=only()), 0),
         "payout_total": Coalesce(Sum(f"{path}__payout", filter=only()), 0),
-        "net": _difference("payout_total", "buyin_total"),
+        "net": _difference(f"{prefix}payout_total", f"{prefix}buyin_total"),
         "itm": Count(path, filter=only(itm)),
         "first_places": places(1),
         "second_places": places(2),
         "third_places": places(3),
     }
+    return {f"{prefix}{name}": value for name, value in totals.items()}
 
 
 def annotate_result_net(results: QuerySet[Result]) -> QuerySet[Result]:
@@ -93,11 +103,55 @@ def season_standings(season: Season) -> QuerySet[Player]:
 
 
 def all_time_standings(kind: str | None = None) -> QuerySet[Player]:
-    """Players across all seasons (optionally one kind), best net first."""
+    """Players across all seasons (optionally one kind), best net first, with ``rank``."""
     return (
         annotate_player_totals(Player.objects.all(), kind=kind)
         .filter(games_played__gt=0)
+        .annotate(rank=Window(Rank(), order_by=F("net").desc()))
         .order_by("-net", "name", "nickname")
+    )
+
+
+def club_totals(kind: str | None = None) -> dict:
+    """games_count, players_count (distinct) and buyin_total over all seasons, or one kind."""
+    games = Game.objects.all() if kind is None else Game.objects.filter(season__kind=kind)
+    return games.aggregate(
+        games_count=Count("pk", distinct=True),
+        players_count=Count("results__player", distinct=True),
+        buyin_total=Coalesce(Sum("results__buyin"), 0),
+    )
+
+
+def player_index() -> QuerySet[Player]:
+    """Players with at least one game, all-time totals, in name order."""
+    return (
+        annotate_player_totals(Player.objects.all())
+        .filter(games_played__gt=0)
+        .order_by("name", "nickname")
+    )
+
+
+# Prefixes of annotate_player_card: all-time, tour only, cash only.
+PLAYER_CARD_SCOPES = {
+    "": Q(),
+    "tour_": Q(results__game__season__kind=SeasonKind.TOUR),
+    "cash_": Q(results__game__season__kind=SeasonKind.CASH),
+}
+
+
+def annotate_player_card(players: QuerySet[Player]) -> QuerySet[Player]:
+    """The record card totals in one query.
+
+    All-time fields as in annotate_player_totals, the same with ``tour_`` and ``cash_`` prefixes,
+    and first_game_date / last_game_date (None for a player without games).
+    """
+    annotations = {}
+    for prefix, scope in PLAYER_CARD_SCOPES.items():
+        annotations |= _player_totals("results", scope, prefix)
+    return players.annotate(
+        **annotations,
+        first_game_date=Min("results__game__date"),
+        last_game_date=Max("results__game__date"),
     )
 
 
@@ -113,13 +167,36 @@ def player_season_breakdown(player: Player) -> QuerySet[Season]:
 
 
 def annotate_game_totals(games: QuerySet[Game]) -> QuerySet[Game]:
-    """Add players_count, buyin_total, payout_total and leftover (buy-ins minus payouts)."""
+    """Add players_count, buyin_total, payout_total, leftover (buy-ins minus payouts) and
+    net_total (payouts minus buy-ins, the sum of the players' nets)."""
     return games.annotate(
         players_count=Count("results"),
         buyin_total=Coalesce(Sum("results__buyin"), 0),
         payout_total=Coalesce(Sum("results__payout"), 0),
         leftover=_difference("buyin_total", "payout_total"),
+        net_total=_difference("payout_total", "buyin_total"),
     )
+
+
+def _game_number(season: str, date: str) -> Subquery:
+    """Number of a game within its season: 1 for the earliest date.
+
+    Counts the season's games up to this date; dates are unique per season, so this is the
+    date order. ``season`` and ``date`` are paths from the outer model to the game's fields.
+    """
+    earlier = (
+        Game.objects.filter(season=OuterRef(season), date__lte=OuterRef(date))
+        .order_by()
+        .values("season")
+        .annotate(count=Count("pk"))
+        .values("count")
+    )
+    return Subquery(earlier, output_field=IntegerField())
+
+
+def annotate_game_number(games: QuerySet[Game]) -> QuerySet[Game]:
+    """Add ``number``, the game's position in its season (see _game_number)."""
+    return games.annotate(number=_game_number("season", "date"))
 
 
 # The one leftover rule (over annotate_game_totals fields). Tour buy-ins must be paid out in full;
@@ -152,33 +229,131 @@ def leftover_warning(game: Game) -> str | None:
 
 
 def annotate_season_totals(seasons: QuerySet[Season]) -> QuerySet[Season]:
-    """Add games_count, players_count, buyin_total and last_game_date.
+    """Add games_count, players_count, buyin_total, payout_total, leftover and last_game_date.
 
-    players_count counts distinct players who played at least once; last_game_date is None for a
-    season without games.
+    players_count counts distinct players who played at least once; leftover is the season's pot
+    (buy-ins minus payouts over all games); last_game_date is None for a season without games.
     """
     return seasons.annotate(
         games_count=Count("games", distinct=True),
         players_count=Count("games__results__player", distinct=True),
         buyin_total=Coalesce(Sum("games__results__buyin"), 0),
+        payout_total=Coalesce(Sum("games__results__payout"), 0),
+        leftover=_difference("buyin_total", "payout_total"),
         last_game_date=Max("games__date"),
     )
 
 
-def recent_games(season: Season, limit: int) -> QuerySet[Game]:
-    """The latest ``limit`` games of ``season``, newest first. Two queries.
+def season_games(season: Season) -> QuerySet[Game]:
+    """All games of ``season``, newest first. Two queries.
 
-    Each game has the annotate_game_totals fields, ``number`` (1 for the season's first game by
-    date, counted over the whole season) and ``winners``: results with place 1, player loaded.
-    A tie for first gives several winners, a cash game none.
+    Each game has the annotate_game_totals fields, ``number`` (see annotate_game_number) and
+    ``winners``: results with place 1, player loaded. A tie for first gives several winners, a
+    cash game none.
     """
     winners = Result.objects.filter(place=1).select_related("player").order_by("player__name")
     return (
-        annotate_game_totals(season.games.all())
-        .annotate(number=Window(RowNumber(), order_by=F("date").asc()))
+        annotate_game_number(annotate_game_totals(season.games.all()))
         .prefetch_related(Prefetch("results", queryset=winners, to_attr="winners"))
-        .order_by("-date")[:limit]
+        .order_by("-date")
     )
+
+
+def recent_games(season: Season, limit: int) -> QuerySet[Game]:
+    """The latest ``limit`` games of season_games(``season``)."""
+    return season_games(season)[:limit]
+
+
+@dataclass(frozen=True)
+class GameLink:
+    pk: int
+    date: datetime.date
+    number: int
+
+
+@dataclass(frozen=True)
+class GamePosition:
+    number: int
+    previous: GameLink | None
+    next: GameLink | None
+
+
+def game_position(game: Game) -> GamePosition:
+    """The game's number in its season and its neighbours by date. One query."""
+    games = list(game.season.games.order_by("date").values_list("pk", "date"))
+    index = next(i for i, (pk, _) in enumerate(games) if pk == game.pk)
+
+    def link(i: int) -> GameLink | None:
+        if not 0 <= i < len(games):
+            return None
+        pk, date = games[i]
+        return GameLink(pk, date, i + 1)
+
+    return GamePosition(index + 1, link(index - 1), link(index + 1))
+
+
+def same_evening(game: Game) -> Game | None:
+    """The game of the other kind played on the same date, with ``number``, or None."""
+    others = Game.objects.filter(date=game.date).exclude(season__kind=game.season.kind)
+    return annotate_game_number(others.select_related("season")).first()
+
+
+def chips_value(chips: int, chips_per_lei: int) -> Fraction:
+    """Exact value of a chip stack in lei; real stacks need not be whole lei."""
+    return Fraction(chips, chips_per_lei)
+
+
+def game_results(game: Game) -> list[Result]:
+    """Results of ``game``, best net first, player loaded. One query.
+
+    Each result has ``net`` and ``pot``: what it left in the pot, chip value minus payout
+    (a Fraction), or None when chips_out is unknown or the game is a tournament.
+    """
+    results = list(
+        annotate_result_net(game.results.select_related("player")).order_by(
+            "-net", F("place").asc(nulls_last=True), "player__name", "player__nickname"
+        )
+    )
+    for result in results:
+        result.pot = (
+            chips_value(result.chips_out, game.season.chips_per_lei) - result.payout
+            if result.chips_out is not None
+            else None
+        )
+    return results
+
+
+def player_results(player: Player) -> QuerySet[Result]:
+    """The player's results, newest first, with ``net``, ``game_number`` and the game's season.
+
+    On a date with both kinds, cash comes before tour (the reverse of player_net_timeline).
+    """
+    return (
+        annotate_result_net(player.results.select_related("game__season"))
+        .annotate(game_number=_game_number("game__season", "game__date"))
+        .order_by("-game__date", "game__season__kind")
+    )
+
+
+@dataclass(frozen=True)
+class TimelinePoint:
+    date: datetime.date
+    net: int
+
+
+def player_net_timeline(player: Player) -> list[TimelinePoint]:
+    """Cumulative net after each of the player's games, oldest first. One query.
+
+    On a date with both kinds the tournament comes first ("tour" sorts after "cash").
+    """
+    rows = player.results.order_by("game__date", "-game__season__kind").values_list(
+        "game__date", "buyin", "payout"
+    )
+    timeline, running = [], 0
+    for date, buyin, payout in rows:
+        running += payout - buyin
+        timeline.append(TimelinePoint(date, running))
+    return timeline
 
 
 def suggest_places[K: Hashable](payouts: Mapping[K, int], paid_places: int) -> dict[K, int | None]:

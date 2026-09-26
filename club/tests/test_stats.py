@@ -1,4 +1,5 @@
 import datetime
+from fractions import Fraction
 
 import pytest
 
@@ -383,3 +384,161 @@ class TestLeftoverRule:
         with django_assert_num_queries(1):
             rows = list(stats.annotate_leftover_check(Game.objects.all()))
         assert [row.leftover_mismatch for row in rows] == [False, False, False]
+
+
+class TestGameNumber:
+    def test_numbers_follow_the_date_within_each_season(self, club):
+        games = stats.annotate_game_number(Game.objects.all())
+
+        numbers = {(g.season.kind, g.date.day): g.number for g in games.select_related("season")}
+        assert numbers == {
+            ("tour", 10): 1,
+            ("tour", 1): 1,
+            ("tour", 8): 2,
+            ("tour", 15): 3,
+            ("cash", 8): 1,
+            ("cash", 22): 2,
+        }
+
+    def test_recent_games_use_the_same_numbers(self, club):
+        recent = stats.recent_games(club["seasons"]["tour"], limit=2)
+
+        assert [g.number for g in recent] == [3, 2]
+
+
+class TestGamePosition:
+    def test_middle_game(self, club):
+        g = club["games"]
+
+        position = stats.game_position(g["t2"])
+
+        assert position.number == 2
+        assert (position.previous.pk, position.previous.number) == (g["t1"].pk, 1)
+        assert (position.next.pk, position.next.number, position.next.date) == (
+            g["t3"].pk,
+            3,
+            g["t3"].date,
+        )
+
+    def test_edges(self, club):
+        assert stats.game_position(club["games"]["t1"]).previous is None
+        assert stats.game_position(club["games"]["t3"]).next is None
+        only = stats.game_position(club["games"]["t0"])
+        assert (only.number, only.previous, only.next) == (1, None, None)
+
+    def test_is_one_query(self, club, django_assert_num_queries):
+        game = Game.objects.select_related("season").get(pk=club["games"]["t2"].pk)
+
+        with django_assert_num_queries(1):
+            stats.game_position(game)
+
+
+class TestSameEvening:
+    def test_finds_the_other_kind_with_its_number(self, club):
+        other = stats.same_evening(club["games"]["t2"])
+
+        assert (other.pk, other.number) == (club["games"]["c1"].pk, 1)
+        assert stats.same_evening(club["games"]["c1"]).pk == club["games"]["t2"].pk
+
+    def test_none_without_a_game_of_the_other_kind(self, club):
+        assert stats.same_evening(club["games"]["t1"]) is None
+
+
+class TestGameResults:
+    def test_pot_is_exact_chip_value_minus_payout(self, club):
+        rows = {r.player.name: r.pot for r in stats.game_results(club["games"]["c1"])}
+
+        assert rows == {"Альфа": Fraction(23, 10), "Браво": Fraction(77, 10), "Чарли": None}
+
+    def test_tour_results_have_no_pot(self, club):
+        assert {r.pot for r in stats.game_results(club["games"]["t1"])} == {None}
+
+    def test_is_one_query(self, club, django_assert_num_queries):
+        game = Game.objects.select_related("season").get(pk=club["games"]["c1"].pk)
+
+        with django_assert_num_queries(1):
+            [r.player.name for r in stats.game_results(game)]
+
+    def test_chips_value(self):
+        assert stats.chips_value(5230, 100) == Fraction(523, 10)
+        assert stats.chips_value(5000, 100) == 50
+
+
+class TestGameAndSeasonTotals:
+    def test_net_total_is_the_negative_leftover(self, club):
+        game = stats.annotate_game_totals(Game.objects.filter(pk=club["games"]["t3"].pk)).get()
+
+        assert (game.leftover, game.net_total) == (40, -40)
+
+    def test_season_pot(self, club):
+        season = stats.annotate_season_totals(Season.objects.filter(pk=club["seasons"]["cash"].pk))
+
+        row = season.get()
+        assert (row.buyin_total, row.payout_total, row.leftover) == (350, 360, -10)
+
+
+class TestPlayerCard:
+    def test_all_time_tour_and_cash_on_one_row(self, club):
+        card = stats.annotate_player_card(Player.objects.filter(pk=club["players"]["A"].pk)).get()
+
+        assert (card.games_played, card.net, card.itm, card.first_places) == (6, 190, 4, 4)
+        assert (card.tour_games_played, card.tour_net, card.tour_itm) == (4, 210, 4)
+        assert (card.cash_games_played, card.cash_net, card.cash_itm) == (2, -20, 0)
+        assert (card.first_game_date.year, card.last_game_date.day) == (
+            club["seasons"]["tour_old"].year,
+            22,
+        )
+
+    def test_player_without_games(self, club):
+        card = stats.annotate_player_card(Player.objects.filter(pk=club["players"]["E"].pk)).get()
+
+        assert (card.games_played, card.net, card.tour_net, card.first_game_date) == (0, 0, 0, None)
+
+
+class TestPlayerTimeline:
+    def test_cumulative_net_with_tour_first_on_a_shared_date(self, club):
+        points = stats.player_net_timeline(club["players"]["A"])
+
+        assert [p.net for p in points] == [50, 150, 200, 150, 160, 190]
+        assert points[2].date == points[3].date
+
+    def test_no_games(self, club):
+        assert stats.player_net_timeline(club["players"]["E"]) == []
+
+
+class TestPlayerResults:
+    def test_newest_first_with_net_and_number(self, club):
+        rows = [
+            (r.game.season.kind, r.game_number, r.net)
+            for r in stats.player_results(club["players"]["B"])
+        ]
+
+        assert rows == [
+            ("cash", 2, -20),
+            ("tour", 3, -50),
+            ("cash", 1, -10),
+            ("tour", 2, -50),
+            ("tour", 1, -50),
+            ("tour", 1, -50),
+        ]
+
+
+class TestAllTimeRankAndClubTotals:
+    def test_rank(self, club):
+        assert [(p.rank, p.name) for p in stats.all_time_standings(kind=SeasonKind.CASH)] == [
+            (1, "Чарли"),
+            (2, "Дельта"),
+            (3, "Альфа"),
+            (4, "Браво"),
+        ]
+
+    def test_club_totals_by_kind(self, club):
+        assert stats.club_totals(SeasonKind.CASH) == {
+            "games_count": 2,
+            "players_count": 4,
+            "buyin_total": 350,
+        }
+        assert stats.club_totals()["games_count"] == 6
+
+    def test_player_index_skips_players_without_games(self, club):
+        assert [p.name for p in stats.player_index()] == ["Альфа", "Браво", "Дельта", "Чарли"]
