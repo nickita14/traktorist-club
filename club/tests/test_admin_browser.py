@@ -60,6 +60,14 @@ MEASURE = """selectors => {
   return result;
 }"""
 
+# Every Content-Security-Policy violation on the page, as "directive blocked-uri".
+COLLECT_CSP_VIOLATIONS = """
+window.cspViolations = [];
+document.addEventListener('securitypolicyviolation', event => {
+  window.cspViolations.push(`${event.violatedDirective} ${event.blockedURI}`);
+});
+"""
+
 CHANGELIST_TEXT = ["body", "h1", "#result_list tbody td", "#result_list thead th", "#searchbar"]
 CHANGE_FORM_TEXT = ["body", "h1", "input[name=location]", "label", ".tabular td"]
 
@@ -102,6 +110,7 @@ def admin_page(browser, live_server, admin_user, client):
         context = browser.new_context(color_scheme=color_scheme)
         contexts.append(context)
         context.add_cookies([{"name": "sessionid", "value": session, "url": live_server.url}])
+        context.add_init_script(COLLECT_CSP_VIOLATIONS)
         if stored_theme:
             # What Unfold's theme switcher left behind before THEME was set.
             context.add_init_script(
@@ -182,3 +191,18 @@ def test_primary_is_ink_and_danger_is_stamp_red(admin_page, game):
 
     assert colors["primary"] == colors["ink"]
     assert colors["danger"] == colors["accent"] == colors["warning"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param(lambda game: reverse("admin:club_season_changelist"), id="changelist"),
+        pytest.param(lambda game: reverse("admin:club_game_change", args=[game.pk]), id="form"),
+        pytest.param(lambda game: reverse("game_detail", args=[game.pk]), id="public"),
+    ],
+)
+def test_pages_run_without_csp_violations(admin_page, game, path):
+    page = admin_page(path(game))
+    page.wait_for_load_state("networkidle")
+
+    assert page.evaluate("window.cspViolations") == []

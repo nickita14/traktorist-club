@@ -3,6 +3,7 @@ from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, User
 from django.utils.html import format_html
+from django_otp.plugins.otp_totp.models import TOTPDevice
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.contrib.filters.admin import (
     ChoicesDropdownFilter,
@@ -42,6 +43,9 @@ def net_cell(value: int | None) -> str:
 # Auth models re-registered with Unfold styling (https://unfoldadmin.com/docs/installation/auth/).
 admin.site.unregister(User)
 admin.site.unregister(Group)
+# django-otp's device admin is a plain Django ModelAdmin. Devices are managed over SSH with
+# `manage.py totp_enroll` instead.
+admin.site.unregister(TOTPDevice)
 
 
 @admin.register(User)

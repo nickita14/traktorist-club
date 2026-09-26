@@ -1,0 +1,191 @@
+# Russian strings for django-unfold, which ships no translations of its own.
+#
+# Hand-maintained. Do not run makemessages on this file: the project has no translatable strings
+# of its own (the UI is written in Russian), so makemessages would mark every entry obsolete.
+# Only strings Django's own catalog lacks belong here; the build compiles this file into
+# django.mo (gitignored) with compilemessages.
+msgid ""
+msgstr ""
+"Project-Id-Version: traktorist-club\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && "
+"(n%100<12 || n%100>14) ? 1 : n%10==0 || (n%10>=5 && n%10<=9) || (n%100>=11 && "
+"n%100<=14)? 2 : 3);\n"
+
+# Change list: filters and search
+
+msgid "Filters"
+msgstr "Фильтры"
+
+msgid "Apply Filters"
+msgstr "Применить фильтры"
+
+msgid "Reset filters"
+msgstr "Сбросить фильтры"
+
+msgid "Toggle filter"
+msgstr "Показать или скрыть фильтры"
+
+msgid "Date from"
+msgstr "Дата с"
+
+msgid "Date to"
+msgstr "Дата по"
+
+msgid "From"
+msgstr "С"
+
+msgid "To"
+msgstr "По"
+
+msgid "Value"
+msgstr "Значение"
+
+msgid "Type to search"
+msgstr "Поиск"
+
+msgid "Search apps and models..."
+msgstr "Поиск по разделам..."
+
+msgid "No results found"
+msgstr "Ничего не найдено"
+
+msgid "This page yielded into no results. Create a new item or reset your filters."
+msgstr "Здесь пусто. Добавьте запись или сбросьте фильтры."
+
+msgid "Nothing matched your search"
+msgstr "По запросу ничего не найдено"
+
+msgid "Recent searches"
+msgstr "Недавние запросы"
+
+msgid "No data"
+msgstr "Нет данных"
+
+msgid "Not enough data."
+msgstr "Недостаточно данных."
+
+# Actions and paging
+
+msgid "Run the selected action"
+msgstr "Выполнить действие"
+
+msgid "Select action"
+msgstr "Выберите действие"
+
+msgid "Select action to run"
+msgstr "Выберите действие"
+
+msgid "Select record"
+msgstr "Выбрать запись"
+
+msgid "Select value"
+msgstr "Выберите значение"
+
+msgid "Select"
+msgstr "Выбрать"
+
+msgid "Previous"
+msgstr "Назад"
+
+msgid "Next"
+msgstr "Дальше"
+
+msgid "Go back"
+msgstr "Назад"
+
+msgid "Cancel"
+msgstr "Отмена"
+
+# Forms and inlines
+
+msgid "General"
+msgstr "Основное"
+
+msgid "Date"
+msgstr "Дата"
+
+msgid "True"
+msgstr "Да"
+
+msgid "False"
+msgstr "Нет"
+
+msgid "Click to cancel"
+msgstr "Нажмите, чтобы отменить"
+
+msgid "This item will be deleted."
+msgstr "Запись будет удалена."
+
+msgid "Choose file to upload"
+msgstr "Выберите файл"
+
+msgid "Click to download"
+msgstr "Скачать"
+
+msgid "Image preview"
+msgstr "Просмотр изображения"
+
+msgid "Record picture"
+msgstr "Изображение записи"
+
+msgid "Toggle password visibility"
+msgstr "Показать или скрыть пароль"
+
+msgid "After you've created a user, you’ll be able to edit more user options."
+msgstr "После создания пользователя можно будет изменить остальные параметры."
+
+# Navigation, login and logout
+
+msgid "All applications"
+msgstr "Все разделы"
+
+msgid "Welcome back to"
+msgstr "Вход в панель управления"
+
+msgid "Return to site"
+msgstr "Вернуться на сайт"
+
+msgid "Forgotten your password or username?"
+msgstr "Забыли пароль или имя пользователя?"
+
+msgid "You have been successfully logged out from the administration"
+msgstr "Вы вышли из панели управления"
+
+msgid "Toggle sidebar"
+msgstr "Показать или скрыть меню"
+
+# Keyboard shortcuts and the command tool
+
+msgid "Available shortcuts"
+msgstr "Сочетания клавиш"
+
+msgid "Global shortcuts"
+msgstr "Везде"
+
+msgid "Changelist shortcuts"
+msgstr "В списке записей"
+
+msgid "Command tool shortcuts"
+msgstr "В командной строке"
+
+msgid "Open shortcuts list"
+msgstr "Открыть список сочетаний"
+
+msgid "Open command tool"
+msgstr "Открыть командную строку"
+
+msgid "Create new record"
+msgstr "Добавить запись"
+
+msgid "Navigate"
+msgstr "Перемещение"
+
+msgid "Open selection"
+msgstr "Открыть выбранное"
+
+msgid "Open selection in new tab"
+msgstr "Открыть выбранное в новой вкладке"
