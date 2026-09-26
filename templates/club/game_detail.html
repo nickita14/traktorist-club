@@ -7,17 +7,17 @@
   {% if position.previous or position.next %}
     <nav class="doc-pager pt-4" aria-label="Соседние игры сезона">
       {% if position.previous %}
-        <a href="{% url 'game_detail' position.previous.pk %}" rel="prev">← {% if season.kind == "cash" %}Вечер{% else %}Игра{% endif %} №&nbsp;{{ position.previous.number }} · <span class="font-num">{{ position.previous.date|date:"d.m.Y" }}</span></a>
+        <a href="{% url 'game_detail' position.previous.pk %}" rel="prev"><span>← {% if season.kind == "cash" %}Вечер{% else %}Игра{% endif %} №&nbsp;{{ position.previous.number }} · <span class="font-num">{{ position.previous.date|date:"d.m.Y" }}</span></span></a>
       {% endif %}
       {% if position.next %}
-        <a class="next" href="{% url 'game_detail' position.next.pk %}" rel="next">{% if season.kind == "cash" %}Вечер{% else %}Игра{% endif %} №&nbsp;{{ position.next.number }} · <span class="font-num">{{ position.next.date|date:"d.m.Y" }}</span> →</a>
+        <a class="next" href="{% url 'game_detail' position.next.pk %}" rel="next"><span>{% if season.kind == "cash" %}Вечер{% else %}Игра{% endif %} №&nbsp;{{ position.next.number }} · <span class="font-num">{{ position.next.date|date:"d.m.Y" }}</span> →</span></a>
       {% endif %}
     </nav>
   {% endif %}
 {% endblock %}
 
 {% block form_label %}{% if season.kind == "cash" %}Форма № 3-К · Лист кэш-игры{% else %}Форма № 3-Т · Лист турнира{% endif %}{% endblock %}
-{% block doc_title %}{% if season.kind == "cash" %}Вечер{% else %}Игра{% endif %} № <span class="font-num">{{ position.number }}</span>{% endblock %}
+{% block doc_title %}{% if season.kind == "cash" %}Вечер{% else %}Игра{% endif %} №&nbsp;{{ position.number }}{% endblock %}
 {% block stamp %}
   {% if game.leftover_mismatch %}
     <p class="stamp">Не сходится</p>
@@ -82,9 +82,9 @@
             <th scope="col" class="col-player">Участник</th>
             {% if season.kind == "tour" %}<th scope="col" class="num">Место</th>{% endif %}
             <th scope="col" class="num max-md:hidden">Закупка</th>
-            {% if season.kind == "cash" %}<th scope="col" class="num max-md:hidden">Фишек на выходе</th>{% endif %}
+            {% if show_chips %}<th scope="col" class="num max-md:hidden">Фишек на выходе</th>{% endif %}
             <th scope="col" class="num max-md:hidden">Выплата</th>
-            {% if season.kind == "cash" %}<th scope="col" class="num max-md:hidden">В котёл</th>{% endif %}
+            {% if show_chips %}<th scope="col" class="num max-md:hidden">В котёл</th>{% endif %}
             <th scope="col" class="num">Итог, лей</th>
           </tr>
         </thead>
@@ -94,18 +94,18 @@
               <td class="col-rank num">{{ forloop.counter }}</td>
               <td class="col-player">
                 {% include "club/includes/player_name.html" with player=result.player %}
-                <span class="block font-num text-xs text-muted md:hidden">{{ result.buyin|money }} → {{ result.payout|money }}{% if season.kind == "cash" and result.chips_out is not None %} · фишек {{ result.chips_out|money }} · в котёл {% pot_value result.pot %}{% endif %}</span>
+                <span class="block font-num text-xs text-muted md:hidden">{{ result.buyin|money }} → {{ result.payout|money }}{% if result.chips_out is not None %} · фишек {{ result.chips_out|money }} · в котёл {% pot_value result.pot %}{% endif %}</span>
               </td>
               {% if season.kind == "tour" %}<td class="num">{% optional_count result.place %}</td>{% endif %}
               <td class="num max-md:hidden">{{ result.buyin|money }}</td>
-              {% if season.kind == "cash" %}<td class="num max-md:hidden">{% optional_count result.chips_out %}</td>{% endif %}
+              {% if show_chips %}<td class="num max-md:hidden">{% optional_count result.chips_out %}</td>{% endif %}
               <td class="num max-md:hidden">{{ result.payout|money }}</td>
-              {% if season.kind == "cash" %}<td class="num max-md:hidden">{% pot_value result.pot %}</td>{% endif %}
+              {% if show_chips %}<td class="num max-md:hidden">{% pot_value result.pot %}</td>{% endif %}
               <td class="num">{% net_value result.net %}</td>
             </tr>
           {% empty %}
             <tr>
-              <td colspan="{% if season.kind == 'cash' %}7{% else %}6{% endif %}" class="text-muted italic">Результатов пока нет.</td>
+              <td colspan="{% if show_chips %}7{% elif season.kind == 'cash' %}5{% else %}6{% endif %}" class="text-muted italic">Результатов пока нет.</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -116,9 +116,9 @@
               <td class="col-player font-head tracking-label uppercase">Итого</td>
               {% if season.kind == "tour" %}<td></td>{% endif %}
               <td class="num max-md:hidden">{{ game.buyin_total|money }}</td>
-              {% if season.kind == "cash" %}<td class="max-md:hidden"></td>{% endif %}
+              {% if show_chips %}<td class="max-md:hidden"></td>{% endif %}
               <td class="num max-md:hidden">{{ game.payout_total|money }}</td>
-              {% if season.kind == "cash" %}<td class="num max-md:hidden">{% pot_value game.leftover %}</td>{% endif %}
+              {% if show_chips %}<td class="num max-md:hidden">{% pot_value game.leftover %}</td>{% endif %}
               <td class="num">{% net_value game.net_total %}</td>
             </tr>
           </tfoot>
@@ -127,8 +127,10 @@
     </div>
     {% if season.kind == "cash" %}
       <p class="mt-3 max-w-prose text-sm text-muted italic">
-        В котёл уходит сдача при обмене фишек: стоимость фишек на выходе минус выплата.
-        Где фишки на выходе не записаны, стоит точка; итог котла по вечеру считается по закупкам и выплатам.
+        {% if show_chips %}
+          В котёл уходит сдача при обмене фишек: стоимость фишек на выходе минус выплата.
+          Где фишки на выходе не записаны, стоит точка; итог котла по вечеру считается по закупкам и выплатам.
+        {% endif %}
         <span class="whitespace-nowrap">Курс: <span class="font-num num-run not-italic">{{ rate_example.chips|money }}</span> фишек = <span class="font-num num-run not-italic">{{ rate_example.lei|money }}</span> лей.</span>
       </p>
     {% endif %}

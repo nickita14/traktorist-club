@@ -25,7 +25,8 @@ class TestTourGame:
         html = response.content.decode()
 
         assert response.status_code == 200
-        assert 'Игра № <span class="font-num">2</span></h1>' in html
+        # The whole title is set in the heading font, number included.
+        assert ">Игра №&nbsp;2</h1>" in html
         assert "Форма № 3-Т · Лист турнира" in html
 
     def test_prev_and_next_games_of_the_same_season(self, client, club):
@@ -33,9 +34,15 @@ class TestTourGame:
 
         html = html_of(client, club["games"]["t2"])
 
-        assert f'href="/games/{t1.pk}/" rel="prev">← Игра №&nbsp;1 · ' in html
-        assert f">01.03.{PAST_YEAR}</span></a>" in html
-        assert f'href="/games/{t3.pk}/" rel="next">Игра №&nbsp;3 · ' in html
+        # One inner span per link: a flex anchor would drop the spaces around the date.
+        assert (
+            f'href="/games/{t1.pk}/" rel="prev"><span>← Игра №&nbsp;1 · '
+            f'<span class="font-num">01.03.{PAST_YEAR}</span></span></a>'
+        ) in html
+        assert (
+            f'href="/games/{t3.pk}/" rel="next"><span>Игра №&nbsp;3 · '
+            f'<span class="font-num">15.03.{PAST_YEAR}</span> →</span></a>'
+        ) in html
 
     def test_season_edges_have_one_neighbour(self, client, club):
         first = html_of(client, club["games"]["t1"])
@@ -123,7 +130,7 @@ class TestCashGame:
     def test_title_and_form(self, client, club):
         html = html_of(client, club["games"]["c1"])
 
-        assert 'Вечер № <span class="font-num">1</span></h1>' in html
+        assert ">Вечер №&nbsp;1</h1>" in html
         assert "Форма № 3-К · Лист кэш-игры" in html
 
     def test_location_in_the_meta_line(self, client, club):
@@ -184,6 +191,35 @@ class TestCashGame:
 
         assert '<p class="stamp">Не сходится</p>' in html
         assert f'<dd class="stat-value"><span class="val-neg">{MINUS}20</span></dd>' in html
+
+    def test_columns_with_known_stacks(self, client, club):
+        response = get_game(client, club["games"]["c1"])
+        html = response.content.decode()
+
+        assert response.context["show_chips"] is True
+        assert ">Фишек на выходе</th>" in html
+        assert ">В котёл</th>" in html
+        assert "В котёл уходит сдача" in html
+
+    def test_no_stacks_hides_chip_and_pot_columns(self, client, club):
+        response = get_game(client, club["games"]["c2"])
+        html = response.content.decode()
+        tfoot = html.split("<tfoot>")[1].split("</tfoot>")[0]
+
+        assert response.context["show_chips"] is False
+        assert "Фишек на выходе" not in html
+        assert ">В котёл</th>" not in html
+        assert "в котёл" not in html.split("<tbody>")[1].split("</tbody>")[0]
+        # Rank, name, buy-ins, payouts, net: no chip or pot cells in the total row.
+        assert tfoot.count("<td") == 5
+        # The note keeps only the chip rate.
+        assert "В котёл уходит сдача" not in html
+        assert "Курс: " in html
+        # The stat strip still shows the game's pot.
+        assert f'<dd class="stat-value"><span class="val-neg">{MINUS}20</span></dd>' in html
+
+    def test_tour_game_never_shows_chip_columns(self, client, club):
+        assert get_game(client, club["games"]["t1"]).context["show_chips"] is False
 
     def test_link_back_to_the_tournament(self, client, club):
         t2 = club["games"]["t2"]

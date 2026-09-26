@@ -64,6 +64,7 @@ def game_detail(request, pk: int):
         stats.annotate_leftover_check(Game.objects.select_related("season")), pk=pk
     )
     chips_per_lei = game.season.chips_per_lei
+    results = stats.game_results(game)
     return render(
         request,
         "club/game_detail.html",
@@ -72,7 +73,9 @@ def game_detail(request, pk: int):
             "season": game.season,
             "position": stats.game_position(game),
             "same_evening": stats.same_evening(game),
-            "results": stats.game_results(game),
+            "results": results,
+            # Chip and pot columns only when someone's final stack was written down.
+            "show_chips": any(result.chips_out is not None for result in results),
             "rate_example": {"chips": RATE_EXAMPLE_LEI * chips_per_lei, "lei": RATE_EXAMPLE_LEI},
             "nav_section": NAV_SECTION[game.season.kind],
         },

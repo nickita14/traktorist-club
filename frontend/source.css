@@ -125,6 +125,8 @@
     text-transform: uppercase;
   }
 
+  /* A flex anchor drops the spaces between its text and inline children: put mixed content
+     (text plus a date span) in one inner <span>. */
   .doc-pager a {
     display: flex;
     align-items: center;
