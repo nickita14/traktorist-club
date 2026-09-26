@@ -1,3 +1,5 @@
+import datetime
+
 import pytest
 
 from club import stats
@@ -156,6 +158,31 @@ class TestSeasonStandings:
         with django_assert_num_queries(1):
             list(stats.season_standings(tour["season"]))
 
+    def test_rank_follows_net(self, tour):
+        rows = stats.season_standings(tour["season"])
+
+        assert [(p.name, p.net, p.rank) for p in rows] == [
+            ("Браво", 50, 1),
+            ("Чарли", 30, 2),
+            ("Альфа", 20, 3),
+            ("Дельта", -100, 4),
+        ]
+
+    def test_equal_nets_share_a_rank_and_the_next_skips(self):
+        season = make_season(2025, SeasonKind.TOUR)
+        game = make_game(season)
+        for name, payout in [("Альфа", 100), ("Браво", 100), ("Чарли", 0), ("Дельта", 0)]:
+            make_result(game, make_player(name), buyin=50, payout=payout)
+
+        rows = stats.season_standings(season)
+
+        assert [(p.name, p.rank) for p in rows] == [
+            ("Альфа", 1),
+            ("Браво", 1),
+            ("Дельта", 3),  # ties keep name order
+            ("Чарли", 3),
+        ]
+
 
 class TestAllTime:
     def test_itm_uses_each_seasons_paid_places(self):
@@ -257,6 +284,59 @@ class TestSeasonTotals:
 
         assert (rows["Турнир 2025"].games_count, rows["Турнир 2025"].players_count) == (3, 4)
         assert (rows["Турнир 2026"].games_count, rows["Турнир 2026"].players_count) == (0, 0)
+
+    def test_buyin_total_and_last_game_date(self, tour):
+        make_season(2026, SeasonKind.TOUR)
+        rows = {str(s): s for s in stats.annotate_season_totals(Season.objects.all())}
+
+        # g1 250 (with D's rebuy), g2 200, g3 200.
+        assert rows["Турнир 2025"].buyin_total == 650
+        assert rows["Турнир 2025"].last_game_date == datetime.date(2025, 1, 3)
+        assert rows["Турнир 2026"].buyin_total == 0
+        assert rows["Турнир 2026"].last_game_date is None
+
+
+class TestRecentGames:
+    def test_newest_first_with_season_numbers_and_totals(self, tour):
+        games = list(stats.recent_games(tour["season"], limit=2))
+
+        assert [(g.date.day, g.number, g.players_count, g.buyin_total) for g in games] == [
+            (3, 3, 4, 200),
+            (2, 2, 4, 200),
+        ]
+
+    def test_winners(self, tour):
+        games = {g.date.day: g for g in stats.recent_games(tour["season"], limit=10)}
+
+        assert [r.player.name for r in games[3].winners] == ["Дельта"]
+        assert [r.player.name for r in games[1].winners] == ["Альфа"]
+
+    def test_tie_for_first_gives_every_winner(self):
+        game = make_game(make_season(2025, SeasonKind.TOUR))
+        make_result(game, make_player("Браво"), payout=50, place=1)
+        make_result(game, make_player("Альфа"), payout=50, place=1)
+
+        (row,) = stats.recent_games(game.season, limit=5)
+
+        assert [r.player.name for r in row.winners] == ["Альфа", "Браво"]
+
+    def test_cash_game_has_no_winners(self):
+        game = make_game(make_season(2025, SeasonKind.CASH))
+        make_result(game, make_player(), buyin=100, payout=150)
+
+        (row,) = stats.recent_games(game.season, limit=5)
+
+        assert row.winners == []
+
+    def test_other_seasons_do_not_leak(self, tour):
+        make_game(make_season(2026, SeasonKind.TOUR))
+
+        assert len(stats.recent_games(tour["season"], limit=10)) == 3
+
+    def test_is_two_queries(self, tour, django_assert_num_queries):
+        with django_assert_num_queries(2):
+            games = list(stats.recent_games(tour["season"], limit=10))
+            [r.player.name for g in games for r in g.winners]
 
 
 class TestResultNet:

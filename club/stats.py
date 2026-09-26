@@ -13,11 +13,14 @@ from django.db.models import (
     ExpressionWrapper,
     F,
     IntegerField,
+    Max,
+    Prefetch,
     Q,
     QuerySet,
     Sum,
+    Window,
 )
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Rank, RowNumber
 
 from club.models import Game, Player, Result, Season, SeasonKind
 
@@ -77,10 +80,14 @@ def annotate_player_totals(
 
 
 def season_standings(season: Season) -> QuerySet[Player]:
-    """Players who played in ``season``, best net first."""
+    """Players who played in ``season``, best net first, with ``rank``.
+
+    ``rank`` is competition ranking by net: equal nets share a rank and the next one skips.
+    """
     return (
         annotate_player_totals(Player.objects.all(), season=season)
         .filter(games_played__gt=0)
+        .annotate(rank=Window(Rank(), order_by=F("net").desc()))
         .order_by("-net", "name", "nickname")
     )
 
@@ -145,10 +152,32 @@ def leftover_warning(game: Game) -> str | None:
 
 
 def annotate_season_totals(seasons: QuerySet[Season]) -> QuerySet[Season]:
-    """Add games_count and players_count (distinct players who played at least once)."""
+    """Add games_count, players_count, buyin_total and last_game_date.
+
+    players_count counts distinct players who played at least once; last_game_date is None for a
+    season without games.
+    """
     return seasons.annotate(
         games_count=Count("games", distinct=True),
         players_count=Count("games__results__player", distinct=True),
+        buyin_total=Coalesce(Sum("games__results__buyin"), 0),
+        last_game_date=Max("games__date"),
+    )
+
+
+def recent_games(season: Season, limit: int) -> QuerySet[Game]:
+    """The latest ``limit`` games of ``season``, newest first. Two queries.
+
+    Each game has the annotate_game_totals fields, ``number`` (1 for the season's first game by
+    date, counted over the whole season) and ``winners``: results with place 1, player loaded.
+    A tie for first gives several winners, a cash game none.
+    """
+    winners = Result.objects.filter(place=1).select_related("player").order_by("player__name")
+    return (
+        annotate_game_totals(season.games.all())
+        .annotate(number=Window(RowNumber(), order_by=F("date").asc()))
+        .prefetch_related(Prefetch("results", queryset=winners, to_attr="winners"))
+        .order_by("-date")[:limit]
     )
 
 
