@@ -92,7 +92,7 @@
                 <td>{{ season.get_kind_display }}</td>
                 <td class="num">{{ season.games_played|money }}</td>
                 {% if season.kind == "tour" %}
-                  <td class="num">{% count_value season.itm %}</td>
+                  <td class="num">{% place_count season.itm %}</td>
                   <td class="num">{% place_count season.first_places %}</td>
                   <td class="num">{% place_count season.second_places %}</td>
                   <td class="num">{% place_count season.third_places %}</td>
@@ -112,7 +112,7 @@
             <tr>
               <td colspan="2" class="font-head tracking-label uppercase">Итого</td>
               <td class="num">{{ player.games_played|money }}</td>
-              <td class="num">{% count_value player.itm %}</td>
+              <td class="num">{% place_count player.itm %}</td>
               <td class="num">{% place_count player.first_places %}</td>
               <td class="num">{% place_count player.second_places %}</td>
               <td class="num">{% place_count player.third_places %}</td>
@@ -128,7 +128,7 @@
     <section class="mt-8" aria-labelledby="history-title">
       <h2 id="history-title" class="font-head text-lg font-bold tracking-label uppercase">История игр</h2>
       <div class="mt-1">{% include "club/includes/history_table.html" with results=recent_results %}</div>
-      <p class="doc-pager mt-2"><a class="next" href="{% url 'player_games' player.slug %}">{% if has_more_games %}Вся история: <span class="mx-1 font-num">{{ player.games_played|money }}</span> {{ player.games_played|plural:"игра,игры,игр" }}{% else %}История игр{% endif %} →</a></p>
+      <p class="doc-pager mt-2"><a class="next" href="{% url 'player_games' player.slug %}"><span>{% if has_more_games %}Вся история: <span class="font-num">{{ player.games_played|money }}</span> {{ player.games_played|plural:"игра,игры,игр" }}{% else %}История игр{% endif %} →</span></a></p>
     </section>
   {% endif %}
 {% endblock %}

@@ -19,7 +19,8 @@
           <td class="font-num"><a href="{{ result.game.get_absolute_url }}"><time datetime="{{ result.game.date|date:'Y-m-d' }}">{{ result.game.date|date:"d.m.Y" }}</time></a></td>
           <td>{{ result.game.season.get_kind_display }}</td>
           <td class="num"><a href="{{ result.game.get_absolute_url }}">№&nbsp;{{ result.game_number }}</a></td>
-          <td class="num">{% optional_count result.place %}</td>
+          {# Cash has no places at all: an empty cell, unlike a tournament without a prize place. #}
+          <td class="num">{% if result.game.season.kind == "tour" %}{% optional_count result.place %}{% endif %}</td>
           <td class="num max-md:hidden">{{ result.buyin|money }}</td>
           <td class="num max-md:hidden">{{ result.payout|money }}</td>
           <td class="num">{% net_value result.net %}</td>

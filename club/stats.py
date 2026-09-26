@@ -12,6 +12,7 @@ from fractions import Fraction
 
 from django.db.models import (
     BooleanField,
+    Case,
     Count,
     ExpressionWrapper,
     F,
@@ -24,6 +25,8 @@ from django.db.models import (
     QuerySet,
     Subquery,
     Sum,
+    Value,
+    When,
     Window,
 )
 from django.db.models.functions import Coalesce, Rank
@@ -31,6 +34,11 @@ from django.db.models.functions import Coalesce, Rank
 from club.models import Game, Player, Result, Season, SeasonKind
 
 RESULT_NET = ExpressionWrapper(F("payout") - F("buyin"), output_field=IntegerField())
+
+# Season order within a year, as in the nav: tournaments first, then cash.
+SEASON_KIND_ORDER = Case(
+    When(kind=SeasonKind.TOUR, then=Value(0)), default=Value(1), output_field=IntegerField()
+)
 
 
 def _difference(minuend: str, subtrahend: str) -> ExpressionWrapper:
@@ -156,13 +164,14 @@ def annotate_player_card(players: QuerySet[Player]) -> QuerySet[Player]:
 
 
 def player_season_breakdown(player: Player) -> QuerySet[Season]:
-    """Seasons ``player`` played in, each with that player's totals (same fields as above)."""
+    """Seasons ``player`` played in, newest year first and tour before cash within a year, each
+    with that player's totals (same fields as above)."""
     return (
         Season.objects.annotate(
             **_player_totals("games__results", Q(games__results__player=player))
         )
         .filter(games_played__gt=0)
-        .order_by("-year", "kind")
+        .order_by("-year", SEASON_KIND_ORDER)
     )
 
 

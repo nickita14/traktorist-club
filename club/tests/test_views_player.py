@@ -54,9 +54,10 @@ class TestPlayerCard:
         html = response.content.decode()
 
         rows = [(s.year, s.kind, s.games_played, s.net) for s in response.context["seasons"]]
+        # Tour before cash within a year, like the nav.
         assert rows == [
-            (PAST_YEAR, "cash", 2, -20),
             (PAST_YEAR, "tour", 3, 160),
+            (PAST_YEAR, "cash", 2, -20),
             (PAST_YEAR - 1, "tour", 1, 50),
         ]
         table = html.split('id="seasons-title"')[1].split("</table>")[0]
@@ -65,6 +66,32 @@ class TestPlayerCard:
         tfoot = table.split("<tfoot>")[1]
         assert '<td class="num max-md:hidden">400</td>' in tfoot
         assert '<td class="num">+190</td>' in tfoot
+
+    def test_zero_itm_is_a_faint_dot_like_the_places(self, client, club):
+        html = get_card(client, club["players"]["B"]).content.decode()
+        table = html.split('id="seasons-title"')[1].split("</table>")[0]
+
+        # Браво: two tour rows and the total, each with ITM 0 and no places (4 dots per row).
+        assert table.count('<span class="sr-only">0</span>') == 3 * 4
+        assert '<span class="val-zero">0</span>' not in table
+
+    def test_history_place_cells(self, client, club):
+        html = get_card(client, club["players"]["B"]).content.decode()
+        body = html.split('id="history-title"')[1].split("<tbody>")[1].split("</tbody>")[0]
+        place_cells = [row.split("<td")[4] for row in body.split("<tr>")[1:]]
+
+        # Newest first: c2, t3, c1, t2, t1, t0. A cash game has no places at all (empty cell);
+        # a tournament without a prize place gets the faint dot.
+        assert place_cells[0].strip() == place_cells[2].strip() == 'class="num"></td>'
+        assert all('<span class="sr-only">нет</span>' in cell for cell in place_cells[1::2])
+        assert all("нет" in cell for cell in place_cells[3:])
+
+    def test_full_history_uses_the_same_place_cells(self, client, club):
+        response = client.get(reverse("player_games", args=[club["players"]["B"].slug]))
+        body = response.content.decode().split("<tbody>")[1]
+
+        assert body.count('<td class="num"></td>') == 2
+        assert body.count('<span class="sr-only">нет</span>') == 4
 
     def test_history_is_newest_first_with_season_numbers(self, client, club):
         response = get_card(client, club["players"]["A"])
@@ -95,7 +122,10 @@ class TestPlayerCard:
         response = get_card(client, club["players"]["A"])
 
         assert len(response.context["recent_results"]) == 3
-        assert 'href="/players/traktor/games/">Вся история: ' in response.content.decode()
+        assert (
+            'href="/players/traktor/games/"><span>Вся история: <span class="font-num">6</span>'
+            " игр →</span></a>"
+        ) in response.content.decode()
 
     def test_chart_has_a_point_per_game_and_a_year_line(self, client, club):
         response = get_card(client, club["players"]["A"])

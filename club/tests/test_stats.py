@@ -228,9 +228,10 @@ class TestPlayerSeasonBreakdown:
 
         rows = list(stats.player_season_breakdown(a))
 
+        # Tour before cash within a year, like the nav.
         assert [(str(s), s.games_played, s.net, s.itm) for s in rows] == [
-            ("Кэш 2025", 1, 30, 0),
             ("Турнир 2025", 3, 20, 2),
+            ("Кэш 2025", 1, 30, 0),
         ]
 
     def test_other_players_do_not_leak(self, tour):
