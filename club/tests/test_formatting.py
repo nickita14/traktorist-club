@@ -1,7 +1,9 @@
+from fractions import Fraction
+
 import pytest
 from django.template import Context, Template
 
-from club.formatting import format_money, format_net, ru_plural
+from club.formatting import format_amount, format_money, format_net, ru_plural
 
 NBSP = "\u00a0"
 MINUS = "−"
@@ -28,6 +30,27 @@ class TestFormatMoney:
     def test_never_uses_hyphen_or_plain_space(self):
         assert "-" not in format_money(-1000)
         assert " " not in format_money(1000000)
+
+
+class TestFormatAmount:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (10, "10"),
+            (Fraction(10), "10"),
+            (Fraction(0), "0"),
+            (Fraction(23, 10), "2,30"),
+            (Fraction(1, 2), "0,50"),
+            (Fraction(-1, 2), f"{MINUS}0,50"),
+            (Fraction(123405, 100), f"1{NBSP}234,05"),
+            (Fraction(1, 3), "0,33"),
+            (Fraction(1, 200), "0,01"),  # half a cent rounds up
+            (Fraction(1999, 1000), "2"),  # rounds to a whole value, printed as one
+            (Fraction(-1, 1000), "0"),  # rounds to zero: no minus sign
+        ],
+    )
+    def test_format(self, value, expected):
+        assert format_amount(value) == expected
 
 
 class TestFormatNet:
@@ -109,3 +132,13 @@ class TestTemplateTags:
         assert '<span aria-hidden="true">·</span>' in html
         assert '<span class="sr-only">0</span>' in html
         assert render("{% place_count v %}", v=3) == "3"
+
+    def test_pot_value(self):
+        assert render("{% pot_value v %}", v=Fraction(23, 10)) == "2,30"
+        assert render("{% pot_value v %}", v=-20) == f'<span class="val-neg">{MINUS}20</span>'
+        assert render("{% pot_value v %}", v=0) == '<span class="val-zero">0</span>'
+        assert 'aria-hidden="true">·</span>' in render("{% pot_value v %}", v=None)
+
+    def test_optional_count(self):
+        assert render("{% optional_count v %}", v=5230) == f"5{NBSP}230"
+        assert '<span class="sr-only">нет</span>' in render("{% optional_count v %}", v=None)

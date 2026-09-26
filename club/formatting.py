@@ -1,18 +1,36 @@
 """Text formatting for numbers and Russian words. Pure functions; templates use club.templatetags.
 
-Money is integer lei (see CLAUDE.md), so there are no decimals to handle.
+Money is integer lei (see CLAUDE.md). The one exception is the value of a chip stack, which is
+derived and may fall between whole lei: format_amount prints it with two decimals when needed.
 """
 
 from collections.abc import Sequence
+from decimal import ROUND_HALF_UP, Decimal
+from fractions import Fraction
 
 THOUSANDS_SEPARATOR = "\u00a0"  # no-break space; CSS narrows it (see tokens.css)
 MINUS = "−"
+DECIMAL_SEPARATOR = ","
+CENTS = Decimal("0.01")
 
 
 def format_money(value: int) -> str:
     """12500 -> '12 500' with a no-break space; negatives get a real minus sign."""
     grouped = f"{abs(value):,}".replace(",", THOUSANDS_SEPARATOR)
     return f"{MINUS}{grouped}" if value < 0 else grouped
+
+
+def format_amount(value: int | Fraction) -> str:
+    """Lei that may be fractional: '10', '2,30', '−0,50', '1 234,05' (rounded half up to cents).
+
+    Whole values stay integers, others always get two decimals.
+    """
+    cents = (Decimal(value.numerator) / Decimal(value.denominator)).quantize(CENTS, ROUND_HALF_UP)
+    whole, fraction = divmod(abs(cents), 1)
+    text = format_money(int(whole))
+    if fraction:
+        text += f"{DECIMAL_SEPARATOR}{int(fraction * 100):02d}"
+    return f"{MINUS}{text}" if cents < 0 else text
 
 
 def format_net(value: int) -> str:
