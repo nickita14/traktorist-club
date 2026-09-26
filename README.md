@@ -25,6 +25,21 @@ Editing happens in the admin at `ADMIN_URL`. The `Organizer` group (created by a
 uv run python manage.py createsuperuser   # first account; then add organizers in the admin
 ```
 
+## Importing the spreadsheet
+
+The source `.xlsx` lives in `data/` (gitignored) and never leaves your machine or the server.
+
+1. List the raw player names per sheet:
+   `uv run python manage.py list_sheet_names data/<file>.xlsx`
+2. Copy `aliases.example.yaml` to `data/aliases.yaml` and map every raw name that has games to a canonical player.
+3. Preview (nothing is saved): dates fixed, rows that would change, and a verification report against the sheet's own totals:
+   `uv run python manage.py import_sheet data/<file>.xlsx --aliases data/aliases.yaml --dry-run`
+4. Run the same command without `--dry-run`. Rerunning is safe: nothing is duplicated.
+
+Options: `--sheets ТУР2025,КЭШ2025` imports only those sheets; `--create-missing` creates players for unknown names instead of failing.
+
+**Once games are entered in the app, do not re-import the current season.** The sheet wins on a re-import: buy-ins, payouts and places are overwritten from the sheet, and results missing from the sheet are deleted. Use `--sheets` to re-import only finished seasons.
+
 ## Checks
 
 ```bash

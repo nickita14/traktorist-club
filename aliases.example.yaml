@@ -1,0 +1,15 @@
+# Example only: invented players. Copy to data/aliases.yaml (gitignored) and fill in real names.
+#
+# Each entry is one canonical player (Player.name + Player.nickname, the natural key) and the
+# raw names it appears under in the sheets. Run `manage.py list_sheet_names data/<file>.xlsx`
+# to see every raw name. Matching ignores case, extra spaces and ё/е; a player's own "name"
+# also matches, so it does not need to be repeated under aliases.
+players:
+  - name: Иван Тестов
+    nickname: Трактор # optional
+    slug: traktor # optional, generated from nickname or name if omitted
+    aliases:
+      - "Иван - Трактор" # ТУР2026 style: "Имя - ник"
+      - "Иван (Трактор)" # ТУР2025 style: "Имя (ник)"
+  - name: Пётр Примеров
+    aliases: ["Петя", "Пётр (Сеялка)"]
