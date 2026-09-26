@@ -1,0 +1,9 @@
+[Unit]
+Description=Traktorist club: uptime ping every 5 minutes (optional)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

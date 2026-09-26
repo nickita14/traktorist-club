@@ -1,0 +1,14 @@
+// /etc/apt/apt.conf.d/52unattended-upgrades-local
+// Security updates install on their own; when one needs a reboot (kernel, libc), the server
+// reboots at 05:00 server time (Europe/Chisinau). Containers come back by their restart policy.
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "05:00";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+// Docker's own repository too (docker-ce, containerd, the compose plugin): a Docker update restarts
+// the containers for a few seconds, during apt's early-morning upgrade run.
+Unattended-Upgrade::Origins-Pattern {
+        "origin=Docker";
+};

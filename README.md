@@ -17,6 +17,8 @@ uv run python manage.py tailwind runserver   # dev server with Tailwind watcher
 
 The first `tailwind` command downloads the standalone Tailwind binary (no Node needed).
 
+Unfold ships no Russian strings; the project's own are in `locale/ru/LC_MESSAGES/django.po`. Compile them with `uv run python manage.py compilemessages --ignore=.venv` (needs `gettext`: `sudo apt install gettext`); without that step a few admin labels stay in English.
+
 ## Organizer accounts
 
 Editing happens in the admin at `ADMIN_URL`. The `Organizer` group (created by a migration) can view, add and change players, seasons, games and results, and delete results. Deleting players, seasons or games is left to superusers. An organizer account also needs **Staff status** (`is_staff`), which a group cannot grant:
@@ -24,6 +26,8 @@ Editing happens in the admin at `ADMIN_URL`. The `Organizer` group (created by a
 ```bash
 uv run python manage.py createsuperuser   # first account; then add organizers in the admin
 ```
+
+Two-factor login (a code from an authenticator app, TOTP) is available but off by default, in production too. To turn it on, first give every staff user a device with `manage.py totp_enroll <username>` (it prints a QR code in the terminal), then set `ADMIN_REQUIRE_2FA=True`. Five failed logins for the same username from the same address lock them out for an hour (`django-axes`).
 
 ## Importing the spreadsheet
 
@@ -39,6 +43,10 @@ The source `.xlsx` lives in `data/` (gitignored) and never leaves your machine o
 Options: `--sheets ТУР2025,КЭШ2025` imports only those sheets; `--create-missing` creates players for unknown names instead of failing.
 
 **Once games are entered in the app, do not re-import the current season.** The sheet wins on a re-import: buy-ins, payouts and places are overwritten from the sheet, and results missing from the sheet are deleted. Use `--sheets` to re-import only finished seasons.
+
+## Deploy
+
+Production runs with Docker Compose (`compose.prod.yaml`: Caddy, gunicorn, Postgres 17) on a small VPS. [`docs/deploy.md`](docs/deploy.md) is the runbook: server setup, deploys (`deploy/deploy.sh`), backups and restores, and the first data load.
 
 ## Checks
 

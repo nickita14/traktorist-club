@@ -1,0 +1,12 @@
+[Unit]
+Description=Traktorist club: nightly database backup
+
+[Timer]
+# Server time (Europe/Chisinau). Before the 05:00 unattended-upgrades reboot window.
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=10min
+# Run at boot if the server was off at 03:30.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

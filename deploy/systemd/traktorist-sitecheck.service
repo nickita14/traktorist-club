@@ -1,0 +1,10 @@
+[Unit]
+Description=Traktorist club: uptime ping to healthchecks.io (optional)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+ExecStart=/srv/traktorist/deploy/sitecheck.sh
