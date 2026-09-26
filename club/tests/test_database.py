@@ -24,7 +24,8 @@ def test_user_round_trip():
 
 
 @pytest.mark.django_db
-def test_home_page_responds(client):
-    response = client.get("/")
+def test_home_page_responds_on_an_empty_site(client):
+    response = client.get("/", follow=True)
 
+    assert response.redirect_chain == [("/all-time/", 302)]
     assert response.status_code == 200

@@ -1,0 +1,30 @@
+{% load ledger %}
+{# A player's games, newest first; rows link to the game sheet. #}
+<div class="ledger-scroll">
+  <table class="ledger">
+    <thead>
+      <tr>
+        <th scope="col">Дата</th>
+        <th scope="col">Формат</th>
+        <th scope="col" class="num">Игра</th>
+        <th scope="col" class="num">Место</th>
+        <th scope="col" class="num max-md:hidden">Закупка</th>
+        <th scope="col" class="num max-md:hidden">Выплата</th>
+        <th scope="col" class="num">Итог, лей</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for result in results %}
+        <tr>
+          <td class="font-num"><a href="{{ result.game.get_absolute_url }}"><time datetime="{{ result.game.date|date:'Y-m-d' }}">{{ result.game.date|date:"d.m.Y" }}</time></a></td>
+          <td>{{ result.game.season.get_kind_display }}</td>
+          <td class="num"><a href="{{ result.game.get_absolute_url }}">№&nbsp;{{ result.game_number }}</a></td>
+          <td class="num">{% optional_count result.place %}</td>
+          <td class="num max-md:hidden">{{ result.buyin|money }}</td>
+          <td class="num max-md:hidden">{{ result.payout|money }}</td>
+          <td class="num">{% net_value result.net %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

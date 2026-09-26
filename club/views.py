@@ -1,16 +1,35 @@
-from django.shortcuts import get_object_or_404, render
+from django.conf import settings
+from django.core.paginator import InvalidPage, Paginator
+from django.http import Http404, HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_GET
 
-from club import stats
-from club.models import Season, SeasonKind
+from club import charts, stats
+from club.models import Game, Player, Season, SeasonKind
 
 RECENT_GAMES = 8
+PLAYER_RECENT_GAMES = 10
+PLAYER_GAMES_PER_PAGE = 50
+# The cash note shows the chip rate for a round sum, like on the club's paper sheets.
+RATE_EXAMPLE_LEI = 50
+
+NAV_SECTION = {SeasonKind.TOUR: "tour", SeasonKind.CASH: "cash"}
 
 
-def tour_standings(request, year: int):
-    seasons = Season.objects.filter(kind=SeasonKind.TOUR)
-    season = get_object_or_404(stats.annotate_season_totals(seasons), year=year)
-    years = list(seasons.order_by("year").values_list("year", flat=True))
+def home(request):
+    season = Season.objects.filter(kind=SeasonKind.TOUR).order_by("-year").first()
+    return redirect(season if season is not None else "all_time")
+
+
+def _season(year: int, kind: str) -> Season:
+    seasons = stats.annotate_season_totals(Season.objects.filter(kind=kind))
+    return get_object_or_404(seasons, year=year)
+
+
+def season_standings(request, year: int, kind: str):
+    season = _season(year, kind)
+    years = list(Season.objects.filter(kind=kind).order_by("year").values_list("year", flat=True))
     return render(
         request,
         "club/season_standings.html",
@@ -21,7 +40,105 @@ def tour_standings(request, year: int):
             "years": years,
             # No stored "closed" flag: the season of the current year is the running one.
             "is_ongoing": season.year == timezone.localdate().year,
-            "nav_section": "tour",
-            "latest_tour_year": years[-1],
+            "cash": kind == SeasonKind.CASH,
+            "nav_section": NAV_SECTION[kind],
         },
     )
+
+
+def season_games(request, year: int, kind: str):
+    season = _season(year, kind)
+    return render(
+        request,
+        "club/season_games.html",
+        {
+            "season": season,
+            "games": stats.season_games(season),
+            "nav_section": NAV_SECTION[kind],
+        },
+    )
+
+
+def game_detail(request, pk: int):
+    game = get_object_or_404(
+        stats.annotate_leftover_check(Game.objects.select_related("season")), pk=pk
+    )
+    chips_per_lei = game.season.chips_per_lei
+    return render(
+        request,
+        "club/game_detail.html",
+        {
+            "game": game,
+            "season": game.season,
+            "position": stats.game_position(game),
+            "same_evening": stats.same_evening(game),
+            "results": stats.game_results(game),
+            "rate_example": {"chips": RATE_EXAMPLE_LEI * chips_per_lei, "lei": RATE_EXAMPLE_LEI},
+            "nav_section": NAV_SECTION[game.season.kind],
+        },
+    )
+
+
+def player_detail(request, slug: str):
+    player = get_object_or_404(stats.annotate_player_card(Player.objects.all()), slug=slug)
+    context = {"player": player, "nav_section": "players"}
+    # A player created ahead of their first game gets the heading only.
+    if player.games_played:
+        timeline = stats.player_net_timeline(player)
+        context |= {
+            "seasons": stats.player_season_breakdown(player),
+            "chart": charts.net_chart(timeline),
+            "recent_results": stats.player_results(player)[:PLAYER_RECENT_GAMES],
+            "has_more_games": player.games_played > PLAYER_RECENT_GAMES,
+        }
+    return render(request, "club/player_detail.html", context)
+
+
+def player_games(request, slug: str):
+    player = get_object_or_404(Player, slug=slug)
+    paginator = Paginator(stats.player_results(player), PLAYER_GAMES_PER_PAGE)
+    try:
+        page = paginator.page(request.GET.get("page", 1))
+    except InvalidPage as error:
+        raise Http404("Нет такой страницы.") from error
+    return render(
+        request,
+        "club/player_games.html",
+        {"player": player, "page": page, "nav_section": "players"},
+    )
+
+
+def player_list(request):
+    return render(
+        request,
+        "club/player_list.html",
+        {"players": stats.player_index(), "nav_section": "players"},
+    )
+
+
+# Filter values of /all-time/: query value -> season kind (None is everything).
+ALL_TIME_KINDS = {None: None, "tour": SeasonKind.TOUR, "cash": SeasonKind.CASH}
+
+
+def all_time(request):
+    filter_value = request.GET.get("kind")
+    if filter_value not in ALL_TIME_KINDS:
+        raise Http404("Нет такого формата.")
+    kind = ALL_TIME_KINDS[filter_value]
+    return render(
+        request,
+        "club/all_time.html",
+        {
+            "kind": kind,
+            "cash": kind == SeasonKind.CASH,
+            "standings": stats.all_time_standings(kind),
+            "totals": stats.club_totals(kind),
+            "nav_section": "all-time",
+        },
+    )
+
+
+@require_GET
+def robots_txt(request):
+    rule = "Allow: /" if settings.SITE_INDEXING else "Disallow: /"
+    return HttpResponse(f"User-agent: *\n{rule}\n", content_type="text/plain")

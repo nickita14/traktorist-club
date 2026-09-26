@@ -63,6 +63,7 @@ env = environ.Env(
     ADMIN_URL=(str, "admin/"),
     SECURE_HSTS_SECONDS=(int, 31536000),
     SECURE_HSTS_INCLUDE_SUBDOMAINS=(bool, False),
+    SITE_INDEXING=(bool, False),
 )
 
 environ.Env.read_env(BASE_DIR / ".env")
@@ -89,6 +90,8 @@ if not IS_PRODUCTION:
 SECRET_KEY = config["SECRET_KEY"]
 ALLOWED_HOSTS = config["ALLOWED_HOSTS"]
 ADMIN_URL = normalize_admin_url(config["ADMIN_URL"])
+# Public pages ask search engines to stay away (noindex meta, robots.txt) unless this is on.
+SITE_INDEXING = env("SITE_INDEXING")
 
 INSTALLED_APPS = [
     # Unfold must come before django.contrib.admin.
@@ -127,6 +130,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "club.context_processors.site",
             ],
         },
     },

@@ -107,6 +107,108 @@
     transform: rotate(-6deg);
   }
 
+  /* An ink stamp states a plain fact (a balanced game, a join year); red is kept for alerts. */
+  .stamp-ink {
+    border-color: var(--ink);
+    color: var(--ink);
+  }
+
+  /* Prev/next links above a heading, and page links under a long table. */
+  .doc-pager {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0 1.5rem;
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .doc-pager a {
+    display: flex;
+    align-items: center;
+    min-height: 2.75rem;
+    text-decoration: none;
+  }
+
+  .doc-pager a:hover {
+    text-decoration: underline;
+  }
+
+  .doc-pager .next {
+    margin-left: auto;
+  }
+
+  /* A bordered cross-reference to a related document. */
+  .link-box {
+    display: inline-flex;
+    flex-direction: column;
+    padding: 0.375rem 0.875rem 0.5rem;
+    border: 1px solid var(--ink);
+    font-family: var(--font-stack-head);
+    letter-spacing: var(--tracking-label);
+    text-decoration: none;
+    text-transform: uppercase;
+  }
+
+  .link-box-label {
+    color: var(--muted);
+    font-size: var(--text-xs);
+  }
+
+  .link-box-target {
+    font-weight: 700;
+  }
+
+  .link-box:hover .link-box-target {
+    text-decoration: underline;
+  }
+
+  /* Row of ruled figure cells: 2 x 2 on phones, one row from md. The gap shows the rule color. */
+  .stat-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    border-block: 1px solid var(--ink);
+    background: var(--rule);
+  }
+
+  @media (width >= 48rem) {
+    .stat-strip {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .stat-strip > div {
+    padding: 0.625rem 0.75rem 0.75rem;
+    background: var(--paper);
+  }
+
+  .stat-strip dt {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .stat-value {
+    margin-top: 0.25rem;
+    font-family: var(--font-stack-num);
+    font-size: var(--text-xl);
+    line-height: var(--text-xl--line-height);
+    word-spacing: var(--number-word-spacing);
+  }
+
+  .stat-caption {
+    margin-top: 0.125rem;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    font-style: italic;
+  }
+
   /* Segmented links (year switcher); the current one is printed in reverse. */
   .segmented {
     display: inline-flex;
@@ -129,6 +231,13 @@
 
   .segmented a:hover {
     text-decoration: underline;
+  }
+
+  /* Word labels instead of years (the all-time kind filter). */
+  .segmented-words a {
+    font-family: var(--font-stack-head);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
   }
 
   .segmented [aria-current="page"] {
@@ -166,6 +275,21 @@
     padding: 0.5rem;
     border-bottom: 1px solid var(--rule);
     vertical-align: baseline;
+  }
+
+  .ledger a {
+    text-decoration: none;
+  }
+
+  .ledger a:hover {
+    text-decoration: underline;
+  }
+
+  /* Total row, closed off from the body by the same double rule as the document heading. */
+  .ledger tfoot td {
+    border-top: 3px double var(--ink);
+    border-bottom: 0;
+    font-weight: 700;
   }
 
   .ledger .num {
@@ -241,5 +365,39 @@
     .page-grid {
       grid-template-columns: minmax(0, 1fr) 330px;
     }
+  }
+
+  /* Cumulative net chart on the player card (geometry in club/charts.py). */
+  .net-chart {
+    display: block;
+    width: 100%;
+    overflow: visible;
+  }
+
+  .net-chart .chart-line {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 1.5px;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .net-chart .chart-zero {
+    stroke: var(--muted);
+    stroke-dasharray: 4 4;
+  }
+
+  .net-chart .chart-year {
+    stroke: var(--rule);
+  }
+
+  .net-chart .chart-last {
+    fill: var(--accent);
+  }
+
+  .net-chart text {
+    fill: var(--muted);
+    font-family: var(--font-stack-num);
+    font-size: var(--text-xs);
   }
 }

@@ -1,0 +1,32 @@
+{% load ledger %}
+{# Games of one season, newest first: the sidebar (`compact`) and the full list share it. #}
+<table class="ledger{% if compact %} ledger-compact{% endif %}{% if not compact %} mt-2{% endif %}">
+  <thead>
+    <tr>
+      <th scope="col">Дата</th>
+      <th scope="col" class="num">№</th>
+      {% if season.kind == "tour" %}<th scope="col">Победитель</th>{% endif %}
+      <th scope="col" class="num"><span aria-hidden="true">Уч.</span><span class="sr-only">Участников</span></th>
+      {% if season.kind == "tour" %}
+        <th scope="col" class="num">Банк</th>
+      {% else %}
+        <th scope="col" class="num">Закупки</th>
+        <th scope="col" class="num">В котле</th>
+      {% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for game in games %}
+      <tr>
+        <td class="font-num"><a href="{{ game.get_absolute_url }}"><time datetime="{{ game.date|date:'Y-m-d' }}">{% if compact %}{{ game.date|date:"d.m" }}{% else %}{{ game.date|date:"d.m.Y" }}{% endif %}</time></a></td>
+        <td class="num"><a href="{{ game.get_absolute_url }}">{{ game.number }}</a></td>
+        {% if season.kind == "tour" %}
+          <td>{% for result in game.winners %}<a href="{{ result.player.get_absolute_url }}">{{ result.player.label }}</a>{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">не указан</span>{% endfor %}</td>
+        {% endif %}
+        <td class="num">{{ game.players_count }}</td>
+        <td class="num">{{ game.buyin_total|money }}</td>
+        {% if season.kind == "cash" %}<td class="num">{% pot_value game.leftover %}</td>{% endif %}
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>

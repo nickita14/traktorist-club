@@ -1,0 +1,32 @@
+{% extends "club/document.html" %}
+{% load ledger %}
+
+{% block title %}За всё время{% endblock %}
+
+{% block form_label %}Форма № 4 · Сводная за всё время{% endblock %}
+{% block doc_title %}Ведомость за всё время{% endblock %}
+
+{% block meta %}
+  <p class="mt-3 text-muted italic">
+    <span class="whitespace-nowrap">{% if kind == "tour" %}Турниры{% elif kind == "cash" %}Кэш-игры{% else %}Все игры{% endif %}</span>
+    · <span class="whitespace-nowrap"><span class="font-num num-run not-italic">{{ totals.games_count|money }}</span> {{ totals.games_count|plural:"игра,игры,игр" }}</span>
+    · <span class="whitespace-nowrap"><span class="font-num num-run not-italic">{{ totals.players_count|money }}</span> {{ totals.players_count|plural:"участник,участника,участников" }}</span>
+    · <span class="whitespace-nowrap">закупки на <span class="font-num num-run not-italic">{{ totals.buyin_total|money }}</span> лей</span>
+  </p>
+{% endblock %}
+
+{% block head_extra %}
+  <nav class="mt-4" aria-label="Формат игр">
+    <ul class="segmented segmented-words">
+      <li><a href="{% url 'all_time' %}"{% if not kind %} aria-current="page"{% endif %}>Все</a></li>
+      <li><a href="{% url 'all_time' %}?kind=tour"{% if kind == "tour" %} aria-current="page"{% endif %}>Турниры</a></li>
+      <li><a href="{% url 'all_time' %}?kind=cash"{% if kind == "cash" %} aria-current="page"{% endif %}>Кэш</a></li>
+    </ul>
+  </nav>
+{% endblock %}
+
+{% block body %}
+  <div class="mt-6">
+    {% include "club/includes/standings_table.html" with standings_title="Сводная таблица за всё время" empty_text="Игр пока не было." %}
+  </div>
+{% endblock %}

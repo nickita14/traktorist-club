@@ -1,29 +1,8 @@
-{% load ledger %}
 <aside aria-labelledby="recent-title">
-  <h2 id="recent-title" class="font-head text-lg font-bold tracking-label uppercase">Последние игры</h2>
+  <h2 id="recent-title" class="font-head text-lg font-bold tracking-label uppercase">{% if season.kind == "cash" %}Последние вечера{% else %}Последние игры{% endif %}</h2>
   {% if recent_games %}
-    <table class="ledger ledger-compact mt-1">
-      <thead>
-        <tr>
-          <th scope="col">Дата</th>
-          <th scope="col" class="num">№</th>
-          <th scope="col">Победитель</th>
-          <th scope="col" class="num"><span aria-hidden="true">Уч.</span><span class="sr-only">Участников</span></th>
-          <th scope="col" class="num">Банк</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for game in recent_games %}
-          <tr>
-            <td class="font-num"><time datetime="{{ game.date|date:'Y-m-d' }}">{{ game.date|date:"d.m" }}</time></td>
-            <td class="num">{{ game.number }}</td>
-            <td>{% for result in game.winners %}{{ result.player.nickname|default:result.player.name }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">не указан</span>{% endfor %}</td>
-            <td class="num">{{ game.players_count }}</td>
-            <td class="num">{{ game.buyin_total|money }}</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    {% include "club/includes/games_table.html" with games=recent_games compact=True %}
+    <p class="doc-pager mt-2"><a class="next" href="{% url 'season_games' season.year season.kind %}">Все игры сезона →</a></p>
   {% else %}
     <p class="mt-2 text-muted italic">Игр пока нет.</p>
   {% endif %}

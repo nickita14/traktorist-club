@@ -1,0 +1,136 @@
+{% extends "club/document.html" %}
+{% load ledger %}
+
+{% block title %}{% if season.kind == "cash" %}Вечер{% else %}Игра{% endif %} № {{ position.number }} · {% if season.kind == "cash" %}Кэш{% else %}Турниры{% endif %} {{ season.year }}{% endblock %}
+
+{% block above_head %}
+  {% if position.previous or position.next %}
+    <nav class="doc-pager pt-4" aria-label="Соседние игры сезона">
+      {% if position.previous %}
+        <a href="{% url 'game_detail' position.previous.pk %}" rel="prev">← {% if season.kind == "cash" %}Вечер{% else %}Игра{% endif %} №&nbsp;{{ position.previous.number }} · <span class="font-num">{{ position.previous.date|date:"d.m.Y" }}</span></a>
+      {% endif %}
+      {% if position.next %}
+        <a class="next" href="{% url 'game_detail' position.next.pk %}" rel="next">{% if season.kind == "cash" %}Вечер{% else %}Игра{% endif %} №&nbsp;{{ position.next.number }} · <span class="font-num">{{ position.next.date|date:"d.m.Y" }}</span> →</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+{% endblock %}
+
+{% block form_label %}{% if season.kind == "cash" %}Форма № 3-К · Лист кэш-игры{% else %}Форма № 3-Т · Лист турнира{% endif %}{% endblock %}
+{% block doc_title %}{% if season.kind == "cash" %}Вечер{% else %}Игра{% endif %} № <span class="font-num">{{ position.number }}</span>{% endblock %}
+{% block stamp %}
+  {% if game.leftover_mismatch %}
+    <p class="stamp">Не сходится</p>
+  {% else %}
+    <p class="stamp stamp-ink">Баланс сверен</p>
+  {% endif %}
+{% endblock %}
+
+{% block meta %}
+  <p class="mt-3 text-muted italic">
+    <a class="whitespace-nowrap" href="{{ season.get_absolute_url }}">{% if season.kind == "cash" %}Кэш-сезон{% else %}Сезон турниров{% endif %} <span class="font-num not-italic">{{ season.year }}</span></a>
+    · <span class="whitespace-nowrap">{{ game.date|date:"l"|lower }}, <time class="font-num not-italic" datetime="{{ game.date|date:'Y-m-d' }}">{{ game.date|date:"d.m.Y" }}</time></span>
+    {% if game.location %}· <span>{{ game.location }}</span>{% endif %}
+  </p>
+{% endblock %}
+
+{% block head_extra %}
+  {% if same_evening %}
+    <a class="link-box mt-4" href="{{ same_evening.get_absolute_url }}">
+      <span class="link-box-label">В этот вечер также</span>
+      <span class="link-box-target">{% if same_evening.season.kind == "cash" %}Кэш-вечер{% else %}Турнир{% endif %} №&nbsp;<span class="font-num">{{ same_evening.number }}</span> →</span>
+    </a>
+  {% endif %}
+{% endblock %}
+
+{% block body %}
+  <dl class="stat-strip mt-6">
+    <div>
+      <dt>Участников</dt>
+      <dd class="stat-value">{{ game.players_count|money }}</dd>
+    </div>
+    <div>
+      <dt>Закупки, лей</dt>
+      <dd class="stat-value">{{ game.buyin_total|money }}</dd>
+    </div>
+    <div>
+      <dt>Выплаты, лей</dt>
+      <dd class="stat-value">{{ game.payout_total|money }}</dd>
+    </div>
+    {% if season.kind == "cash" %}
+      <div>
+        <dt>В котёл, лей</dt>
+        <dd class="stat-value">{% pot_value game.leftover %}</dd>
+        <dd class="stat-caption">сдача при обмене фишек</dd>
+      </div>
+    {% else %}
+      <div>
+        <dt>Призовой фонд, лей</dt>
+        <dd class="stat-value">{{ game.buyin_total|money }}</dd>
+        <dd class="stat-caption">{{ season.paid_places }} {{ season.paid_places|plural:"призовое место,призовых места,призовых мест" }}</dd>
+      </div>
+    {% endif %}
+  </dl>
+
+  <section class="mt-8" aria-labelledby="results-title">
+    <h2 id="results-title" class="font-head text-lg font-bold tracking-label uppercase">Результаты</h2>
+    <div class="ledger-scroll mt-1">
+      <table class="ledger">
+        <thead>
+          <tr>
+            <th scope="col" class="col-rank num">№</th>
+            <th scope="col" class="col-player">Участник</th>
+            {% if season.kind == "tour" %}<th scope="col" class="num">Место</th>{% endif %}
+            <th scope="col" class="num max-md:hidden">Закупка</th>
+            {% if season.kind == "cash" %}<th scope="col" class="num max-md:hidden">Фишек на выходе</th>{% endif %}
+            <th scope="col" class="num max-md:hidden">Выплата</th>
+            {% if season.kind == "cash" %}<th scope="col" class="num max-md:hidden">В котёл</th>{% endif %}
+            <th scope="col" class="num">Итог, лей</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for result in results %}
+            <tr>
+              <td class="col-rank num">{{ forloop.counter }}</td>
+              <td class="col-player">
+                {% include "club/includes/player_name.html" with player=result.player %}
+                <span class="block font-num text-xs text-muted md:hidden">{{ result.buyin|money }} → {{ result.payout|money }}{% if season.kind == "cash" and result.chips_out is not None %} · фишек {{ result.chips_out|money }} · в котёл {% pot_value result.pot %}{% endif %}</span>
+              </td>
+              {% if season.kind == "tour" %}<td class="num">{% optional_count result.place %}</td>{% endif %}
+              <td class="num max-md:hidden">{{ result.buyin|money }}</td>
+              {% if season.kind == "cash" %}<td class="num max-md:hidden">{% optional_count result.chips_out %}</td>{% endif %}
+              <td class="num max-md:hidden">{{ result.payout|money }}</td>
+              {% if season.kind == "cash" %}<td class="num max-md:hidden">{% pot_value result.pot %}</td>{% endif %}
+              <td class="num">{% net_value result.net %}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="{% if season.kind == 'cash' %}7{% else %}6{% endif %}" class="text-muted italic">Результатов пока нет.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        {% if results %}
+          <tfoot>
+            <tr>
+              <td class="col-rank"></td>
+              <td class="col-player font-head tracking-label uppercase">Итого</td>
+              {% if season.kind == "tour" %}<td></td>{% endif %}
+              <td class="num max-md:hidden">{{ game.buyin_total|money }}</td>
+              {% if season.kind == "cash" %}<td class="max-md:hidden"></td>{% endif %}
+              <td class="num max-md:hidden">{{ game.payout_total|money }}</td>
+              {% if season.kind == "cash" %}<td class="num max-md:hidden">{% pot_value game.leftover %}</td>{% endif %}
+              <td class="num">{% net_value game.net_total %}</td>
+            </tr>
+          </tfoot>
+        {% endif %}
+      </table>
+    </div>
+    {% if season.kind == "cash" %}
+      <p class="mt-3 max-w-prose text-sm text-muted italic">
+        В котёл уходит сдача при обмене фишек: стоимость фишек на выходе минус выплата.
+        Где фишки на выходе не записаны, стоит точка; итог котла по вечеру считается по закупкам и выплатам.
+        <span class="whitespace-nowrap">Курс: <span class="font-num num-run not-italic">{{ rate_example.chips|money }}</span> фишек = <span class="font-num num-run not-italic">{{ rate_example.lei|money }}</span> лей.</span>
+      </p>
+    {% endif %}
+  </section>
+{% endblock %}

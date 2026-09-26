@@ -39,8 +39,8 @@ def season():
     return season
 
 
-def get_page(client, year):
-    return client.get(reverse("tour_standings", args=[year]))
+def get_page(client, year, kind=SeasonKind.TOUR):
+    return client.get(reverse("season", args=[year, kind]))
 
 
 class TestTourStandings:
@@ -112,7 +112,7 @@ class TestTourStandings:
 
         response = get_page(client, PAST_YEAR - 1)
 
-        assert response.context["latest_tour_year"] == PAST_YEAR
+        assert response.context["latest_years"]["tour"] == PAST_YEAR
         assert f'href="/{PAST_YEAR}/tour/" aria-current="true">Турниры</a>' in (
             response.content.decode()
         )
@@ -131,7 +131,8 @@ class TestTourStandings:
     def test_recent_winner_is_nickname_or_name(self, client, season):
         html = get_page(client, season.year).content.decode()
         winners = [
-            cell.split("</td>")[0] for cell in html.split('id="recent-title"')[1].split("<td>")[1:]
+            cell.split("</a>")[0].split(">")[-1]
+            for cell in html.split('id="recent-title"')[1].split("<td>")[1:]
         ]
 
         # Альфа goes by "Трактор" (games 3 and 1), Браво has no nickname (game 2).
@@ -151,6 +152,126 @@ class TestTourStandings:
         assert get_page(client, PAST_YEAR).status_code == 404
 
     def test_query_count_does_not_grow_with_rows(self, client, season, django_assert_num_queries):
-        # Season, year list, standings, recent games and their winners.
-        with django_assert_num_queries(5):
+        # Season, year list, standings, recent games, their winners and the nav years.
+        with django_assert_num_queries(6):
             get_page(client, season.year)
+
+    def test_names_link_to_player_cards(self, client, season):
+        html = get_page(client, season.year).content.decode()
+
+        assert (
+            '<a href="/players/traktor/">Альфа</a> <span class="text-muted">Трактор</span>' in html
+        )
+
+    def test_sidebar_links_to_games_and_full_list(self, client, season):
+        game = season.games.get(date__day=15)
+
+        html = get_page(client, season.year).content.decode()
+
+        assert f'<a href="/games/{game.pk}/">3</a>' in html
+        assert f'href="/{season.year}/tour/games/">Все игры сезона →</a>' in html
+
+
+@pytest.fixture
+def cash_season(club):
+    return club["seasons"]["cash"]
+
+
+class TestCashStandings:
+    def test_title_columns_and_order(self, client, cash_season):
+        response = get_page(client, cash_season.year, SeasonKind.CASH)
+        html = response.content.decode()
+
+        assert response.status_code == 200
+        assert ">Ведомость кэш-игр</h1>" in html
+        assert "Форма № 1-К" in html
+        assert ">Закупки</th>" in html and ">Выплаты</th>" in html
+        assert ">ITM</th>" not in html
+        # Чарли +50, Дельта +10, Альфа −20, Браво −30.
+        assert [p.name for p in response.context["standings"]] == [
+            "Чарли",
+            "Дельта",
+            "Альфа",
+            "Браво",
+        ]
+
+    def test_meta_line_has_the_pot(self, client, cash_season):
+        html = get_page(client, cash_season.year, SeasonKind.CASH).content.decode()
+
+        # c1 leaves 10, c2 pays out 20 more than was bought in.
+        assert f'в котле <span class="font-num num-run not-italic">{MINUS}10</span> лей' in html
+
+    def test_player_totals(self, client, cash_season):
+        response = get_page(client, cash_season.year, SeasonKind.CASH)
+        rows = {
+            p.name: (p.games_played, p.buyin_total, p.payout_total, p.net)
+            for p in response.context["standings"]
+        }
+
+        assert rows["Альфа"] == (2, 150, 130, -20)
+        assert rows["Браво"] == (2, 100, 70, -30)
+
+    def test_sidebar_shows_evenings_with_pot(self, client, cash_season):
+        response = get_page(client, cash_season.year, SeasonKind.CASH)
+        html = response.content.decode()
+
+        assert "Последние вечера" in html
+        games = list(response.context["recent_games"])
+        assert [(g.number, g.players_count, g.buyin_total, g.leftover) for g in games] == [
+            (2, 3, 150, -20),
+            (1, 3, 200, 10),
+        ]
+        assert f'<span class="val-neg">{MINUS}20</span>' in html
+
+    def test_nav_marks_cash(self, client, cash_season):
+        html = get_page(client, cash_season.year, SeasonKind.CASH).content.decode()
+
+        assert f'href="/{PAST_YEAR}/cash/" aria-current="true">Кэш</a>' in html
+        assert f'href="/{PAST_YEAR}/tour/">Турниры</a>' in html
+
+    def test_tour_only_year_has_no_cash_page(self, client, club):
+        assert get_page(client, PAST_YEAR - 1, SeasonKind.CASH).status_code == 404
+
+    def test_unknown_kind_is_404(self, client, cash_season):
+        assert client.get(f"/{cash_season.year}/poker/").status_code == 404
+
+    def test_query_count(self, client, cash_season, django_assert_num_queries):
+        with django_assert_num_queries(6):
+            get_page(client, cash_season.year, SeasonKind.CASH)
+
+
+class TestSeasonGames:
+    def get(self, client, year, kind):
+        return client.get(reverse("season_games", args=[year, kind]))
+
+    def test_lists_every_game_newest_first(self, client, club):
+        response = self.get(client, PAST_YEAR, SeasonKind.TOUR)
+        html = response.content.decode()
+
+        assert response.status_code == 200
+        assert [g.number for g in response.context["games"]] == [3, 2, 1]
+        assert ">Реестр турниров</h1>" in html
+        assert f">15.03.{PAST_YEAR}</time>" in html
+
+    def test_cash_list(self, client, club):
+        html = self.get(client, PAST_YEAR, SeasonKind.CASH).content.decode()
+
+        assert ">Реестр кэш-вечеров</h1>" in html
+        assert ">В котле</th>" in html
+        assert ">Победитель</th>" not in html
+
+    def test_unknown_season_is_404(self, client, club):
+        assert self.get(client, PAST_YEAR - 1, SeasonKind.CASH).status_code == 404
+
+    def test_query_count(self, client, club, django_assert_num_queries):
+        # Season, games, winners, nav years.
+        with django_assert_num_queries(4):
+            self.get(client, PAST_YEAR, SeasonKind.TOUR)
+
+
+class TestHome:
+    def test_redirects_to_latest_tour_season(self, client, club):
+        response = client.get("/")
+
+        assert response.status_code == 302
+        assert response.url == f"/{PAST_YEAR}/tour/"

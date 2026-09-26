@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{# A ledger document: form label, title with an optional stamp, meta line, closed by a double rule. #}
+
+{% block content %}
+  {% block above_head %}{% endblock %}
+  <section class="doc-head pt-6 pb-5" aria-labelledby="doc-title">
+    <p class="font-head text-sm tracking-label text-muted uppercase">{% block form_label %}{% endblock %}</p>
+    <div class="mt-2 flex flex-wrap items-center gap-x-10 gap-y-4">
+      <h1 id="doc-title" class="font-head text-2xl font-bold uppercase md:text-3xl">{% block doc_title %}{% endblock %}</h1>
+      {% block stamp %}{% endblock %}
+    </div>
+    {% block meta %}{% endblock %}
+    {% block head_extra %}{% endblock %}
+  </section>
+  {% block body %}{% endblock %}
+{% endblock %}

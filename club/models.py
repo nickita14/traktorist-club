@@ -1,6 +1,7 @@
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 from django.db.models import F, Q
+from django.urls import reverse
 from django.utils.text import slugify
 
 # Russian-to-Latin table for slugs; everything else is left to slugify (NFKD strips diacritics).
@@ -72,6 +73,14 @@ class Player(models.Model):
     def __str__(self) -> str:
         return f"{self.name} ({self.nickname})" if self.nickname else self.name
 
+    def get_absolute_url(self) -> str:
+        return reverse("player_detail", args=[self.slug])
+
+    @property
+    def label(self) -> str:
+        """How the club calls the player where only one word fits: nickname, else name."""
+        return self.nickname or self.name
+
     def clean(self):
         # Forms validate constraints before save(), so the slug must exist by now.
         super().clean()
@@ -134,6 +143,9 @@ class Season(models.Model):
     def __str__(self) -> str:
         return f"{self.get_kind_display()} {self.year}"
 
+    def get_absolute_url(self) -> str:
+        return reverse("season", args=[self.year, self.kind])
+
     def clean(self):
         super().clean()
         if self.pk is None:
@@ -167,6 +179,9 @@ class Game(models.Model):
 
     def __str__(self) -> str:
         return f"{self.season}, {self.date:%d.%m.%Y}"
+
+    def get_absolute_url(self) -> str:
+        return reverse("game_detail", args=[self.pk])
 
     def clean(self):
         super().clean()

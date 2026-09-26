@@ -1,6 +1,7 @@
 {% load ledger %}
+{# Standings of players with totals. `cash` switches from places and ITM to buy-ins and payouts. #}
 <section aria-labelledby="standings-title">
-  <h2 id="standings-title" class="sr-only">Сводная таблица сезона</h2>
+  <h2 id="standings-title" class="sr-only">{{ standings_title|default:"Сводная таблица сезона" }}</h2>
   <div class="ledger-scroll">
     <table class="ledger">
       <thead>
@@ -8,10 +9,15 @@
           <th scope="col" class="col-rank num">№</th>
           <th scope="col" class="col-player">Участник</th>
           <th scope="col" class="num max-md:hidden">Игр</th>
-          <th scope="col" class="num max-md:hidden">ITM</th>
-          <th scope="col" class="num max-md:hidden"><span aria-hidden="true">1</span><span class="sr-only">Первых мест</span></th>
-          <th scope="col" class="num max-md:hidden"><span aria-hidden="true">2</span><span class="sr-only">Вторых мест</span></th>
-          <th scope="col" class="num max-md:hidden"><span aria-hidden="true">3</span><span class="sr-only">Третьих мест</span></th>
+          {% if cash %}
+            <th scope="col" class="num max-md:hidden">Закупки</th>
+            <th scope="col" class="num max-md:hidden">Выплаты</th>
+          {% else %}
+            <th scope="col" class="num max-md:hidden">ITM</th>
+            <th scope="col" class="num max-md:hidden"><span aria-hidden="true">1</span><span class="sr-only">Первых мест</span></th>
+            <th scope="col" class="num max-md:hidden"><span aria-hidden="true">2</span><span class="sr-only">Вторых мест</span></th>
+            <th scope="col" class="num max-md:hidden"><span aria-hidden="true">3</span><span class="sr-only">Третьих мест</span></th>
+          {% endif %}
           <th scope="col" class="num">Итог, лей</th>
         </tr>
       </thead>
@@ -20,19 +26,28 @@
           <tr>
             <td class="col-rank num">{% if player.rank == 1 %}<span class="rank-leader">1</span>{% else %}{{ player.rank }}{% endif %}</td>
             <td class="col-player">
-              {{ player.name }}{% if player.nickname %} <span class="text-muted">{{ player.nickname }}</span>{% endif %}
-              <span class="block font-num text-xs text-muted md:hidden">{{ player.games_played|money }} {{ player.games_played|plural:"игра,игры,игр" }} · ITM {{ player.itm }} · {{ player.first_places }}/{{ player.second_places }}/{{ player.third_places }}</span>
+              {% include "club/includes/player_name.html" %}
+              {% if cash %}
+                <span class="block font-num text-xs text-muted md:hidden">{{ player.games_played|money }} {{ player.games_played|plural:"игра,игры,игр" }} · {{ player.buyin_total|money }} → {{ player.payout_total|money }}</span>
+              {% else %}
+                <span class="block font-num text-xs text-muted md:hidden">{{ player.games_played|money }} {{ player.games_played|plural:"игра,игры,игр" }} · ITM {{ player.itm }} · {{ player.first_places }}/{{ player.second_places }}/{{ player.third_places }}</span>
+              {% endif %}
             </td>
             <td class="num max-md:hidden">{{ player.games_played|money }}</td>
-            <td class="num max-md:hidden">{% count_value player.itm %}</td>
-            <td class="num max-md:hidden">{% place_count player.first_places %}</td>
-            <td class="num max-md:hidden">{% place_count player.second_places %}</td>
-            <td class="num max-md:hidden">{% place_count player.third_places %}</td>
+            {% if cash %}
+              <td class="num max-md:hidden">{{ player.buyin_total|money }}</td>
+              <td class="num max-md:hidden">{{ player.payout_total|money }}</td>
+            {% else %}
+              <td class="num max-md:hidden">{% count_value player.itm %}</td>
+              <td class="num max-md:hidden">{% place_count player.first_places %}</td>
+              <td class="num max-md:hidden">{% place_count player.second_places %}</td>
+              <td class="num max-md:hidden">{% place_count player.third_places %}</td>
+            {% endif %}
             <td class="num">{% net_value player.net %}</td>
           </tr>
         {% empty %}
           <tr>
-            <td colspan="8" class="text-muted italic">В этом сезоне ещё не было игр.</td>
+            <td colspan="{% if cash %}6{% else %}8{% endif %}" class="text-muted italic">{{ empty_text|default:"В этом сезоне ещё не было игр." }}</td>
           </tr>
         {% endfor %}
       </tbody>
