@@ -166,11 +166,13 @@ TAILWIND_CLI_DIST_CSS = "css/tailwind.css"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
-# Admin theme. Raw colors live only in assets/css/tokens.css (loaded through STYLES); Unfold's
-# 50-950 scales are mixed from those tokens: base runs paper -> ink, primary is the stamp red
-# (600) lightened towards paper and darkened towards ink. Unfold passes color-mix() through
-# unchanged. Fonts: Unfold has no font setting, so assets/css/admin.css overrides its font
-# variables.
+# Admin theme: a work tool that echoes the ledger. Raw colors live only in assets/css/tokens.css
+# (loaded through STYLES); Unfold's 50-950 scales are mixed from those tokens in oklab (oklch loses
+# the hue of the near-neutral paper and ink). Base runs from the near-white surface to ink, with a
+# paper-tinted page background (50); primary is ink, like the active year in the public switcher.
+# Stamp red is only for danger and warning states (assets/css/admin.css remaps Unfold's red and
+# orange). Light mode only: assets/js/admin-theme.js overrides a stored dark preference, so the
+# "-dark" font colors below just repeat the light ones.
 UNFOLD = {
     "SITE_TITLE": "Клуб Тракториста",
     "SITE_HEADER": "Клуб Тракториста",
@@ -182,32 +184,35 @@ UNFOLD = {
         lambda request: static("css/tokens.css"),
         lambda request: static("css/admin.css"),
     ],
+    "SCRIPTS": [
+        lambda request: static("js/admin-theme.js"),
+    ],
     "COLORS": {
         "base": {
-            "50": "var(--paper)",
-            "100": token_mix("ink", 5, "paper"),
-            "200": token_mix("ink", 12, "paper"),
-            "300": token_mix("ink", 24, "paper"),
-            "400": token_mix("ink", 42, "paper"),
-            "500": token_mix("ink", 56, "paper"),
-            "600": token_mix("ink", 68, "paper"),
-            "700": token_mix("ink", 78, "paper"),
-            "800": token_mix("ink", 87, "paper"),
-            "900": token_mix("ink", 94, "paper"),
+            "50": token_mix("paper", 60, "surface"),
+            "100": token_mix("ink", 7, "surface"),
+            "200": token_mix("ink", 13, "surface"),
+            "300": token_mix("ink", 24, "surface"),
+            "400": token_mix("ink", 42, "surface"),
+            "500": token_mix("ink", 56, "surface"),
+            "600": token_mix("ink", 68, "surface"),
+            "700": token_mix("ink", 78, "surface"),
+            "800": token_mix("ink", 87, "surface"),
+            "900": token_mix("ink", 94, "surface"),
             "950": "var(--ink)",
         },
         "primary": {
-            "50": token_mix("accent", 6, "paper"),
-            "100": token_mix("accent", 12, "paper"),
-            "200": token_mix("accent", 24, "paper"),
-            "300": token_mix("accent", 40, "paper"),
-            "400": token_mix("accent", 62, "paper"),
-            "500": token_mix("accent", 82, "paper"),
-            "600": "var(--accent)",
-            "700": token_mix("accent", 85, "ink"),
-            "800": token_mix("accent", 70, "ink"),
-            "900": token_mix("accent", 55, "ink"),
-            "950": token_mix("accent", 40, "ink"),
+            "50": token_mix("ink", 4, "surface"),
+            "100": token_mix("ink", 8, "surface"),
+            "200": token_mix("ink", 15, "surface"),
+            "300": token_mix("ink", 28, "surface"),
+            "400": token_mix("ink", 45, "surface"),
+            "500": token_mix("ink", 65, "surface"),
+            "600": "var(--ink)",
+            "700": "var(--ink)",
+            "800": "var(--ink)",
+            "900": "var(--ink)",
+            "950": "var(--ink)",
         },
         "font": {
             "subtle-light": "var(--muted)",

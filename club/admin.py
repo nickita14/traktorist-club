@@ -2,6 +2,7 @@ from django.contrib import admin, messages
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, User
+from django.utils.html import format_html
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.contrib.filters.admin import (
     ChoicesDropdownFilter,
@@ -12,7 +13,31 @@ from unfold.decorators import action, display
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
 from club import stats
+from club.formatting import format_money, format_net
 from club.models import Game, Player, Result, Season, SeasonKind
+
+# Unfold 0.108 ships no translations, so its default search placeholder ("Type to search") stays
+# English; a ModelAdmin's search_help_text replaces it.
+
+# Numeric columns: right-aligned header and cells (Unfold's "price" formatting) in PT Mono.
+number = {"formatting": "price"}
+
+
+def number_cell(value: int | None) -> str:
+    """A count or amount like on the public pages: thousands separator, real minus in accent."""
+    if value is None:
+        return ""
+    css = "admin-num val-neg" if value < 0 else "admin-num"
+    return format_html('<span class="{}">{}</span>', css, format_money(value))
+
+
+def net_cell(value: int | None) -> str:
+    """A net result: "+" for a gain, a real minus in accent for a loss, like the public net."""
+    if value is None:
+        return ""
+    css = "admin-num val-neg" if value < 0 else "admin-num"
+    return format_html('<span class="{}">{}</span>', css, format_net(value))
+
 
 # Auth models re-registered with Unfold styling (https://unfoldadmin.com/docs/installation/auth/).
 admin.site.unregister(User)
@@ -24,11 +49,12 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     form = UserChangeForm
     add_form = UserCreationForm
     change_password_form = AdminPasswordChangeForm
+    search_help_text = "Логин, имя или email"
 
 
 @admin.register(Group)
 class GroupAdmin(BaseGroupAdmin, ModelAdmin):
-    pass
+    search_help_text = "Название группы"
 
 
 def year_filter(field_path: str) -> type[DropdownFilter]:
@@ -55,28 +81,29 @@ def year_filter(field_path: str) -> type[DropdownFilter]:
 class PlayerAdmin(ModelAdmin):
     list_display = ["name", "nickname", "slug", "games_played", "net"]
     search_fields = ["name", "nickname", "slug"]
+    search_help_text = "Имя, ник или slug"
     fields = ["name", "nickname", "slug"]
 
     def get_queryset(self, request):
         return stats.annotate_player_totals(super().get_queryset(request))
 
-    @display(description="игр", ordering="games_played")
+    @display(description="игр", ordering="games_played", **number)
     def games_played(self, obj):
-        return obj.games_played
+        return number_cell(obj.games_played)
 
-    @display(description="итог, лей", ordering="net")
+    @display(description="итог, лей", ordering="net", **number)
     def net(self, obj):
-        return obj.net
+        return net_cell(obj.net)
 
 
 @admin.register(Season)
 class SeasonAdmin(ModelAdmin):
     list_display = [
         "__str__",
-        "year",
+        "year_number",
         "kind",
-        "paid_places",
-        "chips_per_lei",
+        "paid_places_number",
+        "chips_per_lei_number",
         "games_count",
         "players_count",
     ]
@@ -86,13 +113,26 @@ class SeasonAdmin(ModelAdmin):
     def get_queryset(self, request):
         return stats.annotate_season_totals(super().get_queryset(request))
 
-    @display(description="игр", ordering="games_count")
-    def games_count(self, obj):
-        return obj.games_count
+    @display(description="год", ordering="year", **number)
+    def year_number(self, obj):
+        # A year, not an amount: no thousands separator.
+        return format_html('<span class="admin-num">{}</span>', obj.year)
 
-    @display(description="игроков", ordering="players_count")
+    @display(description="призовых мест", ordering="paid_places", **number)
+    def paid_places_number(self, obj):
+        return number_cell(obj.paid_places)
+
+    @display(description="фишек за 1 лей", ordering="chips_per_lei", **number)
+    def chips_per_lei_number(self, obj):
+        return number_cell(obj.chips_per_lei)
+
+    @display(description="игр", ordering="games_count", **number)
+    def games_count(self, obj):
+        return number_cell(obj.games_count)
+
+    @display(description="игроков", ordering="players_count", **number)
     def players_count(self, obj):
-        return obj.players_count
+        return number_cell(obj.players_count)
 
 
 class ResultInline(TabularInline):
@@ -121,7 +161,10 @@ class ResultInline(TabularInline):
     @display(description="итог, лей")
     def net(self, obj):
         # New unsaved rows have no annotation yet.
-        return getattr(obj, "net", None)
+        return net_cell(getattr(obj, "net", None))
+
+
+LEFTOVER_MISMATCH_LABEL = "не сходится"
 
 
 class LeftoverMismatchFilter(DropdownFilter):
@@ -161,6 +204,7 @@ class GameAdmin(ModelAdmin):
     list_filter_submit = True
     list_select_related = ["season"]
     search_fields = ["location", "results__player__name", "results__player__nickname"]
+    search_help_text = "Место или игрок"
     date_hierarchy = "date"
     fields = ["season", "date", "location"]
     readonly_fields = ["players_count", "buyin_total", "payout_total", "leftover"]
@@ -174,25 +218,30 @@ class GameAdmin(ModelAdmin):
         # Totals only make sense for a saved game.
         return self.fields + (self.readonly_fields if obj else [])
 
-    @display(description="игроков", ordering="players_count")
+    @display(description="игроков", ordering="players_count", **number)
     def players_count(self, obj):
-        return obj.players_count
+        return number_cell(obj.players_count)
 
-    @display(description="закупки, лей", ordering="buyin_total")
+    @display(description="закупки, лей", ordering="buyin_total", **number)
     def buyin_total(self, obj):
-        return obj.buyin_total
+        return number_cell(obj.buyin_total)
 
-    @display(description="выплаты, лей", ordering="payout_total")
+    @display(description="выплаты, лей", ordering="payout_total", **number)
     def payout_total(self, obj):
-        return obj.payout_total
+        return number_cell(obj.payout_total)
 
-    @display(description="остаток, лей", ordering="leftover")
+    @display(description="остаток, лей", ordering="leftover", **number)
     def leftover(self, obj):
-        return obj.leftover
+        return number_cell(obj.leftover)
 
-    @display(description="Остаток не сходится", boolean=True, ordering="leftover_mismatch")
+    # A danger label only on the games that break the rule; the rest show Unfold's "-".
+    @display(
+        description="проверка остатка",
+        ordering="leftover_mismatch",
+        label={LEFTOVER_MISMATCH_LABEL: "danger"},
+    )
     def leftover_mismatch(self, obj):
-        return obj.leftover_mismatch
+        return LEFTOVER_MISMATCH_LABEL if obj.leftover_mismatch else ""
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)

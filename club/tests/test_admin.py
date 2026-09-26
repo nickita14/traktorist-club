@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from django.contrib.auth.models import Group, User
 from django.urls import reverse
@@ -309,12 +311,67 @@ class TestLeftoverWarning:
 
 
 class TestTheme:
-    def test_admin_loads_project_tokens_and_palette(self, admin_client):
+    def test_admin_loads_tokens_palette_and_light_mode_script(self, admin_client):
         html = admin_client.get(reverse("admin:index")).content.decode()
 
         assert "/static/css/tokens.css" in html
         assert "/static/css/admin.css" in html
-        # Unfold must pass the token mixes through untouched.
-        assert "--color-primary-600: var(--accent);" in html
-        assert "--color-base-500: color-mix(in oklab, var(--ink) 56%, var(--paper));" in html
+        # Forces light mode over a stored dark preference; see test_admin_browser.py.
+        assert html.index("/static/js/admin-theme.js") < html.index("/static/unfold/js/app.js")
+        # Primary is ink; Unfold must pass the token mixes through untouched.
+        assert "--color-primary-600: var(--ink);" in html
+        assert "--color-base-500: color-mix(in oklab, var(--ink) 56%, var(--surface));" in html
         assert "#" not in html.split('id="unfold-theme-colors"')[1].split("</style>")[0]
+
+
+class TestNumberFormatting:
+    def test_player_net_and_counts(self, admin_client):
+        game = make_game(make_season(2025, SeasonKind.TOUR))
+        make_result(game, make_player("Альфа"), buyin=1500, payout=0)
+        make_result(game, make_player("Браво"), buyin=50, payout=1550, place=1)
+
+        html = admin_client.get(reverse("admin:club_player_changelist")).content.decode()
+
+        assert '<span class="admin-num val-neg">\u22121\u00a0500</span>' in html
+        assert '<span class="admin-num">+1\u00a0500</span>' in html
+        assert '<span class="admin-num">1</span>' in html
+
+    def test_game_totals_and_negative_leftover(self, admin_client):
+        game = make_game(make_season(2025, SeasonKind.CASH))
+        make_result(game, make_player(), buyin=1000, payout=1250, chips_out=125000)
+
+        html = admin_client.get(reverse("admin:club_game_changelist")).content.decode()
+
+        assert '<span class="admin-num">1\u00a0000</span>' in html
+        assert '<span class="admin-num val-neg">\u2212250</span>' in html
+
+    def test_leftover_mismatch_is_a_danger_label(self, admin_client, cash_game):
+        bad = make_game(make_season(kind=SeasonKind.TOUR))
+        make_result(bad, make_player(), buyin=50, payout=40, place=1)
+
+        html = admin_client.get(reverse("admin:club_game_changelist")).content.decode()
+
+        # One danger badge: the bad game only (the balanced cash game shows Unfold's "-").
+        labels = re.findall(r'<span class="([^"]*)"[^>]*>\s*не сходится\s*</span>', html)
+        assert len(labels) == 1
+        assert "bg-red-100 text-red-700" in " ".join(labels[0].split())
+
+    def test_result_inline_net(self, admin_client, cash_game):
+        url = reverse("admin:club_game_change", args=[cash_game.pk])
+
+        html = admin_client.get(url).content.decode()
+
+        assert '<span class="admin-num val-neg">\u221250</span>' in html  # Чарли 50 -> 0
+        assert '<span class="admin-num">+20</span>' in html  # Альфа 100 -> 120
+
+
+class TestSearchPlaceholder:
+    @pytest.mark.parametrize(
+        ("model", "placeholder"),
+        [("player", "Имя, ник или slug"), ("game", "Место или игрок")],
+    )
+    def test_placeholder_is_russian(self, admin_client, model, placeholder):
+        html = admin_client.get(reverse(f"admin:club_{model}_changelist")).content.decode()
+
+        assert f'placeholder="{placeholder}"' in html
+        assert "Type to search" not in html.split('id="changelist-search"')[1].split("</form>")[0]
