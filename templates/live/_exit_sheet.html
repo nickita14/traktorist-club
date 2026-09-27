@@ -1,0 +1,28 @@
+{# Bottom sheet: a cash player leaves. Inputs stay put; only the calculation below them is refreshed. #}
+<div class="sheet-backdrop" data-close-sheet></div>
+<section class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  <div class="flex items-start justify-between gap-4">
+    <h2 id="sheet-title" class="live-title mt-0">Выход: {{ result.player.name }}</h2>
+    <button type="button" class="btn" data-close-sheet aria-label="Закрыть">×</button>
+  </div>
+  {% load ledger %}
+  <p class="text-sm text-muted">Закупка <span class="font-num num-run">{{ result.buyin|money }}</span>{% if result.payout %} · уже выдано <span class="font-num num-run">{{ result.payout|money }}</span>{% endif %}</p>
+  <form hx-post="{% url 'live:exit' game.pk result.pk %}" hx-target="#board" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]" hx-disinherit="hx-disabled-elt">
+    {{ form.key }}
+    {% url 'live:exit_preview' game.pk result.pk as preview_url %}
+    <div class="exit-inputs">
+      <label class="field">
+        <span class="field-label">Фишек на выходе</span>
+        <input id="exit-chips" class="live-input" type="number" name="chips" hx-get="{{ preview_url }}" hx-trigger="input changed delay:250ms" hx-target="#exit-calc" hx-swap="outerHTML" hx-include="closest form" min="0" step="1" inputmode="numeric" autocomplete="off" value="{{ form.chips.value|default_if_none:'' }}" autofocus required>
+        {% for error in form.chips.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+      </label>
+      <label class="field">
+        <span class="field-label">Выдано, лей</span>
+        <input id="exit-paid" class="live-input" type="number" name="paid" hx-get="{{ preview_url }}" hx-trigger="input changed delay:250ms" hx-target="#exit-calc" hx-swap="outerHTML" hx-include="closest form" min="0" step="1" inputmode="numeric" autocomplete="off" value="{{ form.paid.value|default_if_none:'' }}" required>
+        {% for error in form.paid.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+      </label>
+    </div>
+    {% include "live/_exit_calc.html" %}
+    <button type="submit" class="btn btn-primary mt-4 w-full">Записать выход</button>
+  </form>
+</section>

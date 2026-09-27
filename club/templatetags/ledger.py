@@ -29,6 +29,12 @@ def money(value: int) -> str:
 
 
 @register.filter
+def amount(value) -> str:
+    """Lei that may be fractional (a chip stack's value): '112,30', '10'."""
+    return format_amount(value)
+
+
+@register.filter
 def net(value: int) -> str:
     return format_net(value)
 

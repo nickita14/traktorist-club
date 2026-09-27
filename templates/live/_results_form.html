@@ -1,0 +1,32 @@
+{% load ledger %}
+<form id="results-form" hx-post="{% url 'live:results' game.pk %}" hx-disabled-elt="find button[type=submit]" hx-disinherit="hx-disabled-elt">
+  <input type="hidden" name="key" value="{{ key }}">
+  <div hx-get="{% url 'live:results_preview' game.pk %}" hx-trigger="input delay:300ms" hx-target="#balance" hx-swap="outerHTML" hx-include="closest form">
+    <div class="ledger-scroll mt-4">
+      <table class="ledger ledger-compact results-table">
+        <thead>
+          <tr>
+            <th scope="col" class="num">Место</th>
+            <th scope="col">Участник</th>
+            <th scope="col" class="num">Закупка</th>
+            <th scope="col" class="num">Выплата</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr{% if row.place and row.place|add:0 <= season.paid_places and row.place|add:0 > 0 %} class="row-paid"{% endif %}>
+              <td class="num"><input class="live-input live-input-sm" type="number" name="place-{{ row.result.pk }}" value="{{ row.place }}" min="1" step="1" inputmode="numeric" aria-label="Место: {{ row.result.player.label }}"></td>
+              <td>{{ row.result.player.name }}{% if row.result.player.nickname %} <span class="text-muted">{{ row.result.player.nickname }}</span>{% endif %}{% if row.error %}<span class="field-error block">{{ row.error }}</span>{% endif %}</td>
+              <td class="num">{{ row.result.buyin|money }}</td>
+              <td class="num"><input class="live-input live-input-sm" type="number" name="payout-{{ row.result.pk }}" value="{{ row.payout }}" min="0" step="1" inputmode="numeric" aria-label="Выплата: {{ row.result.player.label }}"></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% include "live/_balance.html" %}
+  {% if error %}<p class="field-error mt-2">{{ error }}</p>{% endif %}
+  <button type="submit" class="btn btn-primary mt-4 w-full">Сохранить итоги</button>
+  <p class="mt-2 text-sm text-muted italic">Сохранить можно и без сверки. Исправить потом можно в админке.</p>
+</form>

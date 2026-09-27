@@ -1,0 +1,16 @@
+{# Create a player and seat them at once. After a success the view sends a fresh copy out of band. #}
+<form id="new-player" class="live-form"{% if oob %} hx-swap-oob="true"{% endif %} hx-post="{% url 'live:seat_new' game.pk %}" hx-target="#player-list" hx-swap="outerHTML" hx-include="#search" hx-disabled-elt="find button">
+  <h2 class="live-heading">Новый игрок</h2>
+  {{ new_player.key }}
+  {% for error in new_player.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+  <label class="field">
+    <span class="field-label">Имя</span>
+    <input class="live-input live-input-text" type="text" name="name" maxlength="100" value="{{ new_player.name.value|default:'' }}" autocomplete="off" required>
+    {% for error in new_player.name.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+  </label>
+  <label class="field">
+    <span class="field-label">Ник</span>
+    <input class="live-input live-input-text" type="text" name="nickname" maxlength="100" value="{{ new_player.nickname.value|default:'' }}" autocomplete="off">
+  </label>
+  <button type="submit" class="btn w-full">Создать и посадить</button>
+</form>

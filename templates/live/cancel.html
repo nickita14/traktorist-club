@@ -1,0 +1,20 @@
+{% extends "live/base.html" %}
+{% load live %}
+
+{% block title %}Отменить игру{% endblock %}
+
+{% block page %}
+  {% url 'live:board' game.pk as back_url %}
+  {% include "live/_bar.html" with back_url=back_url back_label="К игре" label="Отмена" %}
+  <h1 class="live-title">Отменить игру?</h1>
+  <p class="mt-2">{{ season }}, <span class="font-num">{{ game.date|date:"d.m.Y" }}</span>{% if game.location %}, {{ game.location }}{% endif %}.</p>
+  {% if has_players %}
+    <p class="mt-4 text-accent">Игроки уже за столом: такую игру отменить нельзя.</p>
+  {% else %}
+    <p class="mt-2 text-muted">Игра удалится. Это для игры, начатой по ошибке.</p>
+    <form class="mt-6" hx-post="{% url 'live:act' game.pk 'cancel' %}" hx-disabled-elt="find button">
+      <input type="hidden" name="key" value="{% new_key %}">
+      <button type="submit" class="btn btn-accent w-full">Отменить игру</button>
+    </form>
+  {% endif %}
+{% endblock %}

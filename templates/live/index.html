@@ -1,0 +1,30 @@
+{% extends "live/base.html" %}
+{% load ledger %}
+
+{% block title %}Игры{% endblock %}
+
+{% block page %}
+  {% url 'home' as home_url %}
+  {% include "live/_bar.html" with back_url=home_url back_label="На сайт" label="Живая игра" %}
+  <h1 class="live-title">Идут сейчас</h1>
+  {% if games %}
+    <ul class="live-list">
+      {% for game in games %}
+        <li>
+          <a class="live-row live-row-link" href="{% url 'live:board' game.pk %}">
+            <span class="min-w-0">
+              <span class="block font-bold">{{ game.season.get_kind_display }} · <span class="font-num">{{ game.date|date:"d.m.Y" }}</span></span>
+              <span class="block text-sm text-muted">{{ game.get_live_stage_display }}{% if game.location %} · {{ game.location }}{% endif %}</span>
+            </span>
+            <span class="live-sum">{{ game.players_count }} {{ game.players_count|plural:"игрок,игрока,игроков" }}</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="mt-4 text-muted italic">Сейчас ни одна игра не идёт.</p>
+  {% endif %}
+  <nav class="bottom-bar" aria-label="Действия">
+    <a class="btn btn-primary" href="{% url 'live:start' %}">Начать игру</a>
+  </nav>
+{% endblock %}

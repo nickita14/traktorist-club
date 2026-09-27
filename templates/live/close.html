@@ -1,0 +1,31 @@
+{% extends "live/base.html" %}
+{% load ledger live %}
+
+{% block title %}Закрыть вечер{% endblock %}
+
+{% block page %}
+  {% url 'live:board' game.pk as back_url %}
+  {% include "live/_bar.html" with back_url=back_url back_label="К игре" label="Закрытие" %}
+  <h1 class="live-title">Закрыть вечер</h1>
+  <dl class="stat-strip mt-4">
+    <div><dt>Закупки</dt><dd class="stat-value">{{ totals.bank|money }}</dd></div>
+    <div><dt>Выдано</dt><dd class="stat-value">{{ totals.paid_out|money }}</dd></div>
+    <div><dt>В котёл</dt><dd class="stat-value">{% pot_value leftover %}</dd></div>
+  </dl>
+  <div class="mt-4">
+    {% if mismatch %}
+      <p class="stamp">Не сходится</p>
+      <p class="mt-2 text-sm">Выдано больше, чем закуплено.</p>
+    {% else %}
+      <p class="stamp stamp-ink">Баланс сверен</p>
+    {% endif %}
+  </div>
+  {% if totals.in_game %}
+    <p class="mt-4 text-accent">За столом ещё <span class="font-num">{{ totals.in_game }}</span>: сначала запишите их выход.</p>
+  {% else %}
+    <form class="mt-6" hx-post="{% url 'live:act' game.pk 'close' %}" hx-disabled-elt="find button">
+      <input type="hidden" name="key" value="{{ key }}">
+      <button type="submit" class="btn btn-primary w-full">Закрыть вечер</button>
+    </form>
+  {% endif %}
+{% endblock %}

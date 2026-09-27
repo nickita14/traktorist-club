@@ -6,6 +6,7 @@ from pathlib import Path
 import environ
 from django.core.exceptions import ImproperlyConfigured
 from django.templatetags.static import static
+from django.urls import reverse
 from django.utils.csp import CSP
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -119,6 +120,7 @@ INSTALLED_APPS = [
     "django_tailwind_cli",
     "club",
     "importer",
+    "live",
 ]
 
 MIDDLEWARE = [
@@ -200,6 +202,9 @@ TAILWIND_CLI_VERSION = "4.3.3"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Live game screens: how often an open board fetches what the other phones changed.
+LIVE_POLL_SECONDS = 20
+
 # Behind Caddy in production: the client address is the last X-Forwarded-For entry, which Caddy
 # sets itself (a client-sent value is replaced), and the app port is reachable only through Caddy.
 # Used by django-axes (traktorist_club.security.client_ip).
@@ -267,6 +272,10 @@ UNFOLD = {
     "SITE_HEADER": "Клуб Тракториста",
     "SITE_URL": "/",
     "SHOW_VIEW_ON_SITE": False,
+    # Under the site name in the sidebar: the organizers' phone screens.
+    "SITE_DROPDOWN": [
+        {"title": "Живая игра", "link": lambda request: reverse("live:index")},
+    ],
     "THEME": "light",
     "BORDER_RADIUS": "2px",
     "STYLES": [

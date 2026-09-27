@@ -1,0 +1,7 @@
+{% extends "live/base.html" %}
+
+{% block title %}{{ season.get_kind_display }} {{ game.date|date:"d.m" }}{% endblock %}
+
+{% block page %}
+  {% include "live/_board.html" %}
+{% endblock %}

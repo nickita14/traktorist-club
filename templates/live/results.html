@@ -1,0 +1,11 @@
+{% extends "live/base.html" %}
+
+{% block title %}Итоги турнира{% endblock %}
+
+{% block page %}
+  {% url 'live:board' game.pk as back_url %}
+  {% include "live/_bar.html" with back_url=back_url back_label="К игре" label="Итоги" %}
+  <h1 class="live-title">Итоги турнира</h1>
+  <p class="text-sm text-muted italic">Места по порядку выбывания, их можно поправить. Призовых мест: <span class="font-num not-italic">{{ season.paid_places }}</span>.</p>
+  {% include "live/_results_form.html" %}
+{% endblock %}

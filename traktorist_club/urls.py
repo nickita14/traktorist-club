@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.contrib import admin
-from django.urls import path, register_converter
+from django.urls import include, path, register_converter
 
 from club import views
 from club.models import SeasonKind
@@ -28,5 +28,8 @@ urlpatterns = [
     path("players/<slug:slug>/", views.player_detail, name="player_detail"),
     path("players/<slug:slug>/games/", views.player_games, name="player_games"),
     path("all-time/", views.all_time, name="all_time"),
+    # The live game screens sit under the admin prefix (organizers only), before the admin's
+    # catch-all pattern. They keep the strict public CSP (live.access.organizer_required).
+    path(f"{settings.ADMIN_URL}live/", include("live.urls")),
     path(settings.ADMIN_URL, admin.site.urls),
 ]

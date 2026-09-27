@@ -1,0 +1,2 @@
+{# Rebuys and add-on of a tournament result recorded at the table: "2 ребая · аддон". Nothing for older results (empty fields) or a plain entry. #}
+{% load ledger %}{% if result.rebuys or result.addon %}<span class="{{ class|default:'block text-sm text-muted' }}">{% if result.rebuys %}<span class="font-num">{{ result.rebuys }}</span> {{ result.rebuys|plural:"ребай,ребая,ребаев" }}{% endif %}{% if result.rebuys and result.addon %} · {% endif %}{% if result.addon %}аддон{% endif %}</span>{% endif %}

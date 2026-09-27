@@ -1,0 +1,19 @@
+{% extends "live/base.html" %}
+
+{% block title %}За стол{% endblock %}
+
+{% block page %}
+  {% url 'live:board' game.pk as back_url %}
+  {% include "live/_bar.html" with back_url=back_url back_label="К игре" label="За стол" %}
+  <h1 class="live-title">Кто играет</h1>
+  <label class="field mt-4">
+    <span class="field-label">Поиск по имени или нику</span>
+    <input id="search" class="live-input live-input-text" type="search" name="q" value="{{ query }}" autocomplete="off"
+           hx-get="{% url 'live:seating' game.pk %}" hx-trigger="input delay:250ms, search" hx-target="#player-list" hx-swap="outerHTML">
+  </label>
+  {% include "live/_seating_list.html" %}
+  {% include "live/_new_player.html" %}
+  <nav class="bottom-bar" aria-label="Действия">
+    <a class="btn btn-primary" href="{% url 'live:board' game.pk %}">К игре →</a>
+  </nav>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% load ledger %}
+<div id="balance" class="mt-4">
+  <dl class="stat-strip">
+    <div><dt>Банк</dt><dd class="stat-value">{{ balance.bank|money }}</dd></div>
+    <div><dt>Выплачено</dt><dd class="stat-value">{{ balance.paid|money }}</dd></div>
+  </dl>
+  <div class="mt-3 flex flex-wrap items-center gap-4">
+    {% if balance.mismatch %}
+      <p class="stamp">Не сходится</p>
+      <p class="text-sm">Разница <span class="font-num num-run">{{ balance.difference|money }}</span> лей</p>
+    {% else %}
+      <p class="stamp stamp-ink">Баланс сверен</p>
+    {% endif %}
+  </div>
+</div>

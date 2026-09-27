@@ -1,0 +1,30 @@
+{% load live %}
+<div id="player-list">
+  <p class="mt-4 text-sm text-muted">
+    За столом: <span class="font-num">{{ seated|length }}</span>{% if seated %} · {% for result in seated %}{{ result.player.label }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
+  </p>
+  {% if not can_seat %}
+    <p class="mt-4 text-accent">Ребаи закрыты: новых игроков в турнир уже не сажают.</p>
+  {% else %}
+    <h2 class="live-heading">{% if query %}Найдено{% else %}Недавние игроки{% endif %}</h2>
+    <ul class="live-list">
+      {% for player in candidates %}
+        <li>
+          <form hx-post="{% url 'live:seat' game.pk %}" hx-target="#player-list" hx-swap="outerHTML" hx-include="#search" hx-disabled-elt="find button">
+            <input type="hidden" name="key" value="{% new_key %}">
+            <input type="hidden" name="player" value="{{ player.pk }}">
+            <button type="submit" class="live-row live-row-button">
+              <span class="min-w-0"><span class="live-name">{{ player.name }}</span>{% if player.nickname %} <span class="text-muted">{{ player.nickname }}</span>{% endif %}</span>
+              <span class="live-add">+ за стол</span>
+            </button>
+          </form>
+        </li>
+      {% empty %}
+        <li class="py-3 text-muted italic">Никого не нашли. Добавьте нового игрока ниже.</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+{% if oob %}
+  {% include "live/_toast.html" with undo_target="player-list" %}
+{% endif %}

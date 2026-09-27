@@ -402,4 +402,423 @@
     font-family: var(--font-stack-num);
     font-size: var(--text-xs);
   }
+
+  /*
+   * Live game screens (organizers at the table, templates/live/). Phone first: every control is
+   * at least 44px high; buttons are ruled boxes like the rest of the ledger, no rounding.
+   */
+  .live-bar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 2.75rem;
+    border-bottom: 1px solid var(--ink);
+    background: var(--paper);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+
+  .live-bar-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    text-decoration: none;
+  }
+
+  .live-status {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .live-dot {
+    display: inline-block;
+    width: 0.625rem;
+    height: 0.625rem;
+    margin-right: 0.5rem;
+    border-radius: 50%;
+    background: var(--accent);
+    vertical-align: 0.05em;
+  }
+
+  .live-title {
+    margin-top: 1rem;
+    font-family: var(--font-stack-head);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .live-heading {
+    margin-top: 1.5rem;
+    border-bottom: 1px solid var(--ink);
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .phase-strip {
+    margin-top: 0.75rem;
+    padding-block: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+    font-family: var(--font-stack-head);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .phase-note {
+    margin-top: 0.25rem;
+    color: var(--muted);
+    font-family: var(--font-stack-body);
+    font-size: var(--text-sm);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  /* The thin stage 1 progress line (a <progress>: inline widths are blocked by the CSP). */
+  .phase-strip progress {
+    display: block;
+    width: 100%;
+    height: 3px;
+    margin-top: 0.5rem;
+    border: 0;
+    appearance: none;
+    background: var(--rule);
+    color: var(--ink);
+  }
+
+  .phase-strip progress::-webkit-progress-bar {
+    background: var(--rule);
+  }
+
+  .phase-strip progress::-webkit-progress-value {
+    background: var(--ink);
+  }
+
+  .phase-strip progress::-moz-progress-bar {
+    background: var(--ink);
+  }
+
+  .stat-of {
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+
+  .live-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 0.5rem 0.75rem;
+    align-items: center;
+    min-height: 3.5rem;
+    padding-block: 0.375rem;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .live-row-link,
+  .live-row-button {
+    width: 100%;
+    color: inherit;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .live-row-link {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .live-row-button {
+    grid-template-columns: minmax(0, 1fr) auto;
+    background: none;
+    font: inherit;
+  }
+
+  .live-row-button:active {
+    background: var(--surface);
+  }
+
+  .live-add {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .live-name {
+    font-weight: 700;
+  }
+
+  .live-place {
+    display: inline-block;
+    min-width: 1.75rem;
+    font-family: var(--font-stack-num);
+  }
+
+  .live-sum {
+    font-family: var(--font-stack-num);
+    text-align: right;
+    word-spacing: var(--number-word-spacing);
+  }
+
+  .live-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding-inline: 0.75rem;
+    border: 1px solid var(--ink);
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    letter-spacing: var(--tracking-caps);
+    text-decoration: none;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .btn:active,
+  .btn-on,
+  .btn-primary {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .btn-num {
+    font-family: var(--font-stack-num);
+    letter-spacing: 0;
+  }
+
+  .btn-accent {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .btn-accent:active {
+    background: var(--accent);
+    color: var(--paper);
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: progress;
+  }
+
+  .btn-link {
+    min-height: 2.75rem;
+    padding-inline: 0.25rem;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
+  }
+
+  .bottom-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    padding-block: 0.75rem;
+    border-top: 3px double var(--ink);
+    background: var(--paper);
+  }
+
+  .bottom-bar > * {
+    flex: 1;
+  }
+
+  .live-form {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .field {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .field-label {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .field-error {
+    color: var(--accent);
+    font-size: var(--text-sm);
+  }
+
+  .live-input {
+    width: 100%;
+    min-height: 2.75rem;
+    padding-inline: 0.5rem;
+    border: 1px solid var(--ink);
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-stack-num);
+    font-size: 1.125rem;
+  }
+
+  .live-input-text {
+    font-family: var(--font-stack-body);
+  }
+
+  .live-input-sm {
+    width: 5rem;
+    text-align: right;
+  }
+
+  .results-table .row-paid td {
+    font-weight: 700;
+  }
+
+  .sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: color-mix(in srgb, var(--ink) 40%, transparent);
+  }
+
+  .sheet-panel {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 40;
+    max-width: 36rem;
+    max-height: 92vh;
+    margin-inline: auto;
+    padding: 0.75rem 1rem 1.25rem;
+    overflow-y: auto;
+    border-top: 3px double var(--ink);
+    background: var(--paper);
+  }
+
+  .exit-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+
+  .exit-value {
+    margin-top: 0.75rem;
+    font-size: var(--text-lg);
+  }
+
+  .exit-quick {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .exit-quick .btn {
+    flex: 1;
+  }
+
+  .exit-figures {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--rule);
+  }
+
+  .exit-figures dt {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .exit-figures dd {
+    font-size: var(--text-lg);
+    word-spacing: var(--number-word-spacing);
+  }
+
+  /* What just happened, with "отменить"; it fades out on its own (no script needed). */
+  .toast {
+    position: fixed;
+    inset-inline: 1rem;
+    bottom: 5rem;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    max-width: 34rem;
+    margin-inline: auto;
+    padding: 0.25rem 0.75rem;
+    min-height: 2.75rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-size: var(--text-sm);
+    animation: toast-life 8s forwards;
+  }
+
+  .toast-warn {
+    background: var(--accent);
+  }
+
+  @keyframes toast-life {
+    0%,
+    90% {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    100% {
+      opacity: 0;
+      visibility: hidden;
+    }
+  }
+
+  .conn-error {
+    position: fixed;
+    inset-inline: 0;
+    top: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: var(--accent);
+    color: var(--paper);
+  }
+
+  .conn-error[hidden] {
+    display: none;
+  }
+
+  .conn-error .btn {
+    border-color: var(--paper);
+  }
 }

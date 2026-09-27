@@ -1,0 +1,16 @@
+{% load ledger %}
+<div id="exit-calc" class="exit-calc">
+  <p class="exit-value">
+    {% if calc.value is not None %}<span class="font-num num-run">{{ calc.chips|money }}</span> = <span class="font-num num-run">{{ calc.value|amount }}</span> лей{% else %}<span class="text-muted">Введите фишки: здесь будет их стоимость в леях.</span>{% endif %}
+  </p>
+  {% if calc.quick %}
+    <div class="exit-quick" role="group" aria-label="Выдать">
+      {% for amount in calc.quick %}<button type="button" class="btn btn-num" data-fill="#exit-paid" data-value="{{ amount }}">{{ amount|money }}</button>{% endfor %}
+    </div>
+  {% endif %}
+  <dl class="exit-figures">
+    <div><dt>В котёл</dt><dd class="font-num">{% pot_value calc.pot %}</dd></div>
+    <div><dt>Итог игрока</dt><dd class="font-num">{% if calc.net is not None %}{% net_value calc.net %}{% else %}{% no_value %}{% endif %}</dd></div>
+  </dl>
+  {% if calc.pot is not None and calc.pot < 0 %}<p class="field-error">Выдано больше, чем стоят фишки.</p>{% endif %}
+</div>

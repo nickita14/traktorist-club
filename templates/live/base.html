@@ -1,0 +1,26 @@
+{% load static tailwind_cli %}<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  {# htmx under a strict CSP: no injected indicator styles, no eval, no inline scripts from responses. #}
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "timeout": 10000}'>
+  <title>{% block title %}{% endblock %} · Живая игра</title>
+  <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+  {% tailwind_css %}
+  <script src="{% static 'js/vendor/htmx-2.0.11.min.js' %}" defer></script>
+  <script src="{% static 'js/live.js' %}" defer></script>
+</head>
+<body class="live" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+  <div id="conn-error" class="conn-error" role="alert" hidden>
+    <p data-conn-text>Нет связи с сервером.</p>
+    <button type="button" class="btn btn-primary" data-retry>Повторить</button>
+  </div>
+  <div class="mx-auto max-w-xl px-4 pb-4">
+    {% block page %}{% endblock %}
+  </div>
+  <div id="sheet"></div>
+  <div id="toast"></div>
+</body>
+</html>

@@ -108,6 +108,10 @@ class TestTemplateTags:
         assert render("{{ v|money }}", v=12500) == f"12{NBSP}500"
         assert render("{{ v|net }}", v=-40) == f"{MINUS}40"
 
+    def test_amount_filter(self):
+        assert render("{{ v|amount }}", v=Fraction(11230, 100)) == "112,30"
+        assert render("{{ v|amount }}", v=Fraction(1000, 100)) == "10"
+
     def test_plural_filter(self):
         assert render('{{ n }} {{ n|plural:"игра,игры,игр" }}', n=23) == "23 игры"
 
