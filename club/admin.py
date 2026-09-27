@@ -113,6 +113,25 @@ class SeasonAdmin(ModelAdmin):
     ]
     list_filter = [("kind", ChoicesDropdownFilter), year_filter("year")]
     list_filter_submit = True
+    fields = [
+        "year",
+        "kind",
+        "chips_per_lei",
+        "paid_places",
+        "entry_price",
+        "rebuy_price",
+        "addon_price",
+        "rebuy_minutes",
+        "cash_step",
+    ]
+    # Prices of the live game screens: only the ones of the chosen kind (Alpine expressions).
+    conditional_fields = {
+        "entry_price": "kind == 'tour'",
+        "rebuy_price": "kind == 'tour'",
+        "addon_price": "kind == 'tour'",
+        "rebuy_minutes": "kind == 'tour'",
+        "cash_step": "kind == 'cash'",
+    }
 
     def get_queryset(self, request):
         return stats.annotate_season_totals(super().get_queryset(request))
@@ -141,7 +160,17 @@ class SeasonAdmin(ModelAdmin):
 
 class ResultInline(TabularInline):
     model = Result
-    fields = ["player", "buyin", "payout", "place", "chips_out", "net"]
+    fields = [
+        "player",
+        "buyin",
+        "payout",
+        "place",
+        "chips_out",
+        "rebuys",
+        "addon",
+        "out_order",
+        "net",
+    ]
     readonly_fields = ["net"]
     autocomplete_fields = ["player"]
     extra = 0
@@ -149,7 +178,10 @@ class ResultInline(TabularInline):
 
     # Fields that only make sense for the other season kind. The add view has no season yet, so it
     # shows both (Unfold's conditional_fields cover the main form only, not inlines).
-    HIDDEN_BY_KIND = {SeasonKind.TOUR: "chips_out", SeasonKind.CASH: "place"}
+    HIDDEN_BY_KIND = {
+        SeasonKind.TOUR: {"chips_out"},
+        SeasonKind.CASH: {"place", "rebuys", "addon"},
+    }
 
     def get_fields(self, request, obj=None):
         # obj is the parent Game here.
@@ -157,7 +189,7 @@ class ResultInline(TabularInline):
         if obj is None:
             return fields
         hidden = self.HIDDEN_BY_KIND[obj.season.kind]
-        return [field for field in fields if field != hidden]
+        return [field for field in fields if field not in hidden]
 
     def get_queryset(self, request):
         return stats.annotate_result_net(super().get_queryset(request)).select_related("player")
@@ -210,7 +242,7 @@ class GameAdmin(ModelAdmin):
     search_fields = ["location", "results__player__name", "results__player__nickname"]
     search_help_text = "Место или игрок"
     date_hierarchy = "date"
-    fields = ["season", "date", "location"]
+    fields = ["season", "date", "location", "live_stage", "started_at"]
     readonly_fields = ["players_count", "buyin_total", "payout_total", "leftover"]
     inlines = [ResultInline]
     actions = ["fill_places"]

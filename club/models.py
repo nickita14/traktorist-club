@@ -119,6 +119,16 @@ class Season(models.Model):
     kind = models.CharField("тип", max_length=4, choices=Kind)
     chips_per_lei = models.PositiveIntegerField("фишек за 1 лей", default=100)
     paid_places = models.PositiveSmallIntegerField("призовых мест", default=3)
+    # Prices used by the live game screens; Result.buyin stays the source of truth.
+    entry_price = models.PositiveIntegerField("вход в турнир, лей", default=100)
+    rebuy_price = models.PositiveIntegerField("ребай, лей", default=50)
+    addon_price = models.PositiveIntegerField("аддон, лей", default=50)
+    rebuy_minutes = models.PositiveSmallIntegerField(
+        "ребаи открыты, минут",
+        default=120,
+        help_text="Для обратного отсчёта на экране игры. Ребаи закрывает организатор.",
+    )
+    cash_step = models.PositiveIntegerField("шаг закупки в кэше, лей", default=50)
 
     class Meta:
         verbose_name = "сезон"
@@ -137,6 +147,16 @@ class Season(models.Model):
             ),
             models.CheckConstraint(
                 condition=Q(year__gte=2000, year__lte=2100), name="season_year_range"
+            ),
+            models.CheckConstraint(
+                condition=Q(
+                    entry_price__gte=1,
+                    rebuy_price__gte=1,
+                    addon_price__gte=1,
+                    rebuy_minutes__gte=1,
+                    cash_step__gte=1,
+                ),
+                name="season_live_prices_positive",
             ),
         ]
 
@@ -161,12 +181,50 @@ class Season(models.Model):
             )
 
 
+class LiveStage(models.TextChoices):
+    """Where a game recorded at the table is; empty for a finished or historical game."""
+
+    REBUYS = "rebuys", "Этап 1: ребаи"
+    ADDON = "addon", "Перерыв на аддон"
+    FINAL = "final", "Финальный этап"
+    CASH = "cash", "Кэш-игра идёт"
+
+
+# Which live stages a season kind can have.
+LIVE_STAGES_BY_KIND = {
+    SeasonKind.TOUR: {LiveStage.REBUYS, LiveStage.ADDON, LiveStage.FINAL},
+    SeasonKind.CASH: {LiveStage.CASH},
+}
+
+
+class GameQuerySet(models.QuerySet):
+    def finished(self):
+        """Games that count: historical ones and live ones whose results are saved."""
+        return self.filter(live_stage="")
+
+    def live(self):
+        return self.exclude(live_stage="")
+
+
 class Game(models.Model):
+    Stage = LiveStage
+
     season = models.ForeignKey(
         Season, on_delete=models.PROTECT, related_name="games", verbose_name="сезон"
     )
     date = models.DateField("дата")
     location = models.CharField("место проведения", max_length=100, blank=True, default="")
+    live_stage = models.CharField(
+        "идёт сейчас",
+        max_length=6,
+        choices=LiveStage,
+        blank=True,
+        default="",
+        help_text="Пусто: игра завершена. Пока игра идёт, она не входит в статистику.",
+    )
+    started_at = models.DateTimeField("начало", null=True, blank=True)
+
+    objects = GameQuerySet.as_manager()
 
     class Meta:
         verbose_name = "игра"
@@ -174,6 +232,13 @@ class Game(models.Model):
         ordering = ["-date", "season__kind"]
         constraints = [
             models.UniqueConstraint(fields=["season", "date"], name="game_season_date_unique"),
+            models.CheckConstraint(
+                condition=Q(live_stage__in=["", *LiveStage.values]), name="game_live_stage_valid"
+            ),
+            models.CheckConstraint(
+                condition=Q(live_stage="") | Q(started_at__isnull=False),
+                name="game_live_has_start",
+            ),
         ]
         indexes = [models.Index(fields=["date"], name="game_date_idx")]
 
@@ -183,12 +248,23 @@ class Game(models.Model):
     def get_absolute_url(self) -> str:
         return reverse("game_detail", args=[self.pk])
 
+    @property
+    def is_live(self) -> bool:
+        return self.live_stage != ""
+
     def clean(self):
         super().clean()
-        if self.season_id is None or self.date is None:
+        if self.season_id is None:
             return
-        if self.date.year != self.season.year:
-            raise ValidationError({"date": f"Дата должна быть в {self.season.year} году."})
+        errors = {}
+        if self.date is not None and self.date.year != self.season.year:
+            errors["date"] = f"Дата должна быть в {self.season.year} году."
+        if self.live_stage and self.live_stage not in LIVE_STAGES_BY_KIND[self.season.kind]:
+            errors["live_stage"] = "Этот этап не подходит к типу сезона."
+        if self.live_stage and self.started_at is None:
+            errors["started_at"] = "У идущей игры должно быть время начала."
+        if errors:
+            raise ValidationError(errors)
 
 
 class Result(models.Model):
@@ -202,6 +278,15 @@ class Result(models.Model):
     payout = models.PositiveIntegerField("выплата", default=0)
     place = models.PositiveSmallIntegerField("место", null=True, blank=True)
     chips_out = models.PositiveIntegerField("фишек на выходе", null=True, blank=True)
+    # Filled by the live game screens; empty for games entered afterwards.
+    rebuys = models.PositiveSmallIntegerField("ребаев", null=True, blank=True)
+    addon = models.BooleanField("аддон", null=True, blank=True)
+    out_order = models.PositiveSmallIntegerField(
+        "порядок выхода",
+        null=True,
+        blank=True,
+        help_text="Кто когда вышел из-за стола: 1 = первым. Пусто: ещё играет.",
+    )
 
     class Meta:
         verbose_name = "результат"
@@ -216,6 +301,13 @@ class Result(models.Model):
             models.CheckConstraint(
                 condition=Q(place__isnull=True) | Q(chips_out__isnull=True),
                 name="result_place_xor_chips_out",
+            ),
+            models.CheckConstraint(
+                condition=Q(out_order__isnull=True) | Q(out_order__gte=1),
+                name="result_out_order_positive",
+            ),
+            models.UniqueConstraint(
+                fields=["game", "out_order"], name="result_game_out_order_unique"
             ),
         ]
 
@@ -235,5 +327,9 @@ class Result(models.Model):
             errors["place"] = "Место указывается только в турнирах."
         if self.chips_out is not None and kind != Season.Kind.CASH:
             errors["chips_out"] = "Фишки на выходе указываются только в кэш-играх."
+        if self.rebuys is not None and kind != Season.Kind.TOUR:
+            errors["rebuys"] = "Ребаи бывают только в турнирах."
+        if self.addon is not None and kind != Season.Kind.TOUR:
+            errors["addon"] = "Аддон бывает только в турнирах."
         if errors:
             raise ValidationError(errors)

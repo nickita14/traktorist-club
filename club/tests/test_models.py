@@ -3,6 +3,7 @@ import datetime
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from club.models import Game, Player, Result, Season, SeasonKind, transliterate
 from club.tests.factories import make_game, make_player, make_result, make_season
@@ -21,6 +22,8 @@ class TestSeason:
         season.refresh_from_db()
         assert season.chips_per_lei == 100
         assert season.paid_places == 3
+        assert (season.entry_price, season.rebuy_price, season.addon_price) == (100, 50, 50)
+        assert (season.rebuy_minutes, season.cash_step) == (120, 50)
 
     def test_str(self):
         assert str(make_season(2025, SeasonKind.CASH)) == "Кэш 2025"
@@ -38,6 +41,11 @@ class TestSeason:
             ({"year": 2101}, "season_year_range"),
             ({"paid_places": 0}, "season_paid_places_positive"),
             ({"chips_per_lei": 0}, "season_chips_per_lei_positive"),
+            ({"entry_price": 0}, "season_live_prices_positive"),
+            ({"rebuy_price": 0}, "season_live_prices_positive"),
+            ({"addon_price": 0}, "season_live_prices_positive"),
+            ({"rebuy_minutes": 0}, "season_live_prices_positive"),
+            ({"cash_step": 0}, "season_live_prices_positive"),
         ],
     )
     def test_check_constraints(self, fields, constraint):
@@ -156,6 +164,52 @@ class TestGame:
         game.save()
         assert game.location == ""
 
+    def test_not_live_by_default(self):
+        game = make_game(make_season())
+        assert (game.live_stage, game.started_at, game.is_live) == ("", None, False)
+        assert list(Game.objects.finished()) == [game]
+        assert list(Game.objects.live()) == []
+
+    def test_live_game_is_not_finished(self):
+        game = make_game(make_season(), live_stage=Game.Stage.REBUYS, started_at=timezone.now())
+        assert game.is_live
+        assert list(Game.objects.finished()) == []
+        assert list(Game.objects.live()) == [game]
+
+    def test_unknown_stage_rejected_by_db(self):
+        season = make_season()
+        assert_integrity_error(
+            "game_live_stage_valid",
+            lambda: make_game(season, live_stage="poker", started_at=timezone.now()),
+        )
+
+    def test_live_game_needs_start_time(self):
+        season = make_season()
+        assert_integrity_error(
+            "game_live_has_start", lambda: make_game(season, live_stage=Game.Stage.REBUYS)
+        )
+
+    @pytest.mark.parametrize(
+        ("kind", "stage"),
+        [(SeasonKind.TOUR, Game.Stage.CASH), (SeasonKind.CASH, Game.Stage.FINAL)],
+    )
+    def test_stage_must_match_season_kind(self, kind, stage):
+        game = Game(
+            season=make_season(2026, kind),
+            date=datetime.date(2026, 3, 14),
+            live_stage=stage,
+            started_at=timezone.now(),
+        )
+        with pytest.raises(ValidationError) as exc:
+            game.full_clean()
+        assert "live_stage" in exc.value.message_dict
+
+    def test_clean_asks_for_start_time(self):
+        game = Game(season=make_season(2026), date=datetime.date(2026, 3, 14), live_stage="rebuys")
+        with pytest.raises(ValidationError) as exc:
+            game.full_clean()
+        assert "started_at" in exc.value.message_dict
+
 
 class TestResultConstraints:
     @pytest.fixture
@@ -173,11 +227,26 @@ class TestResultConstraints:
             ({"buyin": 0}, "result_buyin_positive"),
             ({"place": 0}, "result_place_positive"),
             ({"place": 1, "chips_out": 5000}, "result_place_xor_chips_out"),
+            ({"out_order": 0}, "result_out_order_positive"),
         ],
     )
     def test_check_constraints(self, game, fields, constraint):
         values = {"game": game, "player": make_player(), "buyin": 50} | fields
         assert_integrity_error(constraint, lambda: Result.objects.create(**values))
+
+    def test_out_order_unique_per_game(self, game):
+        make_result(game, make_player(), out_order=1)
+        make_result(game, make_player())  # several players still in: nulls do not clash
+        make_result(game, make_player())
+        make_result(make_game(make_season(kind=SeasonKind.CASH)), make_player(), out_order=1)
+        assert_integrity_error(
+            "result_game_out_order_unique",
+            lambda: make_result(game, make_player(), out_order=1),
+        )
+
+    def test_live_fields_empty_by_default(self, game):
+        result = make_result(game, make_player())
+        assert (result.rebuys, result.addon, result.out_order) == (None, None, None)
 
 
 class TestResultClean:
@@ -197,8 +266,21 @@ class TestResultClean:
             self.build(SeasonKind.TOUR, chips_out=5000).full_clean()
         assert "chips_out" in exc.value.message_dict
 
+    @pytest.mark.parametrize("field", ["rebuys", "addon"])
+    def test_tour_live_fields_in_cash_rejected(self, field):
+        value = {"rebuys": 2, "addon": True}[field]
+        with pytest.raises(ValidationError) as exc:
+            self.build(SeasonKind.CASH, **{field: value}).full_clean()
+        assert field in exc.value.message_dict
+
     def test_valid_tour_result(self):
         self.build(SeasonKind.TOUR, place=2, payout=100).full_clean()
+
+    def test_valid_live_tour_result(self):
+        self.build(SeasonKind.TOUR, rebuys=2, addon=True, out_order=3).full_clean()
+
+    def test_valid_live_cash_result(self):
+        self.build(SeasonKind.CASH, chips_out=7500, payout=75, out_order=1).full_clean()
 
     def test_valid_cash_result(self):
         self.build(SeasonKind.CASH, chips_out=7500, payout=75).full_clean()

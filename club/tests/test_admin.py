@@ -3,8 +3,9 @@ import re
 import pytest
 from django.contrib.auth.models import Group, User
 from django.urls import reverse
+from django.utils import timezone
 
-from club.models import Game, Player, Result, SeasonKind
+from club.models import Game, Player, Result, Season, SeasonKind
 from club.tests.factories import make_game, make_player, make_result, make_season
 
 pytestmark = pytest.mark.django_db
@@ -245,6 +246,18 @@ class TestInlineFieldsByKind:
         assert "chips_out" in fields
         assert "place" not in fields
 
+    def test_tour_game_shows_live_fields(self, admin_client):
+        game = make_game(make_season(kind=SeasonKind.TOUR))
+        response = admin_client.get(reverse("admin:club_game_change", args=[game.pk]))
+        assert {"rebuys", "addon", "out_order"} <= inline_form_fields(response)
+
+    def test_cash_game_hides_tour_live_fields(self, admin_client, cash_game):
+        response = admin_client.get(reverse("admin:club_game_change", args=[cash_game.pk]))
+
+        fields = inline_form_fields(response)
+        assert "out_order" in fields
+        assert not {"rebuys", "addon"} & fields
+
     def test_add_view_shows_both(self, admin_client):
         response = admin_client.get(reverse("admin:club_game_add"))
         assert {"place", "chips_out"} <= inline_form_fields(response)
@@ -267,6 +280,51 @@ class TestInlineFieldsByKind:
             follow=True,
         )
         assert "Кэш-игры пропущены (в них нет мест): 1." in response.text
+
+
+class TestSeasonForm:
+    def test_prices_shown_by_kind(self, admin_client):
+        response = admin_client.get(reverse("admin:club_season_add"))
+
+        assert response.status_code == 200
+        assert 'x-show="kind == &#x27;tour&#x27;"' in response.text
+        assert 'x-show="kind == &#x27;cash&#x27;"' in response.text
+
+    def test_add_with_prices(self, admin_client):
+        data = {
+            "year": 2027,
+            "kind": SeasonKind.TOUR,
+            "chips_per_lei": 100,
+            "paid_places": 3,
+            "entry_price": 150,
+            "rebuy_price": 75,
+            "addon_price": 60,
+            "rebuy_minutes": 90,
+            "cash_step": 50,
+        }
+        response = admin_client.post(reverse("admin:club_season_add"), data)
+
+        assert response.status_code == 302
+        season = Season.objects.get(year=2027)
+        assert (season.entry_price, season.rebuy_price, season.addon_price) == (150, 75, 60)
+        assert season.rebuy_minutes == 90
+
+
+class TestGameLiveFields:
+    def test_live_stage_can_be_cleared_to_finish_a_game(self, admin_client):
+        game = make_game(
+            make_season(kind=SeasonKind.TOUR),
+            live_stage=Game.Stage.FINAL,
+            started_at=timezone.now(),
+        )
+        make_result(game, make_player(), buyin=50, payout=50, place=1)
+        data = inline_data(game) | {"live_stage": "", "started_at_0": "", "started_at_1": ""}
+
+        response = admin_client.post(reverse("admin:club_game_change", args=[game.pk]), data)
+
+        assert response.status_code == 302
+        game.refresh_from_db()
+        assert game.live_stage == ""
 
 
 class TestLeftoverWarning:
