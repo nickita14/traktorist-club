@@ -121,6 +121,26 @@ class TestTourGame:
 
         assert 'aria-current="true">Турниры</a>' in html
 
+    def test_rebuys_and_addon_recorded_at_the_table(self, client, club):
+        game = club["games"]["t1"]
+        game.results.filter(player=club["players"]["A"]).update(rebuys=2, addon=True)
+        game.results.filter(player=club["players"]["B"]).update(rebuys=1, addon=False)
+        game.results.filter(player=club["players"]["C"]).update(rebuys=0, addon=True)
+
+        html = html_of(client, game)
+
+        assert '<span class="font-num">2</span> ребая · аддон</span>' in html
+        assert '<span class="font-num">1</span> ребай</span>' in html
+        assert '<span class="block text-sm text-muted">аддон</span>' in html
+
+    def test_no_note_for_a_plain_entry_or_older_results(self, client, club):
+        game = club["games"]["t2"]
+        game.results.filter(player=club["players"]["A"]).update(rebuys=0, addon=False)
+
+        html = html_of(client, game)
+
+        assert "ребай" not in html and "ребая" not in html and "аддон" not in html
+
     def test_query_count(self, client, club, django_assert_num_queries):
         # Game with totals, season positions, same evening, results, nav years.
         with django_assert_num_queries(5):
@@ -218,6 +238,11 @@ class TestCashGame:
         assert "Курс: " in html
         # The stat strip still shows the game's pot.
         assert f'<dd class="stat-value"><span class="val-neg">{MINUS}20</span></dd>' in html
+
+    def test_cash_game_never_shows_the_rebuy_note(self, client, club):
+        # Only a broken row could have these on cash; the sheet still ignores them.
+        club["games"]["c1"].results.update(rebuys=3)
+        assert "ребая" not in html_of(client, club["games"]["c1"])
 
     def test_tour_game_never_shows_chip_columns(self, client, club):
         assert get_game(client, club["games"]["t1"]).context["show_chips"] is False

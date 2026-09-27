@@ -94,6 +94,7 @@
               <td class="col-rank num">{{ forloop.counter }}</td>
               <td class="col-player">
                 {% include "club/includes/player_name.html" with player=result.player %}
+                {% if season.kind == "tour" %}{% include "club/includes/rebuy_note.html" %}{% endif %}
                 <span class="block font-num text-xs text-muted md:hidden">{{ result.buyin|money }} → {{ result.payout|money }}{% if result.chips_out is not None %} · фишек {{ result.chips_out|money }} · в котёл {% pot_value result.pot %}{% endif %}</span>
               </td>
               {% if season.kind == "tour" %}<td class="num">{% optional_count result.place %}</td>{% endif %}
