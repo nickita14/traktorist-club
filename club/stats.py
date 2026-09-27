@@ -3,6 +3,10 @@
 Totals are conditional aggregates over one many-to-one join path (results -> game -> season),
 so each helper is a single query with no fan-out and no N+1. Scopes go into the aggregate's
 ``filter=`` rather than ``.filter()``, which keeps rows without results (they get zeros).
+
+A game recorded at the table counts nowhere until its results are saved (``Game.live_stage`` is
+empty again): every per-player and per-season helper here sees finished games only. Per-game
+totals (annotate_game_totals) still work on a live game.
 """
 
 import datetime
@@ -46,10 +50,12 @@ def _difference(minuend: str, subtrahend: str) -> ExpressionWrapper:
 
 
 def _player_totals(path: str, scope: Q, prefix: str = "") -> dict:
-    """Annotations for a model that reaches Result through ``path``, limited to ``scope``.
+    """Annotations for a model that reaches Result through ``path``, limited to ``scope``
+    and to finished games.
 
     ``prefix`` goes in front of every annotation name, so several scopes fit on one row.
     """
+    scope = scope & Q(**{f"{path}__game__live_stage": ""})
 
     def only(extra: Q | None = None) -> Q | None:
         condition = scope & extra if extra is not None else scope
@@ -122,7 +128,9 @@ def all_time_standings(kind: str | None = None) -> QuerySet[Player]:
 
 def club_totals(kind: str | None = None) -> dict:
     """games_count, players_count (distinct) and buyin_total over all seasons, or one kind."""
-    games = Game.objects.all() if kind is None else Game.objects.filter(season__kind=kind)
+    games = Game.objects.finished()
+    if kind is not None:
+        games = games.filter(season__kind=kind)
     return games.aggregate(
         games_count=Count("pk", distinct=True),
         players_count=Count("results__player", distinct=True),
@@ -156,10 +164,11 @@ def annotate_player_card(players: QuerySet[Player]) -> QuerySet[Player]:
     annotations = {}
     for prefix, scope in PLAYER_CARD_SCOPES.items():
         annotations |= _player_totals("results", scope, prefix)
+    finished = Q(results__game__live_stage="")
     return players.annotate(
         **annotations,
-        first_game_date=Min("results__game__date"),
-        last_game_date=Max("results__game__date"),
+        first_game_date=Min("results__game__date", filter=finished),
+        last_game_date=Max("results__game__date", filter=finished),
     )
 
 
@@ -194,7 +203,8 @@ def _game_number(season: str, date: str) -> Subquery:
     date order. ``season`` and ``date`` are paths from the outer model to the game's fields.
     """
     earlier = (
-        Game.objects.filter(season=OuterRef(season), date__lte=OuterRef(date))
+        Game.objects.finished()
+        .filter(season=OuterRef(season), date__lte=OuterRef(date))
         .order_by()
         .values("season")
         .annotate(count=Count("pk"))
@@ -210,9 +220,19 @@ def annotate_game_number(games: QuerySet[Game]) -> QuerySet[Game]:
 
 # The one leftover rule (over annotate_game_totals fields). Tour buy-ins must be paid out in full;
 # a cash game may keep rounding change in the pot but can never pay out more than was bought in.
-LEFTOVER_MISMATCH = Q(season__kind=SeasonKind.TOUR) & ~Q(leftover=0) | Q(
-    season__kind=SeasonKind.CASH, leftover__lt=0
-)
+# A live game is not checked until its results are saved.
+LEFTOVER_MISMATCH = (
+    Q(season__kind=SeasonKind.TOUR) & ~Q(leftover=0)
+    | Q(season__kind=SeasonKind.CASH, leftover__lt=0)
+) & Q(live_stage="")
+
+
+def leftover_mismatch(kind: str, buyin_total: int, payout_total: int) -> bool:
+    """LEFTOVER_MISMATCH for totals that are not saved yet (the live results screen)."""
+    leftover = buyin_total - payout_total
+    if kind == SeasonKind.TOUR:
+        return leftover != 0
+    return leftover < 0
 
 
 def annotate_leftover_check(games: QuerySet[Game]) -> QuerySet[Game]:
@@ -243,13 +263,14 @@ def annotate_season_totals(seasons: QuerySet[Season]) -> QuerySet[Season]:
     players_count counts distinct players who played at least once; leftover is the season's pot
     (buy-ins minus payouts over all games); last_game_date is None for a season without games.
     """
+    finished = Q(games__live_stage="")
     return seasons.annotate(
-        games_count=Count("games", distinct=True),
-        players_count=Count("games__results__player", distinct=True),
-        buyin_total=Coalesce(Sum("games__results__buyin"), 0),
-        payout_total=Coalesce(Sum("games__results__payout"), 0),
+        games_count=Count("games", distinct=True, filter=finished),
+        players_count=Count("games__results__player", distinct=True, filter=finished),
+        buyin_total=Coalesce(Sum("games__results__buyin", filter=finished), 0),
+        payout_total=Coalesce(Sum("games__results__payout", filter=finished), 0),
         leftover=_difference("buyin_total", "payout_total"),
-        last_game_date=Max("games__date"),
+        last_game_date=Max("games__date", filter=finished),
     )
 
 
@@ -262,7 +283,7 @@ def season_games(season: Season) -> QuerySet[Game]:
     """
     winners = Result.objects.filter(place=1).select_related("player").order_by("player__name")
     return (
-        annotate_game_number(annotate_game_totals(season.games.all()))
+        annotate_game_number(annotate_game_totals(season.games.finished()))
         .prefetch_related(Prefetch("results", queryset=winners, to_attr="winners"))
         .order_by("-date")
     )
@@ -289,7 +310,7 @@ class GamePosition:
 
 def game_position(game: Game) -> GamePosition:
     """The game's number in its season and its neighbours by date. One query."""
-    games = list(game.season.games.order_by("date").values_list("pk", "date"))
+    games = list(game.season.games.finished().order_by("date").values_list("pk", "date"))
     index = next(i for i, (pk, _) in enumerate(games) if pk == game.pk)
 
     def link(i: int) -> GameLink | None:
@@ -303,13 +324,66 @@ def game_position(game: Game) -> GamePosition:
 
 def same_evening(game: Game) -> Game | None:
     """The game of the other kind played on the same date, with ``number``, or None."""
-    others = Game.objects.filter(date=game.date).exclude(season__kind=game.season.kind)
+    others = Game.objects.finished().filter(date=game.date).exclude(season__kind=game.season.kind)
     return annotate_game_number(others.select_related("season")).first()
 
 
 def chips_value(chips: int, chips_per_lei: int) -> Fraction:
     """Exact value of a chip stack in lei; real stacks need not be whole lei."""
     return Fraction(chips, chips_per_lei)
+
+
+@dataclass(frozen=True)
+class LiveTotals:
+    players: int
+    in_game: int
+    bank: int
+    paid_out: int
+    rebuys: int
+    addons: int
+    # Cash only: what the players who left put in the pot so far (chip value minus cash paid).
+    pot: Fraction
+
+
+def live_totals(game: Game) -> LiveTotals:
+    """Running totals for the live game screens. One query (``game.season`` must be loaded).
+
+    Players still in the game have an empty ``out_order``.
+    """
+    left = Q(chips_out__isnull=False)
+    row = game.results.aggregate(
+        players=Count("pk"),
+        in_game=Count("pk", filter=Q(out_order__isnull=True)),
+        bank=Coalesce(Sum("buyin"), 0),
+        paid_out=Coalesce(Sum("payout"), 0),
+        rebuys=Coalesce(Sum("rebuys"), 0),
+        addons=Count("pk", filter=Q(addon=True)),
+        left_chips=Coalesce(Sum("chips_out", filter=left), 0),
+        left_payout=Coalesce(Sum("payout", filter=left), 0),
+    )
+    pot = chips_value(row.pop("left_chips"), game.season.chips_per_lei) - row.pop("left_payout")
+    return LiveTotals(**row, pot=pot)
+
+
+def elimination_places[K: Hashable](out_orders: Mapping[K, int | None]) -> dict[K, int | None]:
+    """Places from the order players left a tournament: the first one out gets the last place.
+
+    ``out_orders`` has every player of the game; None means still in. Gaps in the order (a player
+    brought back) do not matter, only the sequence. The last player standing gets 1st place;
+    while several are still in, they have no place yet.
+    """
+    count = len(out_orders)
+    out = sorted(
+        (key for key, order in out_orders.items() if order is not None),
+        key=lambda key: out_orders[key],
+    )
+    places: dict[K, int | None] = dict.fromkeys(out_orders)
+    for index, key in enumerate(out):
+        places[key] = count - index
+    still_in = [key for key, order in out_orders.items() if order is None]
+    if len(still_in) == 1:
+        places[still_in[0]] = 1
+    return places
 
 
 def game_results(game: Game) -> list[Result]:
@@ -338,7 +412,9 @@ def player_results(player: Player) -> QuerySet[Result]:
     On a date with both kinds, cash comes before tour (the reverse of player_net_timeline).
     """
     return (
-        annotate_result_net(player.results.select_related("game__season"))
+        annotate_result_net(
+            player.results.filter(game__live_stage="").select_related("game__season")
+        )
         .annotate(game_number=_game_number("game__season", "game__date"))
         .order_by("-game__date", "game__season__kind")
     )
@@ -355,8 +431,10 @@ def player_net_timeline(player: Player) -> list[TimelinePoint]:
 
     On a date with both kinds the tournament comes first ("tour" sorts after "cash").
     """
-    rows = player.results.order_by("game__date", "-game__season__kind").values_list(
-        "game__date", "buyin", "payout"
+    rows = (
+        player.results.filter(game__live_stage="")
+        .order_by("game__date", "-game__season__kind")
+        .values_list("game__date", "buyin", "payout")
     )
     timeline, running = [], 0
     for date, buyin, payout in rows:

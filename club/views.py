@@ -60,8 +60,9 @@ def season_games(request, year: int, kind: str):
 
 
 def game_detail(request, pk: int):
+    # A game still being played has no public sheet until its results are saved.
     game = get_object_or_404(
-        stats.annotate_leftover_check(Game.objects.select_related("season")), pk=pk
+        stats.annotate_leftover_check(Game.objects.finished().select_related("season")), pk=pk
     )
     chips_per_lei = game.season.chips_per_lei
     results = stats.game_results(game)
