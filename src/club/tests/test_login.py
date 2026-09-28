@@ -6,11 +6,11 @@ import pytest
 from axes.models import AccessAttempt
 from django.conf import settings
 from django.contrib.auth.models import Group, User
-from django.test import Client
+from django.test import Client, RequestFactory
 from django.urls import reverse
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
-from club.auth import REFUSED
+from club.auth import REFUSED, safe_next
 from club.models import SeasonKind
 from club.tests.factories import make_game, make_player, make_result, make_season
 from club.tests.test_security import current_code, wrong_code
@@ -244,6 +244,8 @@ class TestNext:
             "http://testserver//evil.example/",
             "javascript:alert(1)",
             ADMIN_PATH,
+            f"/%{ord(ADMIN_PATH[1]):02X}{ADMIN_PATH[2:]}",
+            f"/players/..{ADMIN_PATH}",
             "/prokhodnaya/",
         ],
     )
@@ -312,3 +314,68 @@ class TestFooterLink:
         assert "footer-login" not in text
         # Not an organizer: no shortcuts, no logout button either.
         assert ">Выйти<" not in text and ADMIN_PATH not in text
+
+
+class TestSafeNextPaths:
+    """Refused paths in the forms the server routes to them (ADMIN_URL "kontora/")."""
+
+    @pytest.fixture(autouse=True)
+    def admin_url(self, settings):
+        settings.ADMIN_URL = "kontora/"
+
+    def check(self, url):
+        return safe_next(RequestFactory().get("/"), url)
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "/kontora/",
+            "/kontora/live/",
+            "/%6B%6Fntora/",
+            "/%6b%6Fntora/",
+            "/%6B%6fntora/live/",
+            "http://testserver/%6B%6Fntora/",
+            "/players/../kontora/",
+            "/players/./../kontora/live/",
+            "/a/b/../../kontora/",
+            "/players/%2e%2e/kontora/",
+            "/../kontora/",
+            "/players/../prokhodnaya/",
+            "/%70rokhodnaya/vykhod/",
+        ],
+    )
+    def test_refused_paths_in_any_form(self, url):
+        assert self.check(url) is None
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "/players\\../kontora/",
+            "/players/\\evil.example",
+            "/players/%5C..%5Ckontora/",
+            "/players/\x7f",
+            "/players/%0A",
+            "/players/%00",
+        ],
+    )
+    def test_backslashes_and_control_characters(self, url):
+        assert self.check(url) is None
+
+    def test_double_encoding_is_decoded_once_only(self):
+        # Routed as "/%6B%6Fntora/", a harmless path: not the admin, so it may stay.
+        assert self.check("/%256B%256Fntora/") == "/%256B%256Fntora/"
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "/players/",
+            "/players/?sort=net&dir=asc",
+            "/players/%D0%B0%D0%BB%D1%8C%D1%84%D0%B0/",
+            "/2026/tour/games/",
+            "/players/./",
+            "/kontorа/",  # a Cyrillic "а": another path, not the admin
+            "/kontora-news/",
+        ],
+    )
+    def test_safe_paths_are_kept(self, url):
+        assert self.check(url) == url

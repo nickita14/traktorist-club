@@ -7,7 +7,7 @@ failures and locks out the same username and address, plus the TOTP code with
 ADMIN_URL.
 """
 
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 from django.contrib.auth import logout
 from django.contrib.auth import views as auth_views
@@ -45,6 +45,34 @@ class OrganizerLoginForm(LoginForm):
             raise self.get_invalid_login_error()
 
 
+def _has_unsafe_characters(value: str) -> bool:
+    return any(char == "\\" or ord(char) < 32 or ord(char) == 127 for char in value)
+
+
+def remove_dot_segments(path: str) -> str:
+    """Resolve "." and ".." segments as a browser does before sending the request (RFC 3986)."""
+    output: list[str] = []
+    segments = path.split("/")
+    for index, segment in enumerate(segments):
+        last = index == len(segments) - 1
+        if segment == ".":
+            if last:
+                output.append("")
+        elif segment == "..":
+            if len(output) > 1:
+                output.pop()
+            if last:
+                output.append("")
+        else:
+            output.append(segment)
+    return "/".join(output)
+
+
+def routed_path(path: str) -> str:
+    """The path as it is routed: percent-decoded once (like Django), dot segments resolved."""
+    return remove_dot_segments(unquote(path))
+
+
 def safe_next(request, url: str | None) -> str | None:
     """``url`` as a local path, or None when it is off-site, under ADMIN_URL or the login pages."""
     if not url:
@@ -58,7 +86,12 @@ def safe_next(request, url: str | None) -> str | None:
     # "http://host//evil.example/" keeps a protocol-relative path: check the result again.
     if not url_has_allowed_host_and_scheme(local, allowed_hosts={request.get_host()}):
         return None
-    if is_admin_path(parts.path) or parts.path in (reverse("login"), reverse("logout")):
+    # Encoded ("/%6B%6Fntora/") or dotted ("/players/../kontora/") forms of a refused path are
+    # compared as the server will see them. Decoded once only: "%256B" stays harmless text.
+    path = routed_path(parts.path or "/")
+    if _has_unsafe_characters(url) or _has_unsafe_characters(path):
+        return None
+    if is_admin_path(path) or path in (reverse("login"), reverse("logout")):
         return None
     return local
 
