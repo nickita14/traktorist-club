@@ -1,12 +1,16 @@
+from urllib.parse import urlencode
+
 from django.conf import settings
 from django.core.paginator import InvalidPage, Paginator
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from club import charts, stats
 from club.models import Game, Player, Season, SeasonKind
+from club.sorting import CASH_KEYS, TOUR_KEYS, parse_sort
 
 RECENT_GAMES = 8
 PLAYER_RECENT_GAMES = 10
@@ -30,12 +34,18 @@ def _season(year: int, kind: str) -> Season:
 def season_standings(request, year: int, kind: str):
     season = _season(year, kind)
     years = list(Season.objects.filter(kind=kind).order_by("year").values_list("year", flat=True))
+    sort = parse_sort(request.GET, cash=kind == SeasonKind.CASH)
     return render(
         request,
         "club/season_standings.html",
         {
             "season": season,
-            "standings": stats.season_standings(season),
+            "standings": stats.season_standings(
+                season, order_by=sort.field, descending=sort.descending
+            ),
+            "sort": sort,
+            # The year switcher keeps the order.
+            "sort_suffix": f"?{sort.query}" if sort.query else "",
             "recent_games": stats.recent_games(season, RECENT_GAMES),
             "years": years,
             # No stored "closed" flag: the season of the current year is the running one.
@@ -129,17 +139,42 @@ def all_time(request):
     if filter_value not in ALL_TIME_KINDS:
         raise Http404("Нет такого формата.")
     kind = ALL_TIME_KINDS[filter_value]
+    sort = parse_sort(request.GET, cash=kind == SeasonKind.CASH)
     return render(
         request,
         "club/all_time.html",
         {
             "kind": kind,
             "cash": kind == SeasonKind.CASH,
-            "standings": stats.all_time_standings(kind),
+            "standings": stats.all_time_standings(
+                kind, order_by=sort.field, descending=sort.descending
+            ),
+            "sort": sort,
+            "kind_links": _kind_links(kind, sort),
             "totals": stats.club_totals(kind),
             "nav_section": "all-time",
         },
     )
+
+
+def _kind_links(current: str | None, sort) -> list[dict]:
+    """The format filter of /all-time/, keeping the order where the target table has that
+    column (ITM does not exist on the cash table)."""
+    links = []
+    for value, label in [(None, "Все"), ("tour", "Турниры"), ("cash", "Кэш")]:
+        params = {"kind": value} if value else {}
+        keys = CASH_KEYS if value == SeasonKind.CASH else TOUR_KEYS
+        if sort.key in keys:
+            params |= sort.params
+        query = urlencode(params)
+        links.append(
+            {
+                "label": label,
+                "url": reverse("all_time") + (f"?{query}" if query else ""),
+                "current": ALL_TIME_KINDS[value] == current,
+            }
+        )
+    return links
 
 
 @require_GET

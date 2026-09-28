@@ -24,7 +24,7 @@
     <nav class="mt-4" aria-label="Сезоны по годам">
       <ul class="segmented">
         {% for year in years %}
-          <li><a href="{% url 'season' year season.kind %}"{% if year == season.year %} aria-current="page"{% endif %}>{{ year }}</a></li>
+          <li><a href="{% url 'season' year season.kind %}{{ sort_suffix }}"{% if year == season.year %} aria-current="page"{% endif %}>{{ year }}</a></li>
         {% endfor %}
       </ul>
     </nav>

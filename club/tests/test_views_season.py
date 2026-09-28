@@ -221,8 +221,8 @@ class TestCashStandings:
         assert response.status_code == 200
         assert ">Ведомость кэш-игр</h1>" in html
         assert "Форма № 1-К" in html
-        assert ">Закупки</th>" in html and ">Выплаты</th>" in html
-        assert ">ITM</th>" not in html
+        assert ">Закупки</a></th>" in html and ">Выплаты</a></th>" in html
+        assert ">ITM</a></th>" not in html
         # Чарли +50, Дельта +10, Альфа −20, Браво −30.
         assert [p.name for p in response.context["standings"]] == [
             "Чарли",

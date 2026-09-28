@@ -103,27 +103,32 @@ def annotate_player_totals(
     return players.annotate(**_player_totals("results", scope))
 
 
-def season_standings(season: Season) -> QuerySet[Player]:
-    """Players who played in ``season``, best net first, with ``rank``.
+def _ranked(players: QuerySet[Player], order_by: str, descending: bool) -> QuerySet[Player]:
+    """Order by ``order_by`` (an annotation) with ``rank``; ties by net, highest first, then name.
 
-    ``rank`` is competition ranking by net: equal nets share a rank and the next one skips.
+    ``rank`` is competition ranking by ``order_by`` alone: equal values share a rank and the next
+    one skips.
     """
-    return (
-        annotate_player_totals(Player.objects.all(), season=season)
-        .filter(games_played__gt=0)
-        .annotate(rank=Window(Rank(), order_by=F("net").desc()))
-        .order_by("-net", "name", "nickname")
-    )
+    key = F(order_by).desc() if descending else F(order_by).asc()
+    order = [key] if order_by == "net" else [key, F("net").desc()]
+    return players.annotate(rank=Window(Rank(), order_by=key)).order_by(*order, "name", "nickname")
 
 
-def all_time_standings(kind: str | None = None) -> QuerySet[Player]:
-    """Players across all seasons (optionally one kind), best net first, with ``rank``."""
-    return (
-        annotate_player_totals(Player.objects.all(), kind=kind)
-        .filter(games_played__gt=0)
-        .annotate(rank=Window(Rank(), order_by=F("net").desc()))
-        .order_by("-net", "name", "nickname")
-    )
+def season_standings(
+    season: Season, *, order_by: str = "net", descending: bool = True
+) -> QuerySet[Player]:
+    """Players who played in ``season``, best net first (or by ``order_by``), with ``rank``."""
+    players = annotate_player_totals(Player.objects.all(), season=season).filter(games_played__gt=0)
+    return _ranked(players, order_by, descending)
+
+
+def all_time_standings(
+    kind: str | None = None, *, order_by: str = "net", descending: bool = True
+) -> QuerySet[Player]:
+    """Players across all seasons (optionally one kind), best net first (or by ``order_by``),
+    with ``rank``."""
+    players = annotate_player_totals(Player.objects.all(), kind=kind).filter(games_played__gt=0)
+    return _ranked(players, order_by, descending)
 
 
 def club_totals(kind: str | None = None) -> dict:

@@ -18,9 +18,9 @@
 {% block head_extra %}
   <nav class="mt-4" aria-label="Формат игр">
     <ul class="segmented segmented-words">
-      <li><a href="{% url 'all_time' %}"{% if not kind %} aria-current="page"{% endif %}>Все</a></li>
-      <li><a href="{% url 'all_time' %}?kind=tour"{% if kind == "tour" %} aria-current="page"{% endif %}>Турниры</a></li>
-      <li><a href="{% url 'all_time' %}?kind=cash"{% if kind == "cash" %} aria-current="page"{% endif %}>Кэш</a></li>
+      {% for link in kind_links %}
+        <li><a href="{{ link.url }}"{% if link.current %} aria-current="page"{% endif %}>{{ link.label }}</a></li>
+      {% endfor %}
     </ul>
   </nav>
 {% endblock %}

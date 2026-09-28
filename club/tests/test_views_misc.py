@@ -22,7 +22,7 @@ class TestAllTime:
         assert rows == [(1, "Альфа", 190), (2, "Дельта", 10), (3, "Чарли", 0), (4, "Браво", -230)]
         assert "Форма № 4 · Сводная за всё время" in html
         assert ">Ведомость за всё время</h1>" in html
-        assert ">ITM</th>" in html
+        assert ">ITM</a></th>" in html
         assert '<a href="/all-time/" aria-current="page">Все</a>' in html
 
     def test_meta_line_totals(self, client, club):
@@ -53,9 +53,9 @@ class TestAllTime:
             "Альфа",
             "Браво",
         ]
-        assert ">ITM</th>" not in html
+        assert ">ITM</a></th>" not in html
         assert "Первых мест" not in html
-        assert ">Закупки</th>" in html
+        assert ">Закупки</a></th>" in html
 
     def test_zero_itm_is_a_faint_dot(self, client, club):
         html = get_all_time(client, kind="tour").content.decode()
