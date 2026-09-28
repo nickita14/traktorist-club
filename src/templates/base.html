@@ -40,6 +40,13 @@
           {% if organizer.is_organizer %}
             <li class="site-nav-staff"><a href="{% url 'live:index' %}">Живая игра</a></li>
             <li><a href="{% url 'admin:index' %}">Админка</a></li>
+            <li>
+              <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit">Выйти</button>
+              </form>
+            </li>
           {% endif %}
         </ul>
       </nav>
@@ -57,9 +64,17 @@
       {% block content %}{% endblock %}
     </main>
 
-    <footer class="mt-12 flex flex-wrap justify-between gap-x-6 border-t border-ink py-3 font-head text-xs tracking-label text-muted uppercase">
+    <footer class="mt-12 flex min-h-13 flex-wrap items-center justify-between gap-x-6 border-t border-ink py-1 font-head text-xs tracking-label text-muted uppercase">
       <span>Лист {% block sheet %}1{% endblock %}</span>
-      {% block footer_meta %}{% endblock %}
+      <div class="flex flex-wrap items-center gap-x-6">
+        {% block footer_meta %}{% endblock %}
+        {% block footer_login %}
+          {# For organizers only, so kept out of the nav. The login page is club.auth.LoginView. #}
+          {% if not user.is_authenticated %}
+            <a class="footer-login" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">Войти</a>
+          {% endif %}
+        {% endblock %}
+      </div>
     </footer>
   </div>
 </body>

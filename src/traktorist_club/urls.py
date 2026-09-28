@@ -2,7 +2,7 @@ from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path, register_converter
 
-from club import views
+from club import auth, views
 from club.models import SeasonKind
 from live import views as live_views
 
@@ -30,6 +30,9 @@ urlpatterns = [
     path("players/<slug:slug>/", views.player_detail, name="player_detail"),
     path("players/<slug:slug>/games/", views.player_games, name="player_games"),
     path("all-time/", views.all_time, name="all_time"),
+    # The organizers' login on the public site (the admin login stays under ADMIN_URL).
+    path("prokhodnaya/", auth.LoginView.as_view(), name="login"),
+    path("prokhodnaya/vykhod/", auth.logout_view, name="logout"),
     # The blind timer display through its secret link: read-only, no login, outside ADMIN_URL.
     path("tablo/<str:token>/", live_views.tablo_public, name="tablo_public"),
     path("tablo/<str:token>/state/", live_views.tablo_public_state, name="tablo_public_state"),

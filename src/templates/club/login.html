@@ -1,0 +1,39 @@
+{% extends "club/document.html" %}
+{# The organizers' login (club.auth.LoginView). Never link anything under ADMIN_URL from here. #}
+
+{% block title %}Проходная{% endblock %}
+
+{% block form_label %}Форма № 5 · Пропуск{% endblock %}
+{% block doc_title %}Проходная{% endblock %}
+
+{% block meta %}
+  <p class="mt-3 text-muted italic">Вход для организаторов клуба</p>
+{% endblock %}
+
+{% block body %}
+  <form class="live-form mt-6 max-w-sm" method="post" action="{% url 'login' %}">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    {% for error in form.non_field_errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}
+    <label class="field">
+      <span class="field-label">Имя пользователя</span>
+      <input class="live-input live-input-text" type="text" name="username" value="{{ form.username.value|default:'' }}" maxlength="{{ form.username.field.max_length }}" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      {% for error in form.username.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+    </label>
+    <label class="field">
+      <span class="field-label">Пароль</span>
+      <input class="live-input live-input-text" type="password" name="password" autocomplete="current-password" required>
+      {% for error in form.password.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+    </label>
+    {% if form.fields.otp_token %}
+      <label class="field">
+        <span class="field-label">Код из приложения</span>
+        <input class="live-input" type="text" name="otp_token" inputmode="numeric" autocomplete="one-time-code" required>
+        {% for error in form.otp_token.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+      </label>
+    {% endif %}
+    <button class="btn btn-primary" type="submit">Войти</button>
+  </form>
+{% endblock %}
+
+{% block footer_login %}{% endblock %}

@@ -13,7 +13,7 @@ def is_organizer(user) -> bool:
     return user.is_superuser or user.groups.filter(name=ORGANIZER_GROUP).exists()
 
 
-def _signed_in(request) -> bool:
+def signed_in(request) -> bool:
     user = request.user
     if not user.is_authenticated:
         return False
@@ -31,7 +31,7 @@ def organizer_required(view):
     @csp_override(settings.SECURE_CSP)
     @wraps(view)
     def wrapper(request, *args, **kwargs):
-        if not _signed_in(request):
+        if not signed_in(request):
             login = reverse("admin:login")
             if request.headers.get("HX-Request"):
                 # htmx would follow a 302 and swap the login page into the board.
