@@ -4,7 +4,7 @@
     <div class="toast{% if toast_warning %} toast-warn{% endif %}" role="status">
       <span>{{ toast_message }}</span>
       {% if toast_action %}
-        <form hx-post="{% url 'live:undo' game.pk toast_action.pk %}" hx-target="#{{ undo_target }}" hx-swap="outerHTML" hx-include="#search" hx-disabled-elt="find button">
+        <form hx-post="{% url 'live:undo' game.pk toast_action.pk %}" hx-target="#{{ undo_target }}" hx-swap="outerHTML transition:true" hx-include="#search" hx-disabled-elt="find button">
           <button type="submit" class="btn-link">отменить</button>
         </form>
       {% endif %}

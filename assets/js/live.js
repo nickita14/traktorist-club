@@ -8,7 +8,9 @@
  *   has focus, so it never replaces what the organizer is typing.
  * - Quick amount buttons fill an input; the bottom sheet closes on its backdrop, "×" or Escape.
  * - The blind timer on the board counts its seconds down from what the server rendered and
- *   refreshes the board when the level runs out; "Скопировать" copies the display link.
+ *   refreshes the board when the level runs out.
+ * - "Поделиться табло" opens the phone's share sheet with the display link (Web Share API);
+ *   without it, the link is copied and a toast says so.
  */
 (() => {
   "use strict";
@@ -128,20 +130,44 @@
     setInterval(tickTimer, 500);
   }
 
-  async function copy(button) {
-    const input = document.querySelector(button.dataset.copy);
+  // The same toast as the server's (see live/_toast.html); CSS fades it out.
+  function toast(text, warning = false) {
+    const box = document.createElement("div");
+    box.className = warning ? "toast toast-warn" : "toast";
+    box.setAttribute("role", "status");
+    const span = document.createElement("span");
+    span.textContent = text;
+    box.append(span);
+    document.getElementById("toast").replaceChildren(box);
+  }
+
+  async function share(button) {
+    const url = button.dataset.share;
+    const data = { title: button.dataset.shareTitle, url };
+    if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+      try {
+        await navigator.share(data);
+        return;
+      } catch (error) {
+        if (error.name === "AbortError") {
+          return; // the organizer closed the share sheet
+        }
+      }
+    }
     try {
-      await navigator.clipboard.writeText(input.value);
-      button.textContent = "Скопировано";
+      await navigator.clipboard.writeText(url);
+      toast("Ссылка на табло скопирована.");
     } catch {
-      input.select(); // no clipboard access: leave it selected for a manual copy
+      const input = document.getElementById("display-link");
+      input?.select(); // no clipboard either: leave it selected for a manual copy
+      toast("Скопируйте ссылку из поля «Табло».", true);
     }
   }
 
   document.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-copy]");
+    const button = event.target.closest("[data-share]");
     if (button) {
-      copy(button);
+      share(button);
     }
   });
 })();

@@ -1,6 +1,6 @@
 {% load live %}
 {# A blind timer button: a form with a fresh idempotency key; the answer replaces the target (the board by default). #}
-<form hx-post="{% url 'live:act' game.pk action %}" hx-target="#{{ target|default:'board' }}" hx-swap="outerHTML" hx-disabled-elt="find button">
+<form hx-post="{% url 'live:act' game.pk action %}" hx-target="#{{ target|default:'board' }}" hx-swap="outerHTML transition:true" hx-disabled-elt="find button">
   <input type="hidden" name="key" value="{% new_key %}">
   {% if from %}<input type="hidden" name="from" value="{{ from }}">{% endif %}
   <button type="submit" class="{{ css }}"{% if label %} aria-label="{{ label }}"{% endif %}>{{ text }}</button>

@@ -1,6 +1,6 @@
 {% load live %}
 {# One board button: a form with a fresh idempotency key; the board swaps in the answer. #}
-<form hx-post="{% url 'live:act' game.pk action %}" hx-target="#board" hx-swap="outerHTML" hx-disabled-elt="find button">
+<form hx-post="{% url 'live:act' game.pk action %}" hx-target="#board" hx-swap="outerHTML transition:true" hx-disabled-elt="find button">
   <input type="hidden" name="key" value="{% new_key %}">
   <input type="hidden" name="result" value="{{ result.pk }}">
   <button type="submit" class="{{ css }}" aria-label="{{ label }}"{% if pressed %} aria-pressed="{{ pressed }}"{% endif %}>{{ prefix }}{{ text }}</button>

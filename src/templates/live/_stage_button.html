@@ -1,5 +1,5 @@
 {% load live %}
-<form class="flex" hx-post="{% url 'live:act' game.pk 'stage' %}" hx-target="#board" hx-swap="outerHTML" hx-disabled-elt="find button">
+<form class="flex" hx-post="{% url 'live:act' game.pk 'stage' %}" hx-target="#board" hx-swap="outerHTML transition:true" hx-disabled-elt="find button">
   <input type="hidden" name="key" value="{% new_key %}">
   <input type="hidden" name="from" value="{{ game.live_stage }}">
   <button type="submit" class="btn btn-primary w-full">{{ text }}</button>

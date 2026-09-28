@@ -77,37 +77,52 @@
     </ol>
     {% if clock.finished %}<p class="phase-note mt-2">уровни закончились · добавьте уровень</p>{% endif %}
 
-    <form id="add-level" class="blinds-add" hx-post="{% url 'live:act' game.pk 'level-add' %}" hx-target="#blinds" hx-swap="outerHTML" hx-disabled-elt="find button">
+    {# Both add forms in one block: the inputs and buttons join their form through the form attribute (htmx posts form.elements). #}
+    <h2 class="live-heading">Добавить</h2>
+    <form id="add-level" hx-post="{% url 'live:act' game.pk 'level-add' %}" hx-target="#blinds" hx-swap="outerHTML" hx-disabled-elt="[form=add-level][type=submit]">
       <input type="hidden" name="key" value="{% new_key %}">
+    </form>
+    <form id="add-break" hx-post="{% url 'live:act' game.pk 'break-add' %}" hx-target="#blinds" hx-swap="outerHTML" hx-disabled-elt="[form=add-break][type=submit]">
+      <input type="hidden" name="key" value="{% new_key %}">
+    </form>
+    <div class="blinds-add">
       <span class="blinds-name field-label">Уровень</span>
-      <input id="add-small" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" name="small" value="{{ last_level.small_blind }}" aria-label="Малый блайнд нового уровня">
-      <input id="add-big" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" name="big" value="{{ last_level.big_blind }}" aria-label="Большой блайнд нового уровня">
-      <input id="add-ante" class="live-input live-input-xs" type="number" inputmode="numeric" min="0" name="ante" value="{{ last_level.ante }}" aria-label="Анте нового уровня">
-      <input id="add-minutes" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" max="240" name="minutes" value="{{ last_level.minutes }}" aria-label="Минут нового уровня">
-      <button type="submit" class="btn btn-primary blinds-add-button">+ Уровень</button>
-    </form>
-    <form id="add-break" class="blinds-add blinds-add-break" hx-post="{% url 'live:act' game.pk 'break-add' %}" hx-target="#blinds" hx-swap="outerHTML" hx-disabled-elt="find button">
-      <input type="hidden" name="key" value="{% new_key %}">
+      <input id="add-small" form="add-level" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" name="small" value="{{ last_level.small_blind }}" aria-label="Малый блайнд нового уровня">
+      <input id="add-big" form="add-level" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" name="big" value="{{ last_level.big_blind }}" aria-label="Большой блайнд нового уровня">
+      <input id="add-ante" form="add-level" class="live-input live-input-xs" type="number" inputmode="numeric" min="0" name="ante" value="{{ last_level.ante }}" aria-label="Анте нового уровня">
+      <input id="add-minutes" form="add-level" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" max="240" name="minutes" value="{{ last_level.minutes }}" aria-label="Минут нового уровня">
+
       <span class="blinds-name field-label">Перерыв</span>
-      <input id="add-label" class="live-input live-input-text blinds-label" type="text" name="label" maxlength="60" value="Перерыв" aria-label="Название перерыва">
-      <input id="add-break-minutes" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" max="240" name="minutes" value="10" aria-label="Минут перерыва">
+      <input id="add-label" form="add-break" class="live-input live-input-text blinds-label" type="text" name="label" maxlength="60" value="Перерыв" aria-label="Название перерыва">
+      <input id="add-break-minutes" form="add-break" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" max="240" name="minutes" value="10" aria-label="Минут перерыва">
       {% if not clock.addon_row %}
-        <label class="blinds-addon"><input type="checkbox" name="addon"> перерыв на аддон</label>
+        <label class="blinds-addon"><input form="add-break" type="checkbox" name="addon"> перерыв на аддон</label>
       {% endif %}
-      <button type="submit" class="btn blinds-add-button">+ Перерыв</button>
-    </form>
+
+      <div class="blinds-add-buttons">
+        <button type="submit" form="add-level" class="btn">+ Уровень</button>
+        <button type="submit" form="add-break" class="btn">+ Перерыв</button>
+      </div>
+    </div>
 
     <h2 class="live-heading">Табло</h2>
-    <p class="text-sm text-muted italic">Ссылка открывает табло без входа и без кнопок. Новая ссылка отключает старую.</p>
-    <div class="link-copy">
-      <input id="display-link" class="live-input live-input-text" type="text" value="{{ display_url }}" readonly aria-label="Ссылка на табло">
-      <button type="button" class="btn" data-copy="#display-link">Скопировать</button>
-    </div>
-    <div class="timer-controls mt-2">
-      <a class="btn" href="{% url 'live:tablo' game.pk %}" target="_blank" rel="noopener">Открыть табло</a>
-      {% include "live/_timer_button.html" with action="link-reset" text="Новая ссылка" css="btn btn-accent" target="blinds" %}
+    <div class="tablo-link">
+      <input id="display-link" class="live-input live-input-text" type="text" value="{{ display_url }}" readonly aria-label="Ссылка на табло: без входа и без кнопок">
+      <a class="btn" href="{% url 'live:tablo' game.pk %}" target="_blank" rel="noopener">Открыть</a>
+      <form hx-post="{% url 'live:act' game.pk 'link-reset' %}" hx-target="#blinds" hx-swap="outerHTML" hx-disabled-elt="find button"
+            hx-confirm="Сделать новую ссылку? Старая перестанет работать на всех открытых табло.">
+        <input type="hidden" name="key" value="{% new_key %}">
+        <button type="submit" class="btn btn-accent">Новая ссылка</button>
+      </form>
     </div>
   {% endif %}
+
+  <nav class="bottom-bar" aria-label="Действия">
+    <a class="btn btn-primary" href="{% url 'live:board' game.pk %}">← К игре</a>
+    {% if timer %}
+      <button type="button" class="btn" data-share="{{ display_url }}" data-share-title="Табло · {{ timer.structure_name }}">Поделиться табло</button>
+    {% endif %}
+  </nav>
 </section>
 {% if oob %}
   {% include "live/_toast.html" with undo_target="blinds" %}
