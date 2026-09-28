@@ -74,3 +74,22 @@ def test_phone_sort_row(open_page, season):
     expect(page.locator(".sort-links a[aria-current]")).to_have_text("игры")
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
     assert page.evaluate("window.cspViolations") == []
+
+
+def test_favicons_load_without_csp_violations(open_page, season):
+    page = open_page(reverse("season", args=[2025, "tour"]), 1280)
+
+    loaded = page.evaluate("""async () => {
+      const links = [...document.querySelectorAll('link[rel$="icon"]')];
+      const answers = await Promise.all(links.map(link => fetch(link.href)));
+      const ico = await fetch('/favicon.ico');
+      return {
+        icons: answers.map(answer => [answer.status, answer.headers.get('Content-Type')]),
+        ico: [ico.status, ico.redirected, ico.headers.get('Content-Type')],
+      };
+    }""")
+
+    assert loaded["icons"] == [[200, "image/svg+xml"], [200, "image/png"], [200, "image/png"]]
+    assert loaded["ico"][:2] == [200, True]
+    assert "icon" in loaded["ico"][2]
+    assert page.evaluate("window.cspViolations") == []

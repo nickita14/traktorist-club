@@ -9,8 +9,8 @@
   <title>{% block title %}{% endblock %} · Живая игра</title>
   <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
   {% tailwind_css %}
+  {% include "includes/favicons.html" %}
   <link rel="manifest" href="{% url 'live:manifest' %}">
-  <link rel="apple-touch-icon" href="{% static 'icons/live-180.png' %}">
   <script src="{% static 'js/vendor/htmx-2.0.11.min.js' %}" defer></script>
   <script src="{% static 'js/blind-clock.js' %}" defer></script>
   <script src="{% static 'js/live.js' %}" defer></script>

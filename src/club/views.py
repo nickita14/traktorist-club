@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.paginator import InvalidPage, Paginator
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -175,6 +176,14 @@ def _kind_links(current: str | None, sort) -> list[dict]:
             }
         )
     return links
+
+
+@require_GET
+def favicon(request):
+    """Browsers ask for /favicon.ico on their own; the file itself is a (hashed) static file."""
+    response = redirect(static("icons/favicon.ico"))
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 @require_GET

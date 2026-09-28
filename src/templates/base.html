@@ -7,10 +7,10 @@
   <title>{% block title %}{% endblock %} · Кочующий Клуб Тракториста</title>
   <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
   {% tailwind_css %}
+  {% include "includes/favicons.html" %}
   {% if organizer.is_organizer %}
-    {# Organizers only: these point under the admin prefix, which nobody else may see. #}
+    {# Organizers only: the manifest points under the admin prefix, which nobody else may see. #}
     <link rel="manifest" href="{% url 'live:manifest' %}">
-    <link rel="apple-touch-icon" href="{% static 'icons/live-180.png' %}">
   {% endif %}
 </head>
 <body>
