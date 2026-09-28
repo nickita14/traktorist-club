@@ -3,7 +3,8 @@ import datetime
 from django import forms
 from django.utils import timezone
 
-from club.models import Player, Season, SeasonKind
+from club.models import BlindStructure, Player, Season, SeasonKind
+from live.actions import SEASON_BLINDS
 
 # Start form choice for a season of the current year that does not exist yet: "new-tour".
 NEW_SEASON_PREFIX = "new-"
@@ -32,10 +33,21 @@ class StartForm(forms.Form):
     season = forms.ChoiceField(label="Сезон")
     date = forms.DateField(label="Дата", widget=forms.DateInput(attrs={"type": "date"}))
     location = forms.CharField(label="Место", max_length=100, required=False)
+    # Tournaments only: a structure pk, the season's default or "" for no timer.
+    blinds = forms.ChoiceField(label="Таймер блайндов", required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["season"].choices = season_choices(timezone.localdate().year)
+        self.fields["blinds"].choices = [
+            (SEASON_BLINDS, "Как в сезоне"),
+            ("", "Без таймера"),
+            *((str(pk), name) for pk, name in BlindStructure.objects.values_list("pk", "name")),
+        ]
+
+    def clean_blinds(self) -> int | str | None:
+        value = self.cleaned_data["blinds"]
+        return int(value) if value.isdigit() else (value or None)
 
     def clean(self):
         cleaned = super().clean()

@@ -7,6 +7,8 @@
  * - The board's periodic refresh is skipped while the banner is up, a sheet is open or an input
  *   has focus, so it never replaces what the organizer is typing.
  * - Quick amount buttons fill an input; the bottom sheet closes on its backdrop, "×" or Escape.
+ * - The blind timer on the board counts its seconds down from what the server rendered and
+ *   refreshes the board when the level runs out; "Скопировать" copies the display link.
  */
 (() => {
   "use strict";
@@ -99,6 +101,47 @@
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && sheet().childElementCount > 0) {
       closeSheet();
+    }
+  });
+
+  // The timer strip: remaining seconds as rendered, counted down from when it appeared.
+  function tickTimer() {
+    const strip = document.querySelector("[data-timer]");
+    if (!strip || strip.hasAttribute("data-stopped")) {
+      return;
+    }
+    strip.shownAt ??= performance.now();
+    const remaining = Number(strip.dataset.remaining) * 1000 - (performance.now() - strip.shownAt);
+    strip.querySelector("[data-clock]").textContent = window.BlindClock.format(remaining);
+    const progress = strip.querySelector("[data-progress]");
+    progress.value = Math.min(progress.max, progress.max - Math.max(remaining, 0) / 1000);
+    if (remaining <= 0 && !strip.ended) {
+      strip.ended = true;
+      const board = document.getElementById("board");
+      if (board) {
+        htmx.trigger(board, "timer-end");
+      }
+    }
+  }
+
+  if (window.BlindClock) {
+    setInterval(tickTimer, 500);
+  }
+
+  async function copy(button) {
+    const input = document.querySelector(button.dataset.copy);
+    try {
+      await navigator.clipboard.writeText(input.value);
+      button.textContent = "Скопировано";
+    } catch {
+      input.select(); // no clipboard access: leave it selected for a manual copy
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-copy]");
+    if (button) {
+      copy(button);
     }
   });
 })();

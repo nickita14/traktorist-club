@@ -22,13 +22,13 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from club import stats
-from club.models import Game, Player, Result, SeasonKind
-from live import actions
+from club.models import BlindStructure, Game, Player, Result, SeasonKind
+from live import actions, clock
 from live import manifest as app_manifest
 from live.access import is_organizer, organizer_required
 from live.actions import GameGone, Outcome, RuleError
 from live.forms import ExitForm, NewPlayerForm, StartForm, parse_int
-from live.models import LiveAction
+from live.models import BlindTimer, LiveAction
 
 SEAT_CANDIDATES = 30
 
@@ -103,6 +103,20 @@ def stage_time(game: Game, now: datetime.datetime) -> StageTime:
     return StageTime(elapsed, datetime.timedelta(minutes=game.season.rebuy_minutes))
 
 
+def game_timer(game: Game) -> BlindTimer | None:
+    """The tournament's blind timer with its levels (two queries), or None (a cash game: none)."""
+    if game.season.kind != SeasonKind.TOUR:
+        return None
+    return BlindTimer.objects.filter(game=game).prefetch_related("levels").first()
+
+
+def timer_clock(timer: BlindTimer | None, now: datetime.datetime) -> clock.Clock | None:
+    if timer is None:
+        return None
+    rows = clock.rows_of(timer.levels.all())
+    return clock.clock_at(rows, timer.position, timer.started_at, timer.paused_at, now)
+
+
 def board_context(game: Game) -> dict:
     results = list(
         stats.annotate_result_net(game.results.select_related("player")).order_by(
@@ -113,10 +127,13 @@ def board_context(game: Game) -> dict:
     for result in results:
         result.live_place = places[result.pk]
     now = timezone.localtime()
+    timer = game_timer(game)
     return {
         "game": game,
         "season": game.season,
         "cash": game.season.kind == SeasonKind.CASH,
+        "timer": timer,
+        "clock": timer_clock(timer, now),
         "totals": stats.live_totals(game),
         "playing": [result for result in results if result.out_order is None],
         # Latest out first: that is the one a "вернуть" is most likely for.
@@ -158,6 +175,9 @@ def refresh(
     if request.headers.get("HX-Target") == "player-list":
         context = seating_context(game, request.POST.get("q", ""))
         fragment = "live/_seating_list.html"
+    elif request.headers.get("HX-Target") == "blinds":
+        context = blinds_context(request, game)
+        fragment = "live/_blinds.html"
     else:
         context = board_context(game)
         fragment = "live/_board.html"
@@ -196,6 +216,7 @@ def start(request):
                     kind=data["kind"],
                     date=data["date"],
                     location=data["location"],
+                    blinds=data["blinds"],
                 )
             except RuleError as error:
                 form.add_error(None, str(error))
@@ -210,6 +231,7 @@ def start(request):
                 "key": uuid.uuid4(),
                 "date": timezone.localdate(),
                 "location": last.location if last else "",
+                "blinds": actions.SEASON_BLINDS,
             }
         )
     return render(request, "live/start.html", {"form": form})
@@ -235,6 +257,36 @@ def _tour_action(name: str):
     return call
 
 
+def _numbers(post, *names: str, minimum: int = 0) -> list[int]:
+    """Whole numbers from the form, or a RuleError for the organizer."""
+    values = [parse_int(post.get(name), minimum=minimum) for name in names]
+    if None in values:
+        raise RuleError("Нужны целые числа.")
+    return values
+
+
+def _edit_level(pk, key, user, post):
+    (position, minutes) = _numbers(post, "position", "minutes", minimum=1)
+    blinds = {}
+    if "small" in post:
+        small, big, ante = _numbers(post, "small", "big", "ante")
+        blinds = {"small": small, "big": big, "ante": ante}
+    return actions.edit_level(pk, key, user, position, minutes=minutes, **blinds)
+
+
+def _add_level(pk, key, user, post):
+    small, big, ante, minutes = _numbers(post, "small", "big", "ante", "minutes")
+    return actions.add_level(pk, key, user, small=small, big=big, ante=ante, minutes=minutes)
+
+
+def _step(step: int):
+    def call(pk, key, user, post):
+        (position,) = _numbers(post, "from", minimum=1)
+        return actions.step_level(pk, key, user, position, step)
+
+    return call
+
+
 ACTIONS = {
     "rebuy": _tour_action("rebuy"),
     "eliminate": _tour_action("eliminate"),
@@ -249,6 +301,20 @@ ACTIONS = {
     ),
     "stage": lambda pk, key, user, post: actions.advance_stage(pk, key, user, post.get("from")),
     "close": lambda pk, key, user, post: actions.close_cash(pk, key, user),
+    "timer-start": lambda pk, key, user, post: actions.start_timer(
+        pk, key, user, *_numbers(post, "structure", minimum=1)
+    ),
+    "timer-pause": lambda pk, key, user, post: actions.set_paused(pk, key, user, True),
+    "timer-run": lambda pk, key, user, post: actions.set_paused(pk, key, user, False),
+    "timer-next": _step(1),
+    "timer-prev": _step(-1),
+    "timer-plus": lambda pk, key, user, post: actions.add_minute(pk, key, user),
+    "level-edit": _edit_level,
+    "level-add": _add_level,
+    "bulk-minutes": lambda pk, key, user, post: actions.bulk_minutes(
+        pk, key, user, *_numbers(post, "from", "minutes", minimum=1)
+    ),
+    "link-reset": lambda pk, key, user, post: actions.reset_link(pk, key, user),
     "cancel": lambda pk, key, user, post: actions.cancel_game(pk, user),
 }
 
@@ -287,6 +353,189 @@ def undo(request, pk: int, action_pk: int):
     except GameGone:
         return gone(request, pk)
     return refresh(request, pk, message=f"Отменено: {outcome.action.summary}", warning=False)
+
+
+# Blind structure of a game.
+
+
+BULK_MINUTES = (10, 15, 20, 30)
+
+
+@dataclass(frozen=True)
+class LevelRow:
+    row: clock.Row
+    played: bool
+    current: bool
+    blinds_editable: bool
+
+
+def blinds_context(request, game: Game) -> dict:
+    timer = game_timer(game)
+    current = timer_clock(timer, timezone.now())
+    context = {"game": game, "season": game.season, "timer": timer, "clock": current}
+    if timer is None:
+        return context | {"structures": BlindStructure.objects.all()}
+    rows = [
+        LevelRow(
+            row,
+            played=current.played(row),
+            current=row == current.current,
+            blinds_editable=not row.is_break
+            and not current.played(row)
+            and (row != current.current or current.fix_blinds_open),
+        )
+        for row in current.rows
+    ]
+    # "С уровня N": levels that have not been played yet.
+    bulk_from = [row.row.number for row in rows if row.row.number is not None and not row.played]
+    last = next(row for row in reversed(current.rows) if not row.is_break)
+    return context | {
+        "rows": rows,
+        "bulk_from": bulk_from,
+        "bulk_minutes": BULK_MINUTES,
+        "last_level": last,
+        "display_url": request.build_absolute_uri(
+            reverse("tablo_public", args=[timer.display_token])
+        ),
+        "poll_seconds": settings.LIVE_POLL_SECONDS,
+    }
+
+
+@organizer_required
+@require_GET
+def blinds(request, pk: int):
+    """The game's own blind structure: minutes and blinds of the levels still to come."""
+    game = _game(pk)
+    if not game.is_live:
+        return gone(request, pk)
+    if game.season.kind != SeasonKind.TOUR:
+        return redirect("live:board", pk)
+    context = blinds_context(request, game)
+    if _is_htmx(request) and request.headers.get("HX-Target") == "blinds":
+        return render(request, "live/_blinds.html", context)
+    return render(request, "live/blinds.html", context)
+
+
+# The display (табло): a laptop at the table. The organizer's page has controls; the secret link
+# (a random token per game) shows the same display read-only, without a login. The browser counts
+# the seconds itself (assets/js/tablo.js) and resyncs with the state JSON every few seconds.
+
+TIMER_ACTIONS = ("timer-pause", "timer-run", "timer-next", "timer-prev", "timer-plus")
+
+
+def _epoch_ms(moment: datetime.datetime | None) -> int | None:
+    return None if moment is None else round(moment.timestamp() * 1000)
+
+
+def display_state(game: Game, timer: BlindTimer, totals: stats.LiveTotals) -> dict:
+    """Everything the display needs to count on its own; ``now`` lets it correct its clock."""
+    return {
+        "now": _epoch_ms(timezone.now()),
+        "position": timer.position,
+        "started": _epoch_ms(timer.started_at),
+        "paused": _epoch_ms(timer.paused_at),
+        "levels": [row.as_json() for row in clock.rows_of(timer.levels.all())],
+        "stage": game.live_stage,
+        "players": totals.in_game,
+        "total": totals.players,
+        "bank": totals.bank,
+    }
+
+
+def display_context(game: Game, timer: BlindTimer, *, controls: bool, state_url: str) -> dict:
+    number = stats.annotate_live_number(Game.objects.filter(pk=game.pk)).values("number")
+    totals = stats.live_totals(game)
+    return {
+        "game": game,
+        "number": number[0]["number"],
+        "timer": timer,
+        "clock": timer_clock(timer, timezone.now()),
+        "totals": totals,
+        "controls": controls,
+        "state_url": state_url,
+        "sync_seconds": settings.TIMER_SYNC_SECONDS,
+    }
+
+
+def _no_index(response: HttpResponse) -> HttpResponse:
+    response["X-Robots-Tag"] = "noindex, nofollow"
+    return response
+
+
+def _organizer_timer(pk: int) -> tuple[Game, BlindTimer]:
+    game = _game(pk)
+    timer = game_timer(game) if game.is_live else None
+    if timer is None:
+        raise Http404
+    return game, timer
+
+
+@organizer_required
+@require_GET
+def tablo(request, pk: int):
+    game, timer = _organizer_timer(pk)
+    context = display_context(
+        game, timer, controls=True, state_url=reverse("live:tablo_state", args=[pk])
+    )
+    return _no_index(render(request, "live/tablo.html", context))
+
+
+@organizer_required
+@require_GET
+def tablo_state(request, pk: int):
+    game, timer = _organizer_timer(pk)
+    return _no_index(JsonResponse(display_state(game, timer, stats.live_totals(game))))
+
+
+@organizer_required
+@require_POST
+def tablo_act(request, pk: int, name: str):
+    """A display button: the same timer actions as the phone, answered with the new state."""
+    key = _key(request)
+    if name not in TIMER_ACTIONS or key is None:
+        return HttpResponseBadRequest("Неизвестное действие.")
+    error = None
+    try:
+        ACTIONS[name](pk, key, request.user, request.POST)
+    except RuleError as rule:
+        error = str(rule)
+    except GameGone:
+        raise Http404 from None
+    game, timer = _organizer_timer(pk)
+    state = display_state(game, timer, stats.live_totals(game))
+    return JsonResponse(state | {"error": error})
+
+
+def _public_timer(token: str) -> BlindTimer:
+    """The timer of a live game by its display token; revoked tokens and finished games 404."""
+    timer = (
+        BlindTimer.objects.select_related("game__season")
+        .filter(display_token=token, game__live_stage__gt="")
+        .first()
+    )
+    if timer is None:
+        raise Http404
+    return timer
+
+
+@require_GET
+def tablo_public(request, token: str):
+    """The display through the secret link: no login, no controls, nothing about ADMIN_URL."""
+    timer = _public_timer(token)
+    context = display_context(
+        timer.game,
+        timer,
+        controls=False,
+        state_url=reverse("tablo_public_state", args=[token]),
+    )
+    return _no_index(render(request, "live/tablo.html", context))
+
+
+@require_GET
+def tablo_public_state(request, token: str):
+    timer = _public_timer(token)
+    game = timer.game
+    return _no_index(JsonResponse(display_state(game, timer, stats.live_totals(game))))
 
 
 # Seating.

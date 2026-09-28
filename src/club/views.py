@@ -179,5 +179,6 @@ def _kind_links(current: str | None, sort) -> list[dict]:
 
 @require_GET
 def robots_txt(request):
-    rule = "Allow: /" if settings.SITE_INDEXING else "Disallow: /"
-    return HttpResponse(f"User-agent: *\n{rule}\n", content_type="text/plain")
+    # The blind timer display (/tablo/) stays out even when the rest may be indexed.
+    rules = "Allow: /\nDisallow: /tablo/" if settings.SITE_INDEXING else "Disallow: /"
+    return HttpResponse(f"User-agent: *\n{rules}\n", content_type="text/plain")

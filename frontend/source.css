@@ -932,4 +932,398 @@
   .conn-error .btn {
     border-color: var(--paper);
   }
+  /* A hint that needs the organizer (the timer reached the add-on break). */
+  .phase-alert {
+    margin-top: 0.25rem;
+    color: var(--accent);
+    font-family: var(--font-stack-body);
+    font-size: var(--text-sm);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  /* Two columns of timer buttons: run and next level on top, the structure and display below. */
+  .timer-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .timer-controls > form {
+    display: flex;
+  }
+
+  .timer-controls .btn {
+    flex: 1;
+  }
+
+  /* The game's blind structure on the phone: number, small, big, ante, minutes. */
+  .bulk-minutes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .bulk-from {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .bulk-from .live-input {
+    width: 4.5rem;
+  }
+
+  .bulk-buttons {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .blinds-head,
+  .blinds-row,
+  .blinds-add {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(4, 3.75rem);
+    gap: 0.375rem;
+    align-items: center;
+  }
+
+  .blinds-head {
+    margin-top: 0.75rem;
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    text-align: right;
+    text-transform: uppercase;
+  }
+
+  .blinds-row {
+    min-height: 3.25rem;
+    padding-block: 0.25rem;
+    border-bottom: 1px solid var(--rule);
+    text-align: right;
+    word-spacing: var(--number-word-spacing);
+  }
+
+  .blinds-name {
+    min-width: 0;
+    text-align: left;
+    word-spacing: normal;
+  }
+
+  .blinds-span {
+    grid-column: span 3;
+  }
+
+  .blinds-row-played {
+    color: var(--faint);
+  }
+
+  .blinds-row-current {
+    border-left: 3px solid var(--ink);
+    padding-left: 0.375rem;
+    background: var(--surface);
+    font-weight: 700;
+  }
+
+  .blinds-now {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .blinds-add {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 3px double var(--ink);
+  }
+
+  .blinds-add-button {
+    grid-column: 1 / -1;
+  }
+
+  .live-input-xs {
+    width: 100%;
+    padding-inline: 0.25rem;
+    text-align: right;
+  }
+
+  .link-copy {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  /* The blind timer display (табло): a laptop at the table, landscape. Sizes follow the
+     viewport: the time is about 230px tall at 1280 wide. */
+  .tablo {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding: 1.5vw 2.5vw;
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  .tablo-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 2rem;
+    padding-bottom: 0.75vw;
+    border-bottom: 3px double var(--ink);
+    font-family: var(--font-stack-head);
+    font-size: clamp(1rem, 1.6vw, 1.75rem);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .tablo-club {
+    font-size: clamp(1.25rem, 2.2vw, 2.5rem);
+    text-transform: uppercase;
+  }
+
+  .tablo-offline {
+    margin-left: auto;
+    padding: 0 0.5rem;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 0.75em;
+  }
+
+  .tablo-grid {
+    display: grid;
+    flex: 1;
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 26vw);
+    gap: 3vw;
+    padding-top: 1.5vw;
+  }
+
+  .tablo-level,
+  .tablo-label,
+  .tablo-facts dt {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+
+  .tablo-level {
+    font-size: clamp(1rem, 2vw, 2.25rem);
+  }
+
+  .tablo-clock-box {
+    position: relative;
+  }
+
+  .tablo-clock {
+    font-size: min(18vw, 38vh);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+  }
+
+  .tablo-is-paused .tablo-clock {
+    color: var(--faint);
+  }
+
+  .tablo-stamp {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    padding: 0.5vw 2vw;
+    border-width: 0.6vw;
+    background: color-mix(in srgb, var(--paper) 80%, transparent);
+    font-size: min(7vw, 14vh);
+    transform: translate(-50%, -50%) rotate(-8deg);
+  }
+
+  .tablo [hidden] {
+    display: none;
+  }
+
+  .tablo-progress {
+    display: block;
+    width: 100%;
+    height: 4px;
+    margin-block: 1vw 1.5vw;
+    border: 0;
+    appearance: none;
+    background: var(--rule);
+    color: var(--ink);
+  }
+
+  .tablo-progress::-webkit-progress-bar {
+    background: var(--rule);
+  }
+
+  .tablo-progress::-webkit-progress-value {
+    background: var(--ink);
+  }
+
+  .tablo-progress::-moz-progress-bar {
+    background: var(--ink);
+  }
+
+  .tablo-blinds {
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .tablo-now,
+  .tablo-next {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 2vw;
+    padding-block: 0.75vw;
+  }
+
+  .tablo-now {
+    font-size: min(6.5vw, 13vh);
+    line-height: 1.1;
+  }
+
+  .tablo-now .tablo-label,
+  .tablo-next .tablo-label {
+    width: 100%;
+    font-size: clamp(0.875rem, 1.3vw, 1.5rem);
+  }
+
+  .tablo-ante {
+    color: var(--ink);
+    font-size: 0.45em;
+  }
+
+  .tablo-next {
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: min(3.2vw, 6.5vh);
+  }
+
+  .tablo-break-label {
+    font-family: var(--font-stack-head);
+    text-transform: uppercase;
+  }
+
+  .tablo-break .tablo-now > span:last-child {
+    width: 100%;
+    color: var(--muted);
+    font-size: 0.4em;
+  }
+
+  .tablo-note {
+    margin-top: 1vw;
+    color: var(--muted);
+    font-size: clamp(1rem, 1.6vw, 1.75rem);
+    font-style: italic;
+  }
+
+  .tablo-side {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5vw;
+    padding-left: 2vw;
+    border-left: 1px solid var(--rule);
+  }
+
+  .tablo-facts > div {
+    padding-block: 0.75vw;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .tablo-facts dt {
+    font-size: clamp(0.875rem, 1.2vw, 1.375rem);
+  }
+
+  .tablo-fact {
+    font-size: clamp(1.5rem, 3.4vw, 4rem);
+    line-height: 1.15;
+    word-spacing: var(--number-word-spacing);
+  }
+
+  .tablo-sub {
+    color: var(--muted);
+    font-size: clamp(0.875rem, 1.3vw, 1.5rem);
+  }
+
+  .tablo-controls {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: auto;
+  }
+
+  .tablo-controls .btn {
+    min-height: 3.5rem;
+    font-size: clamp(1rem, 1.4vw, 1.5rem);
+  }
+
+  .tablo-controls .tablo-toggle {
+    min-height: 5rem;
+  }
+
+  .tablo-steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+
+  .tablo-message {
+    min-height: 1.5em;
+    color: var(--accent);
+    font-size: var(--text-sm);
+  }
+
+  .tablo-sound {
+    position: fixed;
+    bottom: 1.5vw;
+    left: 50%;
+    min-height: 2.75rem;
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--ink);
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-stack-head);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    transform: translateX(-50%);
+    cursor: pointer;
+  }
+
+  /* A narrow window (a phone opening the secret link): one column. */
+  @media (max-width: 48rem) {
+    .tablo-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .tablo-side {
+      padding-left: 0;
+      border-left: 0;
+    }
+
+    .tablo-grid {
+      align-content: start;
+    }
+
+    .tablo-clock {
+      font-size: 24vw;
+    }
+
+    .tablo-now {
+      font-size: 11vw;
+    }
+
+    .tablo-next {
+      font-size: 6vw;
+    }
+  }
 }
