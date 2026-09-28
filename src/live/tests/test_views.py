@@ -38,18 +38,6 @@ def fresh(result) -> Result:
     return result
 
 
-@pytest.fixture
-def tour(db):
-    game = live_game(SeasonKind.TOUR)
-    return game, seat(game, "Альфа", "Браво", "Чарли")
-
-
-@pytest.fixture
-def cash(db):
-    game = live_game(SeasonKind.CASH)
-    return game, seat(game, "Альфа", "Браво")
-
-
 def page_urls(game, result):
     return [
         reverse("live:index"),

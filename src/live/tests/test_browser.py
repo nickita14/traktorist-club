@@ -77,13 +77,13 @@ def test_rebuy_toast_and_undo(phone):
     page.get_by_label("Ребай: Альфа").click()
 
     expect(page.locator(".toast")).to_contain_text("Ребай: Альфа +50")
-    assert buyin(alpha) == 150
-    expect(page.locator(".stat-strip")).to_contain_text("350")
+    assert buyin(alpha) == 100
+    expect(page.locator(".stat-strip")).to_contain_text("200")
 
     page.locator(".toast").get_by_text("отменить").click()
 
     expect(page.locator(".toast")).to_contain_text("Отменено: Ребай: Альфа +50")
-    assert buyin(alpha) == 100
+    assert buyin(alpha) == 50
     assert_clean(page)
 
 
@@ -107,7 +107,7 @@ def test_addon_toggle(phone):
     page.get_by_label("Аддон: Альфа").click()
 
     expect(page.get_by_label("Аддон: Альфа")).to_have_attribute("aria-pressed", "true")
-    assert buyin(alpha) == 150
+    assert buyin(alpha) == 100
     assert_clean(page)
 
 
@@ -169,17 +169,17 @@ def test_lost_connection_shows_an_error_and_retries_once(phone):
 
     expect(page.locator("#conn-error")).to_be_visible()
     expect(page.locator("#conn-error")).to_contain_text("Нет связи")
-    assert buyin(alpha) == 100
+    assert buyin(alpha) == 50
 
     page.context.set_offline(False)
     page.get_by_role("button", name="Повторить").click()
 
     expect(page.locator(".toast")).to_contain_text("Ребай: Альфа +50")
     expect(page.locator("#conn-error")).to_be_hidden()
-    assert buyin(alpha) == 150
+    assert buyin(alpha) == 100
     page.locator("[data-retry]").evaluate("el => el.click()")  # a stray retry
     page.wait_for_timeout(500)
-    assert buyin(alpha) == 150
+    assert buyin(alpha) == 100
     assert_clean(page)
 
 
@@ -194,7 +194,7 @@ def test_seating_search_and_new_player(phone):
     page.get_by_label("Ник", exact=True).fill("Дед")
     page.get_by_role("button", name="Создать и посадить").click()
 
-    expect(page.locator(".toast")).to_contain_text("За стол: Дед, 100")
+    expect(page.locator(".toast")).to_contain_text("За стол: Дед, 50")
     expect(page.get_by_label("Имя", exact=True)).to_have_value("")
     assert Result.objects.filter(game=game, player__name="Дельта").exists()
     assert_touch_targets(page)
@@ -209,7 +209,7 @@ def test_other_pages_are_clean(phone, name):
 
 
 def test_results_prefilled_split_redistribute_and_save(phone):
-    tour = live_game(SeasonKind.TOUR)
+    tour = live_game(SeasonKind.TOUR, entry_price=100)
     alpha, bravo = seat(tour, "Альфа", "Браво")
     actions.advance_stage(tour.pk, key(), None, "rebuys")
     actions.advance_stage(tour.pk, key(), None, "addon")

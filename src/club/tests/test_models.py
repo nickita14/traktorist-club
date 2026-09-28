@@ -22,7 +22,7 @@ class TestSeason:
         season.refresh_from_db()
         assert season.chips_per_lei == 100
         assert season.paid_places == 3
-        assert (season.entry_price, season.rebuy_price, season.addon_price) == (100, 50, 50)
+        assert (season.entry_price, season.rebuy_price, season.addon_price) == (50, 50, 50)
         assert (season.rebuy_minutes, season.cash_step) == (120, 50)
         assert (season.payout_weights, season.prize_weights, season.payout_round) == (
             "3,2,1",

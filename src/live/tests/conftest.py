@@ -38,8 +38,11 @@ def seat(game, *names):
 
 @pytest.fixture
 def tour(db):
-    """A live tournament in stage 1 with Альфа, Браво, Чарли seated (entry 100)."""
-    game = live_game(SeasonKind.TOUR)
+    """A live tournament in stage 1 with Альфа, Браво, Чарли seated.
+
+    Entry 100 (not the default 50): the split tests are worked out on a bank of 300.
+    """
+    game = live_game(SeasonKind.TOUR, entry_price=100)
     return game, seat(game, "Альфа", "Браво", "Чарли")
 
 

@@ -47,7 +47,7 @@ def test_parallel_rebuys_all_count():
     assert run_together(*calls) == []
 
     alpha.refresh_from_db()
-    assert (alpha.buyin, alpha.rebuys) == (100 + 8 * 50, 8)
+    assert (alpha.buyin, alpha.rebuys) == (50 + 8 * 50, 8)
 
 
 def test_same_key_from_two_phones_applies_once():
@@ -58,7 +58,7 @@ def test_same_key_from_two_phones_applies_once():
     assert run_together(*[lambda: actions.rebuy(game.pk, same, None, alpha.pk)] * 4) == []
 
     alpha.refresh_from_db()
-    assert alpha.buyin == 150
+    assert alpha.buyin == 100
     assert LiveAction.objects.filter(key=same).count() == 1
 
 
@@ -98,7 +98,7 @@ def test_rebuy_racing_the_stage_change():
     )
 
     alpha.refresh_from_db()
-    assert (alpha.buyin, len(errors)) in {(150, 0), (100, 1)}
+    assert (alpha.buyin, len(errors)) in {(100, 0), (50, 1)}
 
 
 def test_cash_top_ups_from_two_phones():

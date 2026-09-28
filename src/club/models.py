@@ -122,7 +122,7 @@ class Season(models.Model):
     chips_per_lei = models.PositiveIntegerField("фишек за 1 лей", default=100)
     paid_places = models.PositiveSmallIntegerField("призовых мест", default=3)
     # Prices used by the live game screens; Result.buyin stays the source of truth.
-    entry_price = models.PositiveIntegerField("вход в турнир, лей", default=100)
+    entry_price = models.PositiveIntegerField("вход в турнир, лей", default=50)
     rebuy_price = models.PositiveIntegerField("ребай, лей", default=50)
     addon_price = models.PositiveIntegerField("аддон, лей", default=50)
     rebuy_minutes = models.PositiveSmallIntegerField(

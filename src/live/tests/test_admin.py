@@ -17,7 +17,7 @@ def test_superuser_reads_the_log(admin_client):
     response = admin_client.get(reverse("admin:live_liveaction_changelist"))
 
     assert response.status_code == 200
-    assert "За стол: Альфа, 100" in response.text
+    assert "За стол: Альфа, 50" in response.text
 
 
 def test_log_is_read_only(admin_client):
@@ -52,7 +52,7 @@ def test_deleting_a_game_in_the_admin_deletes_its_log(admin_client):
     confirm = admin_client.get(url)
     assert confirm.status_code == 200
     assert not confirm.context["perms_lacking"]
-    assert "За стол: Альфа, 100" in confirm.text  # listed among what goes
+    assert "За стол: Альфа, 50" in confirm.text  # listed among what goes
 
     response = admin_client.post(url, {"post": "yes"})
 
