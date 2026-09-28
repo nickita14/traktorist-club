@@ -1,0 +1,98 @@
+{% load static tailwind_cli ledger live %}<!doctype html>
+{# The blind timer display. Standalone on purpose: the secret link must not render the site nav, the organizer shortcuts or the manifest, which hold ADMIN_URL. The server renders the first frame; assets/js/tablo.js counts from there. #}
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Табло · Турнир № {{ number }}</title>
+  <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+  {% tailwind_css %}
+  <script src="{% static 'js/blind-clock.js' %}" defer></script>
+  <script src="{% static 'js/tablo.js' %}" defer></script>
+</head>
+{% with row=clock.current next=clock.next_level pause=clock.next_break %}
+<body class="tablo{% if clock.paused %} tablo-is-paused{% endif %}{% if row.is_break %} tablo-is-break{% endif %}"
+      data-state-url="{{ state_url }}" data-sync-seconds="{{ sync_seconds }}"
+      {% if controls %}data-act-url="{% url 'live:tablo_act' game.pk 'NAME' %}" data-csrf="{{ csrf_token }}"{% endif %}>
+  <header class="tablo-head">
+    <span class="font-display tablo-club">Кочующий Клуб Тракториста</span>
+    <span class="tablo-game">Турнир № <span class="font-num">{{ number }}</span> · <span class="font-num">{{ game.date|date:"d.m.Y" }}</span></span>
+    <span class="tablo-offline" data-offline hidden>нет связи</span>
+  </header>
+
+  <main class="tablo-grid">
+    <section class="tablo-main" aria-label="Уровень">
+      <p class="tablo-level" data-level-line>{% if row.is_break %}{{ row.label }} · <span class="font-num">{{ row.minutes }}</span> мин{% else %}Уровень <span class="font-num">{{ row.number }}</span> · из <span class="font-num">{{ clock.level_count }}</span> · <span class="font-num">{{ row.minutes }}</span> мин{% endif %}</p>
+      <div class="tablo-clock-box">
+        <p class="tablo-clock font-num" data-clock role="timer" aria-live="off">{{ clock.remaining_text }}</p>
+        <p class="stamp tablo-stamp" data-paused-stamp{% if not clock.paused %} hidden{% endif %}>Пауза</p>
+      </div>
+      <progress class="tablo-progress" max="{{ clock.duration_seconds }}" value="{{ clock.progress_seconds }}" aria-label="Время уровня" data-progress></progress>
+
+      <div class="tablo-blinds" data-blinds{% if row.is_break %} hidden{% endif %}>
+        <div class="tablo-now">
+          <span class="tablo-label">Блайнды</span>
+          <span class="tablo-now-value font-num num-run" data-blinds-now>{% if not row.is_break %}{{ row.small_blind|money }} / {{ row.big_blind|money }}{% endif %}</span>
+          <span class="tablo-ante" data-ante-now{% if not row.ante %} hidden{% endif %}>анте <span class="font-num num-run" data-ante-now-value>{{ row.ante|money }}</span></span>
+        </div>
+        <div class="tablo-next" data-next{% if not next %} hidden{% endif %}>
+          <span class="tablo-label">Далее</span>
+          <span class="font-num num-run" data-blinds-next>{% if next %}{{ next.small_blind|money }} / {{ next.big_blind|money }}{% endif %}</span>
+          <span data-ante-next{% if not next.ante %} hidden{% endif %}>анте <span class="font-num num-run" data-ante-next-value>{% if next %}{{ next.ante|money }}{% endif %}</span></span>
+        </div>
+      </div>
+      <div class="tablo-blinds tablo-break" data-break{% if not row.is_break %} hidden{% endif %}>
+        <div class="tablo-now">
+          <span class="tablo-label">Перерыв</span>
+          <span class="tablo-break-label" data-break-label>{% if row.is_break %}{{ row.label }}{% endif %}</span>
+          <span>до конца <span class="font-num" data-break-clock>{{ clock.remaining_text }}</span></span>
+        </div>
+        <div class="tablo-next" data-break-next{% if not next %} hidden{% endif %}>
+          <span class="tablo-label">После перерыва</span>
+          <span class="font-num num-run" data-break-next-value>{% if next %}{{ next.small_blind|money }} / {{ next.big_blind|money }}{% endif %}</span>
+        </div>
+      </div>
+      <p class="tablo-note" data-finished{% if not clock.finished %} hidden{% endif %}>уровни закончились · добавьте уровень</p>
+    </section>
+
+    <aside class="tablo-side" aria-label="Турнир">
+      <dl class="tablo-facts">
+        <div data-until-break-block{% if not pause %} hidden{% endif %}>
+          <dt>До перерыва</dt>
+          <dd class="tablo-fact font-num" data-until-break>{% if clock.until_break is not None %}{{ clock.until_break|clock_text }}{% endif %}</dd>
+          <dd class="tablo-sub" data-until-break-note>{% if pause %}{% with before=clock|level_before:pause %}{% if before %}после <span class="font-num">{{ before.number }}</span>-го уровня{% endif %}{% endwith %}{% if pause.addon_break %} · аддон{% endif %}{% endif %}</dd>
+        </div>
+        <div>
+          <dt>Ребаи</dt>
+          <dd class="tablo-fact" data-rebuys>{% if game.live_stage == "rebuys" %}Открыты{% else %}Закрыты{% endif %}</dd>
+          <dd class="tablo-sub" data-rebuys-note>{% if game.live_stage == "rebuys" and clock.rebuys_until %}до конца <span class="font-num">{{ clock.rebuys_until.number }}</span>-го уровня{% endif %}</dd>
+        </div>
+        <div>
+          <dt>В игре</dt>
+          <dd class="tablo-fact font-num" data-players>{{ totals.in_game }} / {{ totals.players }}</dd>
+        </div>
+        <div>
+          <dt>Банк</dt>
+          <dd class="tablo-fact font-num num-run" data-bank>{{ totals.bank|money }}</dd>
+        </div>
+      </dl>
+
+      {% if controls %}
+        <div class="tablo-controls">
+          <button type="button" class="btn btn-primary tablo-toggle" data-act="toggle">{% if clock.paused %}Продолжить{% else %}Пауза{% endif %}</button>
+          <div class="tablo-steps">
+            <button type="button" class="btn" data-act="timer-prev" aria-label="Предыдущий уровень">◀ Ур.</button>
+            <button type="button" class="btn btn-num" data-act="timer-plus">+1 мин</button>
+            <button type="button" class="btn" data-act="timer-next" aria-label="Следующий уровень">Ур. ▶</button>
+          </div>
+          <p class="tablo-message" data-message role="status"></p>
+        </div>
+      {% endif %}
+    </aside>
+  </main>
+
+  <button type="button" class="tablo-sound" data-sound-prompt>нажмите, чтобы включить звук</button>
+</body>
+{% endwith %}
+</html>

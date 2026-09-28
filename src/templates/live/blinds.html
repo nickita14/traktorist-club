@@ -1,0 +1,9 @@
+{% extends "live/base.html" %}
+
+{% block title %}Структура блайндов{% endblock %}
+
+{% block page %}
+  {% url 'live:board' game.pk as back_url %}
+  {% include "live/_bar.html" with back_url=back_url back_label="К игре" label="Блайнды" %}
+  {% include "live/_blinds.html" %}
+{% endblock %}

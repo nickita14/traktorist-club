@@ -28,7 +28,16 @@
       <span class="field-label">Место</span>
       <input class="live-input live-input-text" type="text" name="location" maxlength="100" value="{{ form.location.value|default:'' }}">
     </label>
-    <p class="text-sm text-muted italic">Новый сезон создаётся с правилами прошлого: цены, фишки, призовые места.</p>
+    <label class="field">
+      <span class="field-label">Таймер блайндов · для турнира</span>
+      <select class="live-input" name="blinds">
+        {% for value, label in form.fields.blinds.choices %}
+          <option value="{{ value }}"{% if form.blinds.value|default_if_none:""|stringformat:"s" == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      {% for error in form.blinds.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+    </label>
+    <p class="text-sm text-muted italic">Новый сезон создаётся с правилами прошлого: цены, фишки, призовые места, структура блайндов. Таймер стоит на паузе до «Пуск».</p>
     <button type="submit" class="btn btn-primary w-full">Начать и посадить игроков</button>
   </form>
 {% endblock %}

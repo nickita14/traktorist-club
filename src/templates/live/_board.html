@@ -1,6 +1,6 @@
 {% load ledger live %}
 {# The whole live board. Polls for what other phones changed; buttons swap it with the server's answer. #}
-<section id="board" hx-get="{% url 'live:board' game.pk %}" hx-trigger="every {{ poll_seconds }}s" hx-target="this" hx-swap="outerHTML" data-poll>
+<section id="board" hx-get="{% url 'live:board' game.pk %}" hx-trigger="every {{ poll_seconds }}s, timer-end" hx-target="this" hx-swap="outerHTML" data-poll>
   <header class="live-bar">
     <a class="live-bar-link" href="{% url 'live:index' %}">← Игры</a>
     <span class="live-status"><span class="live-dot" aria-hidden="true"></span>Идёт игра</span>
@@ -8,17 +8,28 @@
   </header>
 
   <div class="phase-strip">
-    {% if game.live_stage == "rebuys" %}
-      <p>Этап 1 · Ребаи открыты · до <time class="font-num">{{ countdown.deadline|date:"H:i" }}</time> ·
-        {% if countdown.over %}<span class="text-accent">время вышло</span>{% else %}ещё <span class="font-num">{{ countdown.remaining_text }}</span>{% endif %}</p>
-      <progress max="{{ countdown.total }}" value="{{ countdown.elapsed }}" aria-label="Время этапа 1"></progress>
-    {% elif game.live_stage == "addon" %}
-      <p>Перерыв · Аддон</p>
-      <p class="phase-note">Каждый, кто в игре, может взять один аддон: +<span class="font-num">{{ season.addon_price|money }}</span>.</p>
-    {% elif game.live_stage == "final" %}
-      <p>Финальный этап · закупок нет</p>
-    {% else %}
+    {% if cash %}
       <p>Кэш · шаг <span class="font-num">{{ season.cash_step|money }}</span> · <span class="font-num num-run">{{ step_chips|money }}</span> фишек = <span class="font-num">{{ season.cash_step|money }}</span> лей</p>
+    {% elif clock %}
+      {# With a blind timer the strip is the timer; the stage adds a line. #}
+      {% include "live/_timer_strip.html" %}
+      {% if game.live_stage == "addon" %}
+        <p class="phase-note">Перерыв на аддон: +<span class="font-num">{{ season.addon_price|money }}</span> каждому, кто в игре.</p>
+      {% elif game.live_stage == "final" %}
+        <p class="phase-note">Финальный этап · закупок нет</p>
+      {% endif %}
+    {% else %}
+      {% if game.live_stage == "rebuys" %}
+        <p>Этап 1 · Ребаи открыты · <span class="phase-quiet">идёт <span class="font-num">{{ stage_time.elapsed_text }}</span></span></p>
+        <progress max="{{ stage_time.total }}" value="{{ stage_time.progress }}" aria-label="Время этапа 1"></progress>
+        {% if stage_time.usual_end %}<p class="phase-note">обычно в это время закрывают ребаи</p>{% endif %}
+      {% elif game.live_stage == "addon" %}
+        <p>Перерыв · Аддон</p>
+        <p class="phase-note">Каждый, кто в игре, может взять один аддон: +<span class="font-num">{{ season.addon_price|money }}</span>.</p>
+      {% elif game.live_stage == "final" %}
+        <p>Финальный этап · закупок нет</p>
+      {% endif %}
+      <p class="phase-note"><a class="btn-link inline-flex items-center" href="{% url 'live:blinds' game.pk %}">Подключить таймер блайндов</a></p>
     {% endif %}
   </div>
 

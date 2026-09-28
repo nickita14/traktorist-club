@@ -6,7 +6,13 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from club.models import Game, Player, Result, Season, SeasonKind
-from club.tests.factories import make_game, make_player, make_result, make_season
+from club.tests.factories import (
+    make_game,
+    make_player,
+    make_result,
+    make_season,
+    make_structure,
+)
 from live import actions
 from live.actions import RuleError
 from live.models import LiveAction
@@ -502,6 +508,7 @@ class TestStartAndCancel:
             )
 
     def test_new_year_season_copies_the_latest_rules(self):
+        structure = make_structure()
         make_season(2024, SeasonKind.TOUR, paid_places=4, entry_price=200)
         make_season(
             2025,
@@ -515,6 +522,7 @@ class TestStartAndCancel:
             cash_step=20,
             payout_weights="6,4",
             payout_round=10,
+            default_blinds=structure,
         )
         make_season(2025, SeasonKind.CASH, chips_per_lei=10)
 
@@ -527,6 +535,7 @@ class TestStartAndCancel:
         assert (season.rebuy_price, season.addon_price, season.rebuy_minutes) == (70, 60, 90)
         assert season.cash_step == 20
         assert (season.payout_weights, season.payout_round) == ("6,4", 10)
+        assert season.default_blinds == structure
 
     def test_first_season_of_a_kind_gets_the_defaults(self):
         season = actions.next_season(SeasonKind.CASH, 2026)

@@ -21,13 +21,17 @@ Unfold ships no Russian strings; the project's own are in `src/locale/ru/LC_MESS
 
 ## Organizer accounts
 
-Editing happens in the admin at `ADMIN_URL`. The `Organizer` group (created by a migration) can view, add and change players, seasons, games and results, and delete results. Deleting players, seasons or games is left to superusers. An organizer account also needs **Staff status** (`is_staff`), which a group cannot grant:
+Editing happens in the admin at `ADMIN_URL`. The `Organizer` group (created by a migration) can view, add and change players, seasons, games, results and blind structures, and delete results and structure rows. Deleting players, seasons, games or whole structures is left to superusers. An organizer account also needs **Staff status** (`is_staff`), which a group cannot grant:
 
 ```bash
 uv run python manage.py createsuperuser   # first account; then add organizers in the admin
 ```
 
 Two-factor login (a code from an authenticator app, TOTP) is available but off by default, in production too. To turn it on, first give every staff user a device with `manage.py totp_enroll <username>` (it prints a QR code in the terminal), then set `ADMIN_REQUIRE_2FA=True`. Five failed logins for the same username from the same address lock them out for an hour (`django-axes`).
+
+## Blind timer
+
+A tournament can run a blind timer: structures are templates in the admin (a season's default is preselected at the start), and each game gets its own copy that the organizer edits on the phone. The display for a laptop at the table opens from the live game screen; its "Ссылка на табло" is a secret read-only link (no login) that a new link revokes.
 
 ## Importing the spreadsheet
 

@@ -1,0 +1,26 @@
+{
+  "comment": "Blind clock cases for live/clock.py and assets/js/blind-clock.js. Times are seconds relative to now; rows are [\"L\", minutes] for a level, [\"B\", minutes] for a break; positions are 1..n.",
+  "rows": [["L", 20], ["L", 20], ["L", 20], ["B", 15], ["L", 20], ["B", 10], ["L", 20]],
+  "cases": [
+    {"name": "just started", "position": 1, "started": 0, "paused": null,
+     "expect": {"position": 1, "remaining": 1200, "finished": false, "until_break": 3600}},
+    {"name": "second level", "position": 1, "started": -1500, "paused": null,
+     "expect": {"position": 2, "remaining": 900, "finished": false, "until_break": 2100}},
+    {"name": "exactly at a level change", "position": 1, "started": -1200, "paused": null,
+     "expect": {"position": 2, "remaining": 1200, "finished": false, "until_break": 2400}},
+    {"name": "paused ten minutes ago", "position": 1, "started": -1500, "paused": -600,
+     "expect": {"position": 1, "remaining": 300, "finished": false, "until_break": 2700}},
+    {"name": "in the add-on break", "position": 1, "started": -3900, "paused": null,
+     "expect": {"position": 4, "remaining": 600, "finished": false, "until_break": 1800}},
+    {"name": "through every row at once", "position": 1, "started": -6300, "paused": null,
+     "expect": {"position": 7, "remaining": 1200, "finished": false, "until_break": null}},
+    {"name": "no break left", "position": 7, "started": -60, "paused": null,
+     "expect": {"position": 7, "remaining": 1140, "finished": false, "until_break": null}},
+    {"name": "last level ran out", "position": 7, "started": -1500, "paused": null,
+     "expect": {"position": 7, "remaining": 0, "finished": true, "until_break": null}},
+    {"name": "plus a minute at the start", "position": 3, "started": 60, "paused": null,
+     "expect": {"position": 3, "remaining": 1260, "finished": false, "until_break": 1260}},
+    {"name": "paused in a break", "position": 6, "started": -700, "paused": -200,
+     "expect": {"position": 6, "remaining": 100, "finished": false, "until_break": null}}
+  ]
+}

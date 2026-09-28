@@ -1,0 +1,104 @@
+{% load ledger live %}
+{# The game's own blind structure. Played rows are locked; edits reach the display on its next sync. #}
+<section id="blinds"{% if timer %} hx-get="{% url 'live:blinds' game.pk %}" hx-trigger="every {{ poll_seconds }}s" hx-target="this" hx-swap="outerHTML" data-poll{% endif %}>
+  {% if not timer %}
+    <h1 class="live-title">Таймер блайндов</h1>
+    {% if structures %}
+      <form class="live-form" hx-post="{% url 'live:act' game.pk 'timer-start' %}" hx-target="#blinds" hx-swap="outerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="key" value="{% new_key %}">
+        <label class="field">
+          <span class="field-label">Структура</span>
+          <select class="live-input" name="structure">
+            {% for structure in structures %}
+              <option value="{{ structure.pk }}"{% if structure.pk == season.default_blinds_id %} selected{% endif %}>{{ structure.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <p class="text-sm text-muted italic">У игры будет своя копия структуры. Таймер стоит на паузе до «Пуск».</p>
+        <button type="submit" class="btn btn-primary w-full">Подключить таймер</button>
+      </form>
+    {% else %}
+      <p class="mt-4 text-muted italic">Структур блайндов пока нет: их заводят в админке.</p>
+    {% endif %}
+  {% else %}
+    <h1 class="live-title">{{ timer.structure_name }}</h1>
+    <p class="text-sm text-muted italic">Копия этой игры: шаблон в админке не меняется.</p>
+
+    <form class="bulk-minutes" hx-post="{% url 'live:act' game.pk 'bulk-minutes' %}" hx-target="#blinds" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="key" value="{% new_key %}">
+      <label class="bulk-from">
+        <span class="field-label">С уровня</span>
+        <select class="live-input" name="from" aria-label="С уровня">
+          {% for number in bulk_from %}<option value="{{ number }}">{{ number }}</option>{% endfor %}
+        </select>
+      </label>
+      <span class="field-label">и дальше по</span>
+      <span class="bulk-buttons">
+        {% for minutes in bulk_minutes %}
+          <button type="submit" class="btn btn-num" name="minutes" value="{{ minutes }}" aria-label="По {{ minutes }} минут">{{ minutes }}</button>
+        {% endfor %}
+      </span>
+      <span class="field-label">мин</span>
+    </form>
+
+    <div class="blinds-head" aria-hidden="true">
+      <span></span><span>Мал.</span><span>Бол.</span><span>Анте</span><span>Мин</span>
+    </div>
+    <ol class="blinds-list">
+      {% for level in rows %}
+        {% with row=level.row %}
+          <li class="blinds-row{% if level.played %} blinds-row-played{% elif level.current %} blinds-row-current{% endif %}"{% if level.current %} aria-current="step"{% endif %}>
+            {% if level.played %}
+              <span class="blinds-name">{% if row.is_break %}{{ row.label }}{% else %}<span class="font-num">{{ row.number }}</span>{% endif %}</span>
+              {% if row.is_break %}<span class="blinds-span"></span>{% else %}
+                <span class="font-num">{{ row.small_blind|money }}</span><span class="font-num">{{ row.big_blind|money }}</span><span class="font-num">{% if row.ante %}{{ row.ante|money }}{% else %}·{% endif %}</span>
+              {% endif %}
+              <span class="font-num">{{ row.minutes }}</span>
+            {% else %}
+              <form class="contents" hx-post="{% url 'live:act' game.pk 'level-edit' %}" hx-trigger="change" hx-target="#blinds" hx-swap="outerHTML">
+                <input type="hidden" name="key" value="{% new_key %}">
+                <input type="hidden" name="position" value="{{ row.position }}">
+                <span class="blinds-name">{% if row.is_break %}{{ row.label }}{% else %}<span class="font-num">{{ row.number }}</span>{% endif %}{% if level.current %} <span class="blinds-now">идёт</span>{% endif %}</span>
+                {% if row.is_break %}
+                  <span class="blinds-span"></span>
+                {% elif level.blinds_editable %}
+                  <input id="small-{{ row.position }}" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" name="small" value="{{ row.small_blind }}" aria-label="Малый блайнд, уровень {{ row.number }}">
+                  <input id="big-{{ row.position }}" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" name="big" value="{{ row.big_blind }}" aria-label="Большой блайнд, уровень {{ row.number }}">
+                  <input id="ante-{{ row.position }}" class="live-input live-input-xs" type="number" inputmode="numeric" min="0" name="ante" value="{{ row.ante }}" aria-label="Анте, уровень {{ row.number }}">
+                {% else %}
+                  <span class="font-num">{{ row.small_blind|money }}</span><span class="font-num">{{ row.big_blind|money }}</span><span class="font-num">{% if row.ante %}{{ row.ante|money }}{% else %}·{% endif %}</span>
+                {% endif %}
+                <input id="minutes-{{ row.position }}" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" max="240" name="minutes" value="{{ row.minutes }}" aria-label="Минут: {% if row.is_break %}{{ row.label }}{% else %}уровень {{ row.number }}{% endif %}">
+              </form>
+            {% endif %}
+          </li>
+        {% endwith %}
+      {% endfor %}
+    </ol>
+    {% if clock.finished %}<p class="phase-note mt-2">уровни закончились · добавьте уровень</p>{% endif %}
+
+    <form id="add-level" class="blinds-add" hx-post="{% url 'live:act' game.pk 'level-add' %}" hx-target="#blinds" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="key" value="{% new_key %}">
+      <span class="blinds-name field-label">Новый</span>
+      <input id="add-small" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" name="small" value="{{ last_level.small_blind }}" aria-label="Малый блайнд нового уровня">
+      <input id="add-big" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" name="big" value="{{ last_level.big_blind }}" aria-label="Большой блайнд нового уровня">
+      <input id="add-ante" class="live-input live-input-xs" type="number" inputmode="numeric" min="0" name="ante" value="{{ last_level.ante }}" aria-label="Анте нового уровня">
+      <input id="add-minutes" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" max="240" name="minutes" value="{{ last_level.minutes }}" aria-label="Минут нового уровня">
+      <button type="submit" class="btn btn-primary blinds-add-button">+ Уровень</button>
+    </form>
+
+    <h2 class="live-heading">Табло</h2>
+    <p class="text-sm text-muted italic">Ссылка открывает табло без входа и без кнопок. Новая ссылка отключает старую.</p>
+    <div class="link-copy">
+      <input id="display-link" class="live-input live-input-text" type="text" value="{{ display_url }}" readonly aria-label="Ссылка на табло">
+      <button type="button" class="btn" data-copy="#display-link">Скопировать</button>
+    </div>
+    <div class="timer-controls mt-2">
+      <a class="btn" href="{% url 'live:tablo' game.pk %}" target="_blank" rel="noopener">Открыть табло</a>
+      {% include "live/_timer_button.html" with action="link-reset" text="Новая ссылка" css="btn btn-accent" target="blinds" %}
+    </div>
+  {% endif %}
+</section>
+{% if oob %}
+  {% include "live/_toast.html" with undo_target="blinds" %}
+{% endif %}

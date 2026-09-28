@@ -4,6 +4,7 @@ from django.urls import include, path, register_converter
 
 from club import views
 from club.models import SeasonKind
+from live import views as live_views
 
 
 class SeasonKindConverter:
@@ -28,6 +29,9 @@ urlpatterns = [
     path("players/<slug:slug>/", views.player_detail, name="player_detail"),
     path("players/<slug:slug>/games/", views.player_games, name="player_games"),
     path("all-time/", views.all_time, name="all_time"),
+    # The blind timer display through its secret link: read-only, no login, outside ADMIN_URL.
+    path("tablo/<str:token>/", live_views.tablo_public, name="tablo_public"),
+    path("tablo/<str:token>/state/", live_views.tablo_public_state, name="tablo_public_state"),
     # The live game screens sit under the admin prefix (organizers only), before the admin's
     # catch-all pattern. They keep the strict public CSP (live.access.organizer_required).
     path(f"{settings.ADMIN_URL}live/", include("live.urls")),

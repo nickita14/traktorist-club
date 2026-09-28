@@ -1,0 +1,34 @@
+{% load ledger %}
+{# The blind timer on the phase strip. live.js counts the seconds down and refreshes the board when the level runs out. #}
+{% with row=clock.current %}
+  <div class="timer-strip" data-timer data-remaining="{{ clock.remaining_seconds }}"{% if clock.paused or clock.finished %} data-stopped{% endif %}>
+    <p>
+      {% if row.is_break %}{{ row.label }}{% else %}Уровень <span class="font-num">{{ row.number }}</span>{% endif %}
+      · <span class="font-num" data-clock>{{ clock.remaining_text }}</span>
+      {% if not row.is_break %}· <span class="font-num num-run">{{ row.small_blind|money }} / {{ row.big_blind|money }}</span>{% if row.ante %} <span class="phase-quiet">анте</span> <span class="font-num num-run">{{ row.ante|money }}</span>{% endif %}{% endif %}
+      {% if clock.paused %}· <span class="text-accent">пауза</span>{% endif %}
+    </p>
+    <progress max="{{ clock.duration_seconds }}" value="{{ clock.progress_seconds }}" aria-label="Время уровня" data-progress></progress>
+    {% if clock.finished %}
+      <p class="phase-note">уровни закончились · добавьте уровень</p>
+    {% elif clock.at_addon_break and game.live_stage == "rebuys" %}
+      <p class="phase-alert">По таймеру перерыв на аддон: нажмите «Перерыв на аддон».</p>
+    {% elif game.live_stage == "rebuys" and clock.rebuys_until %}
+      <p class="phase-note">Ребаи открыты до конца <span class="font-num">{{ clock.rebuys_until.number }}</span>-го уровня</p>
+    {% endif %}
+    <div class="timer-controls">
+      {% if clock.paused %}
+        {% include "live/_timer_button.html" with action="timer-run" text="Пуск" css="btn btn-primary" %}
+      {% else %}
+        {% include "live/_timer_button.html" with action="timer-pause" text="Пауза" css="btn" %}
+      {% endif %}
+      {% if clock.finished %}
+        <a class="btn" href="{% url 'live:blinds' game.pk %}#add-level">+ Уровень</a>
+      {% else %}
+        {% include "live/_timer_button.html" with action="timer-next" text="Ур. ▶" css="btn" label="Следующий уровень" from=row.position %}
+      {% endif %}
+      <a class="btn" href="{% url 'live:blinds' game.pk %}">Структура</a>
+      <a class="btn" href="{% url 'live:tablo' game.pk %}" target="_blank" rel="noopener">Табло</a>
+    </div>
+  </div>
+{% endwith %}

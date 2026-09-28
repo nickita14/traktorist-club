@@ -38,18 +38,6 @@ def fresh(result) -> Result:
     return result
 
 
-@pytest.fixture
-def tour(db):
-    game = live_game(SeasonKind.TOUR)
-    return game, seat(game, "Альфа", "Браво", "Чарли")
-
-
-@pytest.fixture
-def cash(db):
-    game = live_game(SeasonKind.CASH)
-    return game, seat(game, "Альфа", "Браво")
-
-
 def page_urls(game, result):
     return [
         reverse("live:index"),
@@ -663,7 +651,7 @@ class TestCloseAndCancel:
 
 
 class TestTimeZone:
-    """Clock and countdown in Europe/Chisinau (UTC+3 in September), whatever the server runs."""
+    """Clock and stage 1 time in Europe/Chisinau (UTC+3 in September), whatever the server runs."""
 
     @pytest.fixture
     def frozen(self, monkeypatch):
@@ -672,27 +660,33 @@ class TestTimeZone:
 
         return freeze
 
-    def test_clock_and_countdown_across_midnight(self, org, frozen):
+    def test_clock_and_elapsed_time_across_midnight(self, org, frozen):
         season = make_season(2026, SeasonKind.TOUR)
-        start = datetime.datetime(2026, 9, 27, 19, 40, tzinfo=datetime.UTC)  # 22:40 local
+        start = datetime.datetime(2026, 9, 27, 20, 40, tzinfo=datetime.UTC)  # 23:40 local
         game = make_game(season, day=27, month=9, live_stage="rebuys", started_at=start)
-        frozen(datetime.datetime(2026, 9, 27, 20, 50, tzinfo=datetime.UTC))  # 23:50 local
+        frozen(datetime.datetime(2026, 9, 27, 21, 57, 59, tzinfo=datetime.UTC))  # 00:57 local
 
-        page = org.get(reverse("live:board", args=[game.pk])).text
+        response = org.get(reverse("live:board", args=[game.pk]))
+        page = response.text
 
-        assert '<time class="font-num">00:40</time>' in page
-        assert 'ещё <span class="font-num">0:50</span>' in page
-        assert ">23:50</time>" in page
+        assert 'идёт <span class="font-num">1:17</span>' in page
+        assert ">00:57</time>" in page
+        assert '<progress max="7200" value="4679"' in page
+        assert "обычно в это время" not in page
 
-    def test_time_over(self, org, frozen):
-        season = make_season(2026, SeasonKind.TOUR)
-        start = datetime.datetime(2026, 9, 27, 19, 40, tzinfo=datetime.UTC)
+    def test_past_the_guide_is_a_quiet_hint(self, org, frozen):
+        season = make_season(2026, SeasonKind.TOUR, rebuy_minutes=90)
+        start = datetime.datetime(2026, 9, 27, 19, 40, tzinfo=datetime.UTC)  # 22:40 local
         game = make_game(season, day=27, month=9, live_stage="rebuys", started_at=start)
         frozen(datetime.datetime(2026, 9, 27, 21, 50, tzinfo=datetime.UTC))  # 00:50 local
 
         page = org.get(reverse("live:board", args=[game.pk])).text
 
-        assert "время вышло" in page
+        assert 'идёт <span class="font-num">2:10</span>' in page
+        assert '<p class="phase-note">обычно в это время закрывают ребаи</p>' in page
+        assert '<progress max="5400" value="5400"' in page
+        assert "время вышло" not in page
+        assert "text-accent" not in page.split('class="phase-strip"')[1].split("</div>")[0]
         assert ">00:50</time>" in page
 
     def test_default_date_is_the_local_one(self, org, frozen):

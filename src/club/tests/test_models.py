@@ -5,8 +5,23 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from club.models import Game, Player, Result, Season, SeasonKind, transliterate
-from club.tests.factories import make_game, make_player, make_result, make_season
+from club.models import (
+    BlindLevel,
+    BlindStructure,
+    Game,
+    Player,
+    Result,
+    Season,
+    SeasonKind,
+    transliterate,
+)
+from club.tests.factories import (
+    make_game,
+    make_player,
+    make_result,
+    make_season,
+    make_structure,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -22,7 +37,7 @@ class TestSeason:
         season.refresh_from_db()
         assert season.chips_per_lei == 100
         assert season.paid_places == 3
-        assert (season.entry_price, season.rebuy_price, season.addon_price) == (100, 50, 50)
+        assert (season.entry_price, season.rebuy_price, season.addon_price) == (50, 50, 50)
         assert (season.rebuy_minutes, season.cash_step) == (120, 50)
         assert (season.payout_weights, season.prize_weights, season.payout_round) == (
             "3,2,1",
@@ -333,3 +348,76 @@ class TestResultClean:
 
     def test_without_game_skips_kind_rule(self):
         Result(player=make_player(), buyin=50, place=1).clean()
+
+
+class TestBlindLevels:
+    @pytest.fixture
+    def structure(self):
+        return BlindStructure.objects.create(name="Пробная")
+
+    def level(self, structure, **fields):
+        return BlindLevel(structure=structure, **({"minutes": 20} | fields))
+
+    @pytest.mark.parametrize(
+        ("fields", "constraint"),
+        [
+            ({"small_blind": 50, "big_blind": 25}, "level_or_break"),
+            ({"small_blind": 0, "big_blind": 50}, "level_or_break"),
+            ({"small_blind": 25}, "level_or_break"),
+            ({}, "level_or_break"),  # a break without a label
+            ({"label": "Перерыв", "ante": 25}, "level_or_break"),
+            ({"small_blind": 25, "big_blind": 50, "minutes": 0}, "minutes_positive"),
+            ({"small_blind": 25, "big_blind": 50, "addon_break": True}, "addon_is_a_break"),
+        ],
+    )
+    def test_constraints(self, structure, fields, constraint):
+        assert_integrity_error(constraint, lambda: self.level(structure, **fields).save())
+
+    def test_one_addon_break_per_structure(self, structure):
+        self.level(structure, label="Аддон", addon_break=True).save()
+        assert_integrity_error(
+            "blindlevel_one_addon_break",
+            lambda: self.level(structure, label="Ещё аддон", addon_break=True).save(),
+        )
+
+    @pytest.mark.parametrize(
+        ("fields", "field"),
+        [
+            ({"small_blind": 25}, "big_blind"),
+            ({"small_blind": 100, "big_blind": 50}, "big_blind"),
+            ({"small_blind": 25, "big_blind": 50, "addon_break": True}, "addon_break"),
+            ({"label": " "}, "label"),
+            ({"label": "Перерыв", "ante": 10}, "ante"),
+        ],
+    )
+    def test_clean_explains(self, structure, fields, field):
+        with pytest.raises(ValidationError) as error:
+            self.level(structure, **fields).full_clean()
+        assert field in error.value.message_dict
+
+    def test_level_and_break(self, structure):
+        level = self.level(structure, small_blind=25, big_blind=50, ante=5)
+        pause = self.level(structure, label="Перерыв", minutes=10)
+        level.full_clean()
+        pause.full_clean()
+        assert (level.is_break, pause.is_break) == (False, True)
+        assert (str(level), str(pause)) == ("25 / 50", "Перерыв")
+
+    def test_renumber_puts_rows_without_position_last(self):
+        structure = make_structure(rows=[(25, 50, 20), (50, 100, 20)])
+        BlindLevel.objects.create(structure=structure, small_blind=100, big_blind=200, minutes=20)
+        BlindLevel.objects.filter(structure=structure, small_blind=25).update(position=7)
+
+        structure.renumber()
+
+        rows = structure.levels.values_list("position", "small_blind")
+        assert list(rows) == [(1, 50), (2, 25), (3, 100)]
+
+    def test_season_default_is_cleared_with_the_template(self):
+        structure = make_structure()
+        season = make_season(default_blinds=structure)
+
+        structure.delete()
+
+        season.refresh_from_db()
+        assert season.default_blinds is None

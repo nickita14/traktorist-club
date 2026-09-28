@@ -207,6 +207,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Live game screens: how often an open board fetches what the other phones changed.
 LIVE_POLL_SECONDS = 20
+# The blind timer display counts seconds itself and resyncs with the server this often.
+TIMER_SYNC_SECONDS = 5
 
 # Behind Caddy in production: the client address is the last X-Forwarded-For entry, which Caddy
 # sets itself (a client-sent value is replaced), and the app port is reachable only through Caddy.
