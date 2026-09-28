@@ -24,6 +24,7 @@ expect = sync_api.expect
 pytestmark = [pytest.mark.browser, pytest.mark.django_db(transaction=True)]
 
 LAPTOP = {"viewport": {"width": 1280, "height": 800}}
+PHONE_HEIGHT = 844
 CASES = json.loads((Path(__file__).parent / "clock_cases.json").read_text())
 
 # Short levels, so the clock changes level within a test: 1-2 one minute, a break, level 3.
@@ -254,3 +255,79 @@ def test_phone_adds_a_break_with_the_addon(phone):  # noqa: F811
     assert (level.label, level.minutes, level.addon_break) == ("Перерыв · аддон", 15, True)
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
     assert_clean(page)
+
+
+SHARE_STUB = """Object.defineProperty(navigator, 'share', {
+  configurable: true, value: async data => { window.sharedWith = data; },
+});
+Object.defineProperty(navigator, 'canShare', {configurable: true, value: () => true});"""
+NO_SHARE = """Object.defineProperty(navigator, 'share', {configurable: true, value: undefined});"""
+
+
+def blinds_page(phone, game, init_script):  # noqa: F811
+    page = phone(reverse("live:blinds", args=[game.pk]))
+    page.add_init_script(init_script)
+    page.reload()
+    return page
+
+
+def test_share_opens_the_share_sheet(phone):  # noqa: F811
+    game = timed_game()
+    link = public_url(game)
+    page = blinds_page(phone, game, SHARE_STUB)
+
+    page.get_by_role("button", name="Поделиться табло").click()
+
+    shared = page.wait_for_function("window.sharedWith").json_value()
+    assert shared["url"].endswith(link)
+    assert shared["title"] == "Табло · Тестовая структура"
+    expect(page.locator(".toast")).to_have_count(0)
+    assert_clean(page)
+
+
+def test_share_falls_back_to_copying(phone):  # noqa: F811
+    game = timed_game()
+    page = blinds_page(phone, game, NO_SHARE)
+    origin = page.url.split("/", 3)[:3]
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin="/".join(origin))
+
+    page.get_by_role("button", name="Поделиться табло").click()
+
+    expect(page.locator(".toast")).to_have_text("Ссылка на табло скопирована.")
+    assert page.evaluate("navigator.clipboard.readText()").endswith(public_url(game))
+    assert_clean(page)
+
+
+def test_new_link_asks_first(phone):  # noqa: F811
+    game = timed_game()
+    page = phone(reverse("live:blinds", args=[game.pk]))
+    old = BlindTimer.objects.get(game=game).display_token
+    messages = []
+
+    page.once("dialog", lambda dialog: (messages.append(dialog.message), dialog.dismiss()))
+    page.get_by_role("button", name="Новая ссылка").click()
+    page.wait_for_timeout(300)
+    assert BlindTimer.objects.get(game=game).display_token == old
+    assert "Старая перестанет работать на всех открытых табло" in messages[0]
+
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.get_by_role("button", name="Новая ссылка").click()
+    expect(page.locator(".toast")).to_contain_text("Табло: новая ссылка")
+    new = BlindTimer.objects.get(game=game).display_token
+    assert new != old
+    assert page.locator("[data-share]").get_attribute("data-share").endswith(f"/tablo/{new}/")
+
+
+def test_bottom_bar_goes_back_to_the_board(phone):  # noqa: F811
+    game = timed_game()
+    page = phone(reverse("live:blinds", args=[game.pk]))
+    bar = page.locator(".bottom-bar")
+    assert bar.evaluate("el => getComputedStyle(el).position") == "sticky"
+    # Sticky at the bottom of the screen even before scrolling to the end.
+    box = bar.bounding_box()
+    assert box["y"] + box["height"] <= PHONE_HEIGHT + 1
+    assert_touch_targets(page)
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+
+    bar.get_by_role("link", name="← К игре").click()
+    page.wait_for_url(f"**{reverse('live:board', args=[game.pk])}")

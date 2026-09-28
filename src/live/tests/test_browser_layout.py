@@ -5,6 +5,7 @@ import pytest
 from django.urls import reverse
 
 from club.models import SeasonKind
+from club.tests.factories import make_structure
 from live import actions
 from live.tests.conftest import key, live_game, seat
 from live.tests.test_browser import PHONE, phone  # noqa: F401 - the fixture
@@ -24,6 +25,12 @@ UNEVEN_STRIPS = """() => [...document.querySelectorAll('.stat-strip')].filter(st
 BAD_NUMBER_INPUTS = """() => [...document.querySelectorAll('input[type=number]')].filter(input =>
   input.inputMode !== 'numeric' || getComputedStyle(input).appearance !== 'textfield'
 ).length"""
+
+
+# Number inputs and number cells whose text does not fit (clipped or scrolled inside the box).
+CLIPPED = """() => [...document.querySelectorAll('input[type=number], .blinds-row .font-num')]
+  .filter(el => el.offsetParent !== null && el.scrollWidth > el.clientWidth + 1)
+  .map(el => el.getAttribute('aria-label') || el.textContent)"""
 
 
 def assert_layout(page):
@@ -56,3 +63,18 @@ def test_results_layout(phone):  # noqa: F811
     actions.advance_stage(tour.pk, key(), None, "addon")
     actions.eliminate(tour.pk, key(), None, bravo.pk)
     assert_layout(phone(reverse("live:results", args=[tour.pk])))
+
+
+def test_blinds_editor_fits_five_digit_blinds(phone):  # noqa: F811
+    big = [(5000, 10000, 20, 1000), (10000, 20000, 20, 2000), (15000, 30000, 20, 5000)]
+    tour = live_game(SeasonKind.TOUR)
+    actions.start_timer(tour.pk, key(), None, make_structure(rows=big).pk)
+    actions.set_paused(tour.pk, key(), None, False)
+    actions.step_level(tour.pk, key(), None, 1, 1)  # level 1 played: shown as text
+    page = phone(reverse("live:blinds", args=[tour.pk]))
+
+    assert page.get_by_label("Большой блайнд, уровень 3").input_value() == "30000"
+    assert page.get_by_label("Малый блайнд нового уровня").input_value() == "15000"
+    assert page.evaluate(CLIPPED) == []
+    assert page.evaluate("document.documentElement.scrollWidth") <= PHONE["viewport"]["width"]
+    assert_layout(page)

@@ -225,6 +225,31 @@ class TestStructureEditor:
         minutes = list(timer(timed).levels.values_list("minutes", flat=True))
         assert minutes == [20, 15, 15, 15, 15, 10, 15, 15]
 
+    def test_bottom_bar_and_tablo_section(self, org, timed):
+        page = org.get(self.url(timed)).text
+        link = f"http://testserver/tablo/{timer(timed).display_token}/"
+        bar = page.split('<nav class="bottom-bar"')[1].split("</nav>")[0]
+        board = reverse("live:board", args=[timed.pk])
+        assert f'<a class="btn btn-primary" href="{board}">← К игре</a>' in bar
+        assert f'data-share="{link}"' in bar and ">Поделиться табло</button>" in bar
+        # The page ends with the tablo section right above the bar.
+        tablo = page.split('<h2 class="live-heading">Табло</h2>')[1].split("<nav")[0]
+        assert f'value="{link}"' in tablo and ">Открыть</a>" in tablo
+        assert 'hx-confirm="Сделать новую ссылку? Старая перестанет работать' in tablo
+        assert ">Новая ссылка</button>" in tablo
+
+    def test_add_block_joins_its_forms(self, org, timed):
+        page = org.get(self.url(timed)).text
+        block = page.split('<h2 class="live-heading">Добавить</h2>')[1].split("<h2")[0]
+        assert block.count('form="add-level"') == 5  # four inputs and the button
+        assert block.count('form="add-break"') == 3  # name, minutes and the button
+        assert '<button type="submit" form="add-level" class="btn">+ Уровень</button>' in block
+
+    def test_without_a_timer_the_bar_only_goes_back(self, org, frozen):
+        page = org.get(self.url(live_game(SeasonKind.TOUR))).text
+        bar = page.split('<nav class="bottom-bar"')[1].split("</nav>")[0]
+        assert "← К игре" in bar and "data-share" not in bar
+
     def test_add_a_break(self, org, timed):
         page = org.get(self.url(timed)).text
         assert ">+ Перерыв</button>" in page
@@ -239,7 +264,9 @@ class TestStructureEditor:
         game = live_game(SeasonKind.TOUR)
         plain = make_structure(name="Без аддона", rows=[(25, 50, 20), (50, 100, 20)])
         actions.start_timer(game.pk, key(), None, plain.pk)
-        assert '<input type="checkbox" name="addon">' in org.get(self.url(game)).text
+        assert (
+            '<input form="add-break" type="checkbox" name="addon">' in org.get(self.url(game)).text
+        )
 
         response = act(
             org, game, "break-add", target="blinds", label="Аддон", minutes=15, addon="on"
