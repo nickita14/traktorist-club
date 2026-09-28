@@ -118,4 +118,4 @@ class TestIndexing:
         robots = client.get("/robots.txt").content.decode()
 
         assert 'name="robots"' not in page
-        assert robots == "User-agent: *\nAllow: /\nDisallow: /tablo/\n"
+        assert robots == "User-agent: *\nAllow: /\nDisallow: /tablo/\nDisallow: /prokhodnaya/\n"

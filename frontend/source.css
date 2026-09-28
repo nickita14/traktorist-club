@@ -65,7 +65,8 @@
 @layer components {
   /* Header navigation: uppercase narrow caps, the current section underlined in accent. */
   .site-nav a,
-  .site-nav span {
+  .site-nav span,
+  .site-nav button {
     display: flex;
     align-items: center;
     min-height: 2.75rem;
@@ -75,7 +76,33 @@
     text-decoration: none;
   }
 
-  .site-nav a:hover {
+  .site-nav a:hover,
+  .site-nav button:hover {
+    text-decoration: underline;
+  }
+
+  /* "Выйти" is a POST form: its button reads as one more nav link. */
+  .site-nav button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: inherit;
+    cursor: pointer;
+  }
+
+  /* The organizers' way in, in the footer: as quiet as the rest of it, but a full touch target. */
+  .footer-login {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    text-decoration: none;
+  }
+
+  .footer-login:hover {
+    color: var(--ink);
     text-decoration: underline;
   }
 
