@@ -1351,3 +1351,68 @@
     }
   }
 }
+
+/*
+ * Page transitions (View Transitions API): a short fade and slide between pages of the site
+ * (same-origin navigations, typed "page") and a plain fade when htmx swaps the board after a
+ * button (hx-swap "transition:true"). The header and the sticky bars have their own names, so
+ * they stay put while the content moves. Browsers without the API navigate and swap as before;
+ * reduced motion turns the animation off.
+ */
+@view-transition {
+  navigation: auto;
+  types: page;
+}
+
+@keyframes page-out {
+  to {
+    opacity: 0;
+    transform: translateY(-0.375rem);
+  }
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.375rem);
+  }
+}
+
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: 180ms;
+  animation-timing-function: ease-out;
+}
+
+:active-view-transition-type(page)::view-transition-old(root) {
+  animation-name: page-out;
+}
+
+:active-view-transition-type(page)::view-transition-new(root) {
+  animation-name: page-in;
+}
+
+.site-head {
+  view-transition-name: site-head;
+}
+
+.live-bar {
+  view-transition-name: live-bar;
+}
+
+.bottom-bar {
+  view-transition-name: bottom-bar;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @view-transition {
+    navigation: none;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none;
+  }
+}
