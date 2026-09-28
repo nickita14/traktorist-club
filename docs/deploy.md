@@ -705,7 +705,7 @@ Follow the steps in this order. The workflow commit goes in last, so its first r
 
 ### 12.1 Put the forced command on the server
 
-**Local:** push the commits that add `deploy/smoke-check.sh` and `deploy/ci-deploy.sh` to `main`, but **not yet** the one that adds the `deploy` job to `ci.yml`. Deploy them by hand:
+Merge the pull request that adds `deploy/smoke-check.sh` and `deploy/ci-deploy.sh` into `main`. That pull request must **not** contain the `deploy` job in `ci.yml` yet. Then deploy by hand. **Local:**
 
 ```bash
 deploy/deploy.sh
@@ -789,13 +789,17 @@ On GitHub, open the repository's **Settings → Environments → New environment
 | Required reviewers | off (on it pauses every deploy until you approve it, see 12.7) |
 | Environment secrets | `DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS`, below |
 
-Add the secrets to the **environment**, not as repository secrets. Only a job that names the environment can read them, and only from `main`. Either paste the files' contents into the web form (the whole `ci_key`, from `-----BEGIN` to `-----END ...-----`), or **local**, with the GitHub CLI:
+Add the secrets to the **environment**, not as repository secrets. Only a job that names the environment can read them, and only from `main`.
+
+The easiest way is **local**, with the GitHub CLI: the files go straight to GitHub, without passing through the clipboard. If it is not installed, `sudo apt install gh`, then `gh auth login` once.
 
 ```bash
 gh secret set DEPLOY_SSH_KEY --env production < ~/.config/traktorist/ci_key
 gh secret set DEPLOY_KNOWN_HOSTS --env production < ~/.config/traktorist/ci_known_hosts
 gh secret list --env production                        # both names, no values
 ```
+
+Without the CLI, use the web form (**Add environment secret**) and paste each file's whole contents. For `ci_key`, that runs from `-----BEGIN` to `-----END ...-----`. From WSL, `clip.exe < ~/.config/traktorist/ci_key` copies the key. Afterwards, clear the clipboard with `echo -n | clip.exe`, and delete the entry from the Windows clipboard history (Win+V) if that is on.
 
 Then delete the private key. GitHub holds the only copy it needs, and a lost key is replaced by rotating (12.7), never recovered. Keep `ci_key.pub` and `ci_known_hosts`: neither is secret.
 
@@ -805,17 +809,17 @@ shred -u ~/.config/traktorist/ci_key
 
 ### 12.6 Turn it on
 
-**Local:** push the commit that adds the `deploy` job to `ci.yml`. In the repository's **Actions** tab, that run shows:
+Merge the pull request that adds the `deploy` job to `ci.yml`. Its own merge into `main` is the first automatic deploy. In the repository's **Actions** tab, that run shows:
 1. `lint-and-test` and `docker-image`.
 2. Then `deploy`, in the `production` environment. Its log shows:
-   - `==> At <sha> <subject>` for the pushed commit
+   - `==> At <sha> <subject>` for the commit the merge put on `main`
    - the build
    - `==> Smoke check passed: ...`
 
 **Server:**
 
 ```bash
-git -C /srv/traktorist rev-parse HEAD                  # the pushed commit
+git -C /srv/traktorist rev-parse HEAD                  # the commit the merge put on main
 journalctl -t traktorist-ci-deploy -n 5
 ```
 
