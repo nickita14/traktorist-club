@@ -102,3 +102,67 @@ jobs:
             echo "The image started with ENVIRONMENT=development" >&2
             exit 1
           fi
+
+  deploy:
+    # Pushes to main only, after both jobs above pass: pull requests (Dependabot's and forks'
+    # included) never get here, and a fork's own main skips it. It deploys the tested commit
+    # (github.sha) through the CI key, whose forced command on the server (deploy/ci-deploy.sh)
+    # accepts a commit SHA of main and nothing else. Setup: docs/deploy.md, section 12.
+    needs: [lint-and-test, docker-image]
+    if: >-
+      github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+      && github.repository == 'nickita14/traktorist-club'
+      && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    # A hung build or connection fails the job instead of holding the deploy lock for hours.
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://traktorist.duckdns.org/
+    # Deploys queue one after another; a running one is never cancelled. (GitHub keeps one
+    # pending run per group: a newer push replaces a waiting one, so the latest main wins.)
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      DEPLOY_HOST: deploy@traktorist.duckdns.org
+      DEPLOY_DOMAIN: traktorist.duckdns.org
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install the CI key and the pinned host key
+        # Secrets reach the script only through env, never interpolated into it.
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          if [[ -z $DEPLOY_SSH_KEY || -z $DEPLOY_KNOWN_HOSTS ]]; then
+            echo "::error::DEPLOY_SSH_KEY or DEPLOY_KNOWN_HOSTS is missing in the production environment"
+            exit 1
+          fi
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/ci_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/ci_known_hosts"
+
+      - name: Deploy the tested commit
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          ssh -i "$HOME/.ssh/ci_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/ci_known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no -o HostKeyAlgorithms=ssh-ed25519 \
+            -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+            "$DEPLOY_HOST" "$DEPLOY_SHA"
+
+      - name: Smoke check
+        run: deploy/smoke-check.sh "$DEPLOY_DOMAIN"
+
+      - name: Remove the key
+        if: always()
+        run: rm -f "$HOME/.ssh/ci_key" "$HOME/.ssh/ci_known_hosts"

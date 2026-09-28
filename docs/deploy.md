@@ -32,6 +32,7 @@ Contents:
 9. [Routine operations](#9-routine-operations)
 10. [Enabling 2FA later (optional)](#10-enabling-2fa-later-optional)
 11. [Resource budget](#11-resource-budget)
+12. [Automatic deploys from GitHub](#12-automatic-deploys-from-github)
 
 ## 1. Before you start
 
@@ -290,10 +291,11 @@ The script does the following:
 5. Starts the three containers, waiting until they are healthy.
 6. From your machine, checks that the site answers 200 over HTTPS with HSTS and that HTTP redirects to HTTPS.
 
-The last line reads:
+The last lines read:
 
 ```
-==> Deployed: home 200, robots.txt 200 with HSTS, HTTP redirects to HTTPS
+==> Smoke check passed: home 200, robots.txt 200 with HSTS, HTTP redirects to HTTPS
+==> Deployed origin/main
 ```
 
 On the very first start, Caddy needs a few seconds to get the certificate. If the smoke check fails with a TLS error:
@@ -587,7 +589,7 @@ Finally, open the site and compare a few standings with the spreadsheet.
 
 | Task | Where | Command |
 |---|---|---|
-| Deploy `main` | local | `deploy/deploy.sh` |
+| Deploy `main` | GitHub | automatic on every push to `main` once the tests pass (section 12); by hand: `deploy/deploy.sh` |
 | Deploy a tag or commit | local | `deploy/deploy.sh v1.2` or `deploy/deploy.sh <sha>` |
 | Roll back | local | `deploy/deploy.sh <previous sha>` (migrations are not reversed: restore a pre-deploy dump if one ran) |
 | Status | server | `dc ps` |
@@ -596,16 +598,18 @@ Finally, open the site and compare a few standings with the spreadsheet.
 | Django shell | server | `dc exec web python manage.py shell` |
 | Disk use | server | `df -h /` and `docker system df` |
 | Memory | server | `free -m` and `docker stats --no-stream` |
+| CI deploy log | server | `journalctl -t traktorist-ci-deploy -n 50` (the build output is in the GitHub job log) |
 | Backup timer | server | `systemctl list-timers 'traktorist-*'` and `journalctl -u traktorist-backup -n 50` |
 
 Other details:
 - **Pre-deploy dumps.** A deploy with pending migrations saves a dump to `/var/backups/traktorist/pre-deploy/` before migrating. The last 5 are kept.
 - **Image updates.** Each deploy pulls newer `python:3.13-slim`, `postgres:17` and `caddy:2-alpine` images. Unchanged images and code leave the running containers alone, so a repeated deploy restarts nothing.
-- **Server edits.** Don't edit files in `/srv/traktorist` on the server (except `.env`): `deploy.sh` refuses to run while the checkout has local changes. `git -C /srv/traktorist status` shows them.
+- **Server edits.** Don't edit files in `/srv/traktorist` on the server (except `.env`): `deploy.sh` and CI deploys refuse to run while the checkout has local changes. `git -C /srv/traktorist status` shows them.
 - **Changing `.env`.** Run `dc up -d` afterwards. Compose recreates the containers whose settings changed.
 - **Rotating secrets.**
   - `SECRET_KEY`: edit `.env`, then `dc up -d` (everyone is logged out).
   - B2 key: create a new one, update `.env`, delete the old one in B2.
+  - CI deploy key: section 12.7.
   - `POSTGRES_PASSWORD`: can't be changed through `.env` alone, since Postgres keeps the password it was initialized with. Change it with `dc exec db psql -U traktorist -d traktorist_club -c "ALTER USER traktorist PASSWORD '<new>'"`, then update `.env` and run `dc up -d`.
 
 ## 10. Enabling 2FA later (optional)
@@ -679,3 +683,166 @@ That leaves about 300 MB for the page cache. Swap covers the peaks: an image bui
 | **Total** | **~8.8 GB** |
 
 That leaves about 11 GB free. `deploy.sh` prints the free space after every deploy; investigate if it drops below 5 GB (usually with `docker system df`).
+
+## 12. Automatic deploys from GitHub
+
+Every push to `main` deploys itself once the tests pass. The `deploy` job in `.github/workflows/ci.yml` does it in these steps:
+1. It waits for the `lint-and-test` and `docker-image` jobs.
+2. It connects over SSH with a **CI key** of its own and sends the tested commit's SHA (`github.sha`), nothing else.
+3. It runs the same smoke check as `deploy.sh`. A failed smoke check fails the job.
+
+The CI key can't open a shell. In `authorized_keys` it carries a forced command, `deploy/ci-deploy.sh`, which does this:
+1. It accepts exactly a 40-character lowercase SHA, and nothing else.
+2. It refuses a commit that is not on `origin/main`.
+3. It skips (with success) a commit older than the one deployed, so it never rolls back.
+4. It runs `deploy/server-deploy.sh`.
+
+`deploy.sh` and the CI deploy share a lock, so they never run at the same time: the second one waits for the first, up to 15 minutes. Manual deploys and rollbacks still go through `deploy/deploy.sh` with your own key.
+
+The job runs only for pushes to `main` in this repository. Pull requests (Dependabot's and forks' included) never deploy, and never see the secrets: they live in the GitHub environment `production`, which only `main` may use.
+
+Follow the steps in this order. The workflow commit goes in last, so its first run is not red for lack of a key.
+
+### 12.1 Put the forced command on the server
+
+**Local:** push the commits that add `deploy/smoke-check.sh` and `deploy/ci-deploy.sh` to `main`, but **not yet** the one that adds the `deploy` job to `ci.yml`. Deploy them by hand:
+
+```bash
+deploy/deploy.sh
+ssh deploy@traktorist.duckdns.org 'ls -l /srv/traktorist/deploy/ci-deploy.sh'   # -rwxr-xr-x
+```
+
+### 12.2 Generate the CI key
+
+**Local.** This key is separate from your personal key and has no passphrase. It is used only by GitHub. The comment names the key generation, so a rotation can remove exactly the old line.
+
+```bash
+ssh-keygen -t ed25519 -N '' -C "traktorist-ci-$(date +%Y-%m)" -f ~/.config/traktorist/ci_key
+```
+
+### 12.3 Install it with the forced command
+
+**Local.** This appends one line to deploy's `authorized_keys`, over your own key. It uses `>>`, never `>`: a `>` would replace your personal key and lock you out.
+
+```bash
+{ printf 'command="/srv/traktorist/deploy/ci-deploy.sh",restrict,no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding '
+  cat ~/.config/traktorist/ci_key.pub; } \
+    | ssh deploy@traktorist.duckdns.org 'cat >> ~/.ssh/authorized_keys'
+ssh deploy@traktorist.duckdns.org 'tail -n 1 ~/.ssh/authorized_keys'
+```
+
+The last line must start with `command="/srv/traktorist/deploy/ci-deploy.sh",restrict,` and end with `traktorist-ci-YYYY-MM`. `restrict` already turns off every forwarding, the PTY and `~/.ssh/rc`, including restrictions future OpenSSH versions add; the explicit options keep the line readable.
+
+**Test it (local).** Always pass `-o IdentitiesOnly=yes` with this key. Without it, ssh may offer your personal key from the agent first, log in with that, and prove nothing.
+
+```bash
+ci=(ssh -i ~/.config/traktorist/ci_key -o IdentitiesOnly=yes)
+host=deploy@traktorist.duckdns.org
+git fetch origin
+
+"${ci[@]}" "$host" 'bash -i'; echo "exit $?"      # refused: expected a 40-character commit SHA / exit 2
+"${ci[@]}" "$host"; echo "exit $?"                # PTY allocation request failed ... refused ... / exit 2
+"${ci[@]}" -W localhost:22 "$host"                # open failed: administratively prohibited
+"${ci[@]}" "$host" origin/main; echo "exit $?"    # refused ... / exit 2
+"${ci[@]}" "$host" "$(git rev-parse origin/main)" # a real deploy: "==> At ..." and the usual output
+```
+
+The last command redeploys the commit that is already running. That is harmless: it builds from cache and restarts nothing. **Server:** the requests are logged:
+
+```bash
+journalctl -t traktorist-ci-deploy -n 10
+```
+
+### 12.4 Pin the host key
+
+GitHub must connect only to this server, with `StrictHostKeyChecking=yes`. The job gets the server's host key as a secret; here you fetch it and check it.
+
+**Local:**
+
+```bash
+ssh-keyscan -t ed25519 traktorist.duckdns.org 2>/dev/null > ~/.config/traktorist/ci_known_hosts
+ssh-keygen -lf ~/.config/traktorist/ci_known_hosts
+ssh-keygen -lF traktorist.duckdns.org | grep ED25519       # what your own ssh already trusts
+```
+
+**Server** (over your existing session, which your own `known_hosts` already authenticates):
+
+```bash
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+All three must print the same fingerprint: `SHA256:5ehJBO3EtbGLU/wQFOkGUxNGmJeqe8rlXElGC8vlPWQ`, the one accepted at the first login in section 2.1.
+
+What to do if they differ:
+- **The `ssh-keyscan` result differs from the server's own value:** stop. Something between you and the server answered in its place. Don't upload the file.
+- **Only the expected value above differs from the other two:** the first login showed a different key type. Compare with `ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub` on the server.
+
+The file holds a single line: `traktorist.duckdns.org ssh-ed25519 AAAA...`.
+
+### 12.5 The `production` environment and its secrets
+
+On GitHub, open the repository's **Settings → Environments → New environment**, name it `production`, then:
+
+| Setting | Value |
+|---|---|
+| Deployment branches and tags | **Selected branches and tags**, add the rule `main` |
+| Required reviewers | off (on it pauses every deploy until you approve it, see 12.7) |
+| Environment secrets | `DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS`, below |
+
+Add the secrets to the **environment**, not as repository secrets. Only a job that names the environment can read them, and only from `main`. Either paste the files' contents into the web form (the whole `ci_key`, from `-----BEGIN` to `-----END ...-----`), or **local**, with the GitHub CLI:
+
+```bash
+gh secret set DEPLOY_SSH_KEY --env production < ~/.config/traktorist/ci_key
+gh secret set DEPLOY_KNOWN_HOSTS --env production < ~/.config/traktorist/ci_known_hosts
+gh secret list --env production                        # both names, no values
+```
+
+Then delete the private key. GitHub holds the only copy it needs, and a lost key is replaced by rotating (12.7), never recovered. Keep `ci_key.pub` and `ci_known_hosts`: neither is secret.
+
+```bash
+shred -u ~/.config/traktorist/ci_key
+```
+
+### 12.6 Turn it on
+
+**Local:** push the commit that adds the `deploy` job to `ci.yml`. In the repository's **Actions** tab, that run shows:
+1. `lint-and-test` and `docker-image`.
+2. Then `deploy`, in the `production` environment. Its log shows:
+   - `==> At <sha> <subject>` for the pushed commit
+   - the build
+   - `==> Smoke check passed: ...`
+
+**Server:**
+
+```bash
+git -C /srv/traktorist rev-parse HEAD                  # the pushed commit
+journalctl -t traktorist-ci-deploy -n 5
+```
+
+From now on:
+- **Failures.** A push whose tests fail is not deployed. A failed deploy leaves the job red; **Re-run failed jobs** deploys the same commit again.
+- **Pushes in a row.** Two pushes in a row deploy one after the other, and a running deploy is never cancelled. If a third push comes while one is waiting, the waiting one is dropped and the newest one runs.
+- **Rollbacks.** `deploy/deploy.sh <previous sha>` stays the way to roll back. The CI key never goes backwards: re-running an old workflow is skipped as "already at a newer commit". The next push to `main` deploys again.
+- **The job's time limit is 30 minutes.** ssh gives up on a dead connection after about a minute. So a hung deploy fails the job instead of holding the lock and the queue.
+
+### 12.7 Revoke, pause or rotate the key
+
+**Revoke** (the key leaked, or you stop using CI deploys). **Server:**
+
+```bash
+sed -i '/ traktorist-ci-[0-9-]*$/d' ~/.ssh/authorized_keys
+grep -c traktorist-ci ~/.ssh/authorized_keys           # 0
+journalctl -t traktorist-ci-deploy --since '30 days ago'    # every request, with its source address
+```
+
+Then delete the secret. **Local:** `gh secret delete DEPLOY_SSH_KEY --env production`. From then on, deploy jobs fail at the ssh step until a new key is installed (12.2 to 12.5). A leaked key could only have deployed commits that were already on `main`. Look in the journal for requests that match no run in the Actions tab.
+
+**Pause** (deploy by hand for a while, keep the key): tick **Required reviewers** in the `production` environment and add yourself. Each deploy then waits for your approval in the Actions tab; the tests still run.
+
+**Rotate** (yearly, or when in doubt):
+1. Generate a new key and install it next to the old one (12.2, 12.3). Its comment has the new month.
+2. Replace `DEPLOY_SSH_KEY` (12.5).
+3. Re-run the last deploy job and check that it passes.
+4. **Server:** remove the old line by its comment: `sed -i '/ traktorist-ci-2026-09$/d' ~/.ssh/authorized_keys` (with the old month).
+
+**New server or new host key** (section 7.4): repeat 12.3 to 12.5 on the new server. The old `DEPLOY_KNOWN_HOSTS` then fails with "Host key verification failed", which is the pinning doing its job.
