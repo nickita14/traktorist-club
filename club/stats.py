@@ -393,16 +393,17 @@ def elimination_places[K: Hashable](out_orders: Mapping[K, int | None]) -> dict[
 
 
 def game_results(game: Game) -> list[Result]:
-    """Results of ``game``, best net first, player loaded. One query.
+    """Results of ``game``, player loaded. One query.
 
-    Each result has ``net`` and ``pot``: what it left in the pot, chip value minus payout
-    (a Fraction), or None when chips_out is unknown or the game is a tournament.
+    A tournament is in place order (1, 2, 3, ...), players without a place after them, best net
+    first; a cash game is best net first. Each result has ``net`` and ``pot``: what it left in
+    the pot, chip value minus payout (a Fraction), or None when chips_out is unknown or the game
+    is a tournament.
     """
-    results = list(
-        annotate_result_net(game.results.select_related("player")).order_by(
-            "-net", F("place").asc(nulls_last=True), "player__name", "player__nickname"
-        )
-    )
+    order = ["-net", "player__name", "player__nickname"]
+    if game.season.kind == SeasonKind.TOUR:
+        order.insert(0, F("place").asc(nulls_last=True))
+    results = list(annotate_result_net(game.results.select_related("player")).order_by(*order))
     for result in results:
         result.pot = (
             chips_value(result.chips_out, game.season.chips_per_lei) - result.payout

@@ -451,6 +451,16 @@ class TestGameResults:
 
         assert rows == {"Альфа": Fraction(23, 10), "Браво": Fraction(77, 10), "Чарли": None}
 
+    def test_tour_in_place_order_players_without_a_place_last(self, club):
+        game = club["games"]["t1"]
+        game.results.filter(player=club["players"]["C"]).update(place=2)
+        names = [r.player.name for r in stats.game_results(game)]
+        assert names == ["Альфа", "Чарли", "Браво"]
+
+    def test_cash_best_net_first(self, club):
+        names = [r.player.name for r in stats.game_results(club["games"]["c1"])]
+        assert names == ["Чарли", "Браво", "Альфа"]  # +50, -10, -50
+
     def test_tour_results_have_no_pot(self, club):
         assert {r.pot for r in stats.game_results(club["games"]["t1"])} == {None}
 

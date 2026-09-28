@@ -4,6 +4,7 @@ import pytest
 from django.urls import reverse
 
 from club.tests.conftest import PAST_YEAR
+from club.tests.factories import make_game, make_result
 
 pytestmark = pytest.mark.django_db
 
@@ -86,14 +87,40 @@ class TestTourGame:
         assert "3 призовых места" in html
         assert "В котёл" not in html
 
-    def test_results_sorted_by_net_with_places(self, client, club):
-        response = get_game(client, club["games"]["t1"])
-        html = response.content.decode()
+    def test_results_in_place_order_then_by_net(self, client, club):
+        # 1st place bought in three times, so 2nd has the better net; the sheet follows places.
+        game = make_game(club["seasons"]["tour"], day=22, month=3)
+        for name, buyin, payout, place in [
+            ("Дельта", 50, 0, None),
+            ("Альфа", 150, 200, 1),
+            ("Эхо", 100, 0, None),
+            ("Браво", 50, 100, 2),
+            ("Чарли", 50, 0, None),
+        ]:
+            player = next(p for p in club["players"].values() if p.name == name)
+            make_result(game, player, buyin=buyin, payout=payout, place=place)
 
-        rows = [(r.player.name, r.place, r.net) for r in response.context["results"]]
-        # Equal nets fall back to name order.
-        assert rows == [("Альфа", 1, 100), ("Браво", None, -50), ("Чарли", None, -50)]
-        assert ">Место</th>" in html and "Фишек на выходе" not in html
+        rows = [(r.player.name, r.place, r.net) for r in get_game(client, game).context["results"]]
+
+        # Without a place: best net first, equal nets in name order.
+        assert rows == [
+            ("Альфа", 1, 50),
+            ("Браво", 2, 50),
+            ("Дельта", None, -50),
+            ("Чарли", None, -50),
+            ("Эхо", None, -100),
+        ]
+
+    def test_place_is_the_first_column_and_there_is_no_row_number(self, client, club):
+        html = html_of(client, club["games"]["t1"])
+
+        head = html[html.index("<thead>") : html.index("</thead>")]
+        assert head.index(">Место</th>") < head.index(">Участник</th>")
+        assert ">№</th>" not in head
+        assert head.count("<th ") == 5  # место, участник, закупка, выплата, итог
+        assert "Фишек на выходе" not in html
+        first_row = html[html.index("<tbody>") :]
+        assert first_row.index('<td class="col-rank num">1</td>') < first_row.index("Альфа")
 
     def test_total_row_of_an_unbalanced_game(self, client, club):
         html = html_of(client, club["games"]["t3"])
@@ -238,6 +265,16 @@ class TestCashGame:
         assert "Курс: " in html
         # The stat strip still shows the game's pot.
         assert f'<dd class="stat-value"><span class="val-neg">{MINUS}20</span></dd>' in html
+
+    def test_cash_keeps_the_row_number_and_net_order(self, client, club):
+        response = get_game(client, club["games"]["c1"])
+        html = response.content.decode()
+
+        head = html[html.index("<thead>") : html.index("</thead>")]
+        assert head.index(">№</th>") < head.index(">Участник</th>")
+        assert ">Место</th>" not in head
+        nets = [r.net for r in response.context["results"]]
+        assert nets == sorted(nets, reverse=True)
 
     def test_cash_game_never_shows_the_rebuy_note(self, client, club):
         # Only a broken row could have these on cash; the sheet still ignores them.

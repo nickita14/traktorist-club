@@ -78,9 +78,9 @@
       <table class="ledger">
         <thead>
           <tr>
-            <th scope="col" class="col-rank num">№</th>
+            {# A tournament is listed by place, so the place is the row number; cash counts rows. #}
+            <th scope="col" class="col-rank num">{% if season.kind == "tour" %}Место{% else %}№{% endif %}</th>
             <th scope="col" class="col-player">Участник</th>
-            {% if season.kind == "tour" %}<th scope="col" class="num">Место</th>{% endif %}
             <th scope="col" class="num max-md:hidden">Закупка</th>
             {% if show_chips %}<th scope="col" class="num max-md:hidden">Фишек на выходе</th>{% endif %}
             <th scope="col" class="num max-md:hidden">Выплата</th>
@@ -91,13 +91,12 @@
         <tbody>
           {% for result in results %}
             <tr>
-              <td class="col-rank num">{{ forloop.counter }}</td>
+              <td class="col-rank num">{% if season.kind == "tour" %}{% optional_count result.place %}{% else %}{{ forloop.counter }}{% endif %}</td>
               <td class="col-player">
                 {% include "club/includes/player_name.html" with player=result.player %}
                 {% if season.kind == "tour" %}{% include "club/includes/rebuy_note.html" %}{% endif %}
                 <span class="block font-num text-xs text-muted md:hidden">{{ result.buyin|money }} → {{ result.payout|money }}{% if result.chips_out is not None %} · фишек {{ result.chips_out|money }} · в котёл {% pot_value result.pot %}{% endif %}</span>
               </td>
-              {% if season.kind == "tour" %}<td class="num">{% optional_count result.place %}</td>{% endif %}
               <td class="num max-md:hidden">{{ result.buyin|money }}</td>
               {% if show_chips %}<td class="num max-md:hidden">{% optional_count result.chips_out %}</td>{% endif %}
               <td class="num max-md:hidden">{{ result.payout|money }}</td>
@@ -106,7 +105,7 @@
             </tr>
           {% empty %}
             <tr>
-              <td colspan="{% if show_chips %}7{% elif season.kind == 'cash' %}5{% else %}6{% endif %}" class="text-muted italic">Результатов пока нет.</td>
+              <td colspan="{% if show_chips %}7{% else %}5{% endif %}" class="text-muted italic">Результатов пока нет.</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -115,7 +114,6 @@
             <tr>
               <td class="col-rank"></td>
               <td class="col-player font-head tracking-label uppercase">Итого</td>
-              {% if season.kind == "tour" %}<td></td>{% endif %}
               <td class="num max-md:hidden">{{ game.buyin_total|money }}</td>
               {% if show_chips %}<td class="max-md:hidden"></td>{% endif %}
               <td class="num max-md:hidden">{{ game.payout_total|money }}</td>
