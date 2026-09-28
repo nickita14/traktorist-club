@@ -7,7 +7,7 @@
   {% url 'live:board' game.pk as back_url %}
   {% include "live/_bar.html" with back_url=back_url back_label="К игре" label="Закрытие" %}
   <h1 class="live-title">Закрыть вечер</h1>
-  <dl class="stat-strip mt-4">
+  <dl class="stat-strip stat-strip-3 mt-4">
     <div><dt>Закупки</dt><dd class="stat-value">{{ totals.bank|money }}</dd></div>
     <div><dt>Выдано</dt><dd class="stat-value">{{ totals.paid_out|money }}</dd></div>
     <div><dt>В котёл</dt><dd class="stat-value">{% pot_value leftover %}</dd></div>
