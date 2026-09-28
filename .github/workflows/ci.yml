@@ -61,6 +61,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends gettext
           uv run python manage.py compilemessages --ignore=.venv
 
+      - name: Build Tailwind CSS
+        # assets/css/tailwind.css is gitignored; without it the browser tests measure unstyled pages.
+        run: uv run python manage.py tailwind build
+
       - name: Install Chromium for browser tests
         run: uv run playwright install --with-deps chromium
 

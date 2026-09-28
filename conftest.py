@@ -3,6 +3,8 @@
 import os
 
 import pytest
+from django.conf import settings
+from django.contrib.staticfiles import finders
 
 # Every Content-Security-Policy violation on the page, as "directive blocked-uri". Add it with
 # context.add_init_script() and read window.cspViolations.
@@ -34,6 +36,14 @@ def browser():
         if os.environ.get("REQUIRE_BROWSER_TESTS"):
             raise
         pytest.skip(f"Chromium is not available: {error}")
+    if not finders.find(settings.TAILWIND_CLI_DIST_CSS):
+        chromium.close()
+        playwright.stop()
+        pytest.fail(
+            f"{settings.TAILWIND_CLI_DIST_CSS} missing, run tailwind build "
+            "(uv run python manage.py tailwind build): browser tests would measure unstyled pages.",
+            pytrace=False,
+        )
     yield chromium
     chromium.close()
     playwright.stop()
