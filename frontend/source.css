@@ -567,6 +567,12 @@
     text-transform: uppercase;
   }
 
+  /* Lowercase words inside the uppercase strip ("идёт 1:17"). */
+  .phase-quiet {
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
   .phase-note {
     margin-top: 0.25rem;
     color: var(--muted);

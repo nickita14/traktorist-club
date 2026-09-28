@@ -69,30 +69,38 @@ def manifest(request):
 
 
 @dataclass(frozen=True)
-class Countdown:
-    deadline: datetime.datetime
-    remaining: datetime.timedelta
-    elapsed: int  # seconds, for the progress bar
-    total: int
+class StageTime:
+    """How long stage 1 has been going, against the season's rough guide (``rebuy_minutes``).
+
+    Only a hint: the organizer closes rebuys whenever the table agrees.
+    """
+
+    elapsed: datetime.timedelta
+    guide: datetime.timedelta
 
     @property
-    def over(self) -> bool:
-        return self.remaining <= datetime.timedelta(0)
-
-    @property
-    def remaining_text(self) -> str:
-        """'1:43' (hours:minutes), rounded up so it reaches 0:00 only at the deadline."""
-        minutes = math.ceil(self.remaining.total_seconds() / 60)
+    def elapsed_text(self) -> str:
+        """'1:17' (hours:minutes), whole minutes played."""
+        minutes = int(self.elapsed.total_seconds()) // 60
         return f"{minutes // 60}:{minutes % 60:02d}"
 
+    @property
+    def usual_end(self) -> bool:
+        return self.elapsed >= self.guide
 
-def countdown(game: Game, now: datetime.datetime) -> Countdown:
-    """Time left in stage 1: from the start, ``rebuy_minutes`` long. Display only."""
-    total = datetime.timedelta(minutes=game.season.rebuy_minutes)
-    start = timezone.localtime(game.started_at)
-    deadline = start + total
-    elapsed = min(max(now - start, datetime.timedelta(0)), total)
-    return Countdown(deadline, deadline - now, int(elapsed.total_seconds()), int(total.seconds))
+    @property
+    def progress(self) -> int:
+        """Seconds towards the guide, for the progress bar (it stops full)."""
+        return int(min(self.elapsed, self.guide).total_seconds())
+
+    @property
+    def total(self) -> int:
+        return int(self.guide.total_seconds())
+
+
+def stage_time(game: Game, now: datetime.datetime) -> StageTime:
+    elapsed = max(now - game.started_at, datetime.timedelta(0))
+    return StageTime(elapsed, datetime.timedelta(minutes=game.season.rebuy_minutes))
 
 
 def board_context(game: Game) -> dict:
@@ -117,7 +125,7 @@ def board_context(game: Game) -> dict:
             key=lambda result: -result.out_order,
         ),
         "now": now,
-        "countdown": countdown(game, now) if game.live_stage == Game.Stage.REBUYS else None,
+        "stage_time": stage_time(game, now) if game.live_stage == Game.Stage.REBUYS else None,
         "poll_seconds": settings.LIVE_POLL_SECONDS,
         # The cash rate for one step, like the paper sheets: "5 000 фишек = 50 лей".
         "step_chips": game.season.cash_step * game.season.chips_per_lei,

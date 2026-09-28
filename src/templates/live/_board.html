@@ -9,9 +9,9 @@
 
   <div class="phase-strip">
     {% if game.live_stage == "rebuys" %}
-      <p>Этап 1 · Ребаи открыты · до <time class="font-num">{{ countdown.deadline|date:"H:i" }}</time> ·
-        {% if countdown.over %}<span class="text-accent">время вышло</span>{% else %}ещё <span class="font-num">{{ countdown.remaining_text }}</span>{% endif %}</p>
-      <progress max="{{ countdown.total }}" value="{{ countdown.elapsed }}" aria-label="Время этапа 1"></progress>
+      <p>Этап 1 · Ребаи открыты · <span class="phase-quiet">идёт <span class="font-num">{{ stage_time.elapsed_text }}</span></span></p>
+      <progress max="{{ stage_time.total }}" value="{{ stage_time.progress }}" aria-label="Время этапа 1"></progress>
+      {% if stage_time.usual_end %}<p class="phase-note">обычно в это время закрывают ребаи</p>{% endif %}
     {% elif game.live_stage == "addon" %}
       <p>Перерыв · Аддон</p>
       <p class="phase-note">Каждый, кто в игре, может взять один аддон: +<span class="font-num">{{ season.addon_price|money }}</span>.</p>

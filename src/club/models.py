@@ -126,9 +126,12 @@ class Season(models.Model):
     rebuy_price = models.PositiveIntegerField("ребай, лей", default=50)
     addon_price = models.PositiveIntegerField("аддон, лей", default=50)
     rebuy_minutes = models.PositiveSmallIntegerField(
-        "ребаи открыты, минут",
+        "ориентир для ребаев, минут",
         default=120,
-        help_text="Для обратного отсчёта на экране игры. Ребаи закрывает организатор.",
+        help_text=(
+            "Примерно столько обычно идёт этап 1. Только подсказка на экране игры: "
+            "ребаи закрывает организатор."
+        ),
     )
     cash_step = models.PositiveIntegerField("шаг закупки в кэше, лей", default=50)
     # How the live results screen suggests prizes (see club.stats.split_prizes).
