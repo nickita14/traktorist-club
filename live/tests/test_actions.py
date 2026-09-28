@@ -510,6 +510,8 @@ class TestStartAndCancel:
             addon_price=60,
             rebuy_minutes=90,
             cash_step=20,
+            payout_weights="6,4",
+            payout_round=10,
         )
         make_season(2025, SeasonKind.CASH, chips_per_lei=10)
 
@@ -521,6 +523,7 @@ class TestStartAndCancel:
         assert (season.paid_places, season.chips_per_lei, season.entry_price) == (2, 50, 150)
         assert (season.rebuy_price, season.addon_price, season.rebuy_minutes) == (70, 60, 90)
         assert season.cash_step == 20
+        assert (season.payout_weights, season.payout_round) == ("6,4", 10)
 
     def test_first_season_of_a_kind_gets_the_defaults(self):
         season = actions.next_season(SeasonKind.CASH, 2026)

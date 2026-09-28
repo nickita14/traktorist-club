@@ -300,6 +300,8 @@ class TestSeasonForm:
             "rebuy_price": 75,
             "addon_price": 60,
             "rebuy_minutes": 90,
+            "payout_weights": "5, 3, 2",
+            "payout_round": 10,
             "cash_step": 50,
         }
         response = admin_client.post(reverse("admin:club_season_add"), data)
@@ -308,6 +310,27 @@ class TestSeasonForm:
         season = Season.objects.get(year=2027)
         assert (season.entry_price, season.rebuy_price, season.addon_price) == (150, 75, 60)
         assert season.rebuy_minutes == 90
+        assert (season.payout_weights, season.payout_round) == ("5,3,2", 10)
+
+    def test_weights_must_match_paid_places(self, admin_client):
+        data = {
+            "year": 2027,
+            "kind": SeasonKind.TOUR,
+            "chips_per_lei": 100,
+            "paid_places": 2,
+            "entry_price": 100,
+            "rebuy_price": 50,
+            "addon_price": 50,
+            "rebuy_minutes": 120,
+            "payout_weights": "3,2,1",
+            "payout_round": 50,
+            "cash_step": 50,
+        }
+        response = admin_client.post(reverse("admin:club_season_add"), data)
+
+        assert response.status_code == 200
+        assert "Нужно 2 доли: по одной на призовое место, а указано 3." in response.text
+        assert not Season.objects.filter(year=2027).exists()
 
 
 class TestGameLiveFields:

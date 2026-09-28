@@ -499,6 +499,51 @@ class TestResults:
             (bravo, "3"),
         ]
 
+    def test_prizes_prefilled_by_the_split(self, org, final):
+        # Браво went out first, then Альфа; Чарли won. Bank 300, weights 3,2,1: 150, 100, 50.
+        game, (alpha, bravo, charlie) = final
+        response = org.get(reverse("live:results", args=[game.pk]))
+
+        payouts = {row.result: row.payout for row in response.context["rows"]}
+        assert payouts == {charlie: "150", alpha: "100", bravo: "50"}
+        assert "Баланс сверен" in response.text
+        assert not response.context["note"]
+
+    def test_prefill_keeps_payouts_already_entered(self, org, final):
+        game, (alpha, bravo, charlie) = final
+        Result.objects.filter(pk=charlie.pk).update(payout=170)
+        rows = org.get(reverse("live:results", args=[game.pk])).context["rows"]
+        assert {row.result: row.payout for row in rows}[charlie] == "170"
+
+    def test_redistribute_after_changing_places(self, org, final):
+        game, (alpha, bravo, charlie) = final
+        data = {
+            "key": str(uuid.uuid4()),
+            "redistribute": "1",
+            f"place-{charlie.pk}": "2",
+            f"payout-{charlie.pk}": "150",
+            f"place-{alpha.pk}": "1",
+            f"payout-{alpha.pk}": "100",
+            f"place-{bravo.pk}": "",
+            f"payout-{bravo.pk}": "30",
+        }
+        response = org.post(reverse("live:results", args=[game.pk]), data, **HTMX)
+
+        payouts = {row.result: row.payout for row in response.context["rows"]}
+        # Only 1st and 2nd filled in: the bank goes 3:2 (180, 120), rounded to 150, 100 with the
+        # 50 left over to 1st. Браво, with no place, keeps what was typed.
+        assert payouts == {alpha: "200", charlie: "100", bravo: "30"}
+        assert "Призовых мест заполнено 2 из 3: банк поделён между ними." in response.text
+        assert response["HX-Retarget"] == "#results-form"
+        game.refresh_from_db()
+        assert game.live_stage == Game.Stage.FINAL  # nothing saved
+
+    def test_split_follows_the_season(self, org, final):
+        game, _ = final
+        Season.objects.filter(pk=game.season_id).update(payout_weights="1,1,1", payout_round=100)
+        rows = org.get(reverse("live:results", args=[game.pk])).context["rows"]
+        assert [row.payout for row in rows] == ["100", "100", "100"]
+
     def test_only_from_the_final_stage(self, org, tour):
         game, _ = tour
         response = org.get(reverse("live:results", args=[game.pk]))

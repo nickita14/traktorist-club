@@ -208,7 +208,7 @@ def test_other_pages_are_clean(phone, name):
     assert_clean(page)
 
 
-def test_results_and_close_pages_are_clean(phone):
+def test_results_prefilled_split_redistribute_and_save(phone):
     tour = live_game(SeasonKind.TOUR)
     alpha, bravo = seat(tour, "Альфа", "Браво")
     actions.advance_stage(tour.pk, key(), None, "rebuys")
@@ -216,14 +216,21 @@ def test_results_and_close_pages_are_clean(phone):
     actions.eliminate(tour.pk, key(), None, bravo.pk)
     page = phone(reverse("live:results", args=[tour.pk]))
 
-    page.get_by_label("Выплата: Альфа").fill("150")
-    expect(page.locator("#balance")).to_contain_text("Не сходится")
-    page.get_by_label("Выплата: Альфа").fill("200")
+    # Bank 200 split 3:2 between the two places: 120, 80 round to 100, 50, the rest to 1st.
+    expect(page.get_by_label("Выплата: Альфа")).to_have_value("150")
+    expect(page.get_by_label("Выплата: Браво")).to_have_value("50")
     expect(page.locator("#balance")).to_contain_text("Баланс сверен")
     assert_touch_targets(page)
     assert_clean(page)
 
+    page.get_by_label("Выплата: Альфа").fill("100")
+    expect(page.locator("#balance")).to_contain_text("Не сходится")
+    page.get_by_role("button", name="Распределить заново").click()
+    expect(page.get_by_label("Выплата: Альфа")).to_have_value("150")
+    expect(page.locator("#balance")).to_contain_text("Баланс сверен")
+
     page.get_by_role("button", name="Сохранить итоги").click()
     page.wait_for_url(f"**{reverse('game_detail', args=[tour.pk])}")
     alpha.refresh_from_db()
-    assert (alpha.place, alpha.payout) == (1, 200)
+    assert (alpha.place, alpha.payout) == (1, 150)
+    assert_clean(page)

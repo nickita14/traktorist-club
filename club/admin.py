@@ -122,6 +122,8 @@ class SeasonAdmin(ModelAdmin):
         "rebuy_price",
         "addon_price",
         "rebuy_minutes",
+        "payout_weights",
+        "payout_round",
         "cash_step",
     ]
     # Prices of the live game screens: only the ones of the chosen kind (Alpine expressions).
@@ -130,6 +132,8 @@ class SeasonAdmin(ModelAdmin):
         "rebuy_price": "kind == 'tour'",
         "addon_price": "kind == 'tour'",
         "rebuy_minutes": "kind == 'tour'",
+        "payout_weights": "kind == 'tour'",
+        "payout_round": "kind == 'tour'",
         "cash_step": "kind == 'cash'",
     }
 

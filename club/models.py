@@ -4,6 +4,8 @@ from django.db.models import F, Q
 from django.urls import reverse
 from django.utils.text import slugify
 
+from club.formatting import ru_plural
+
 # Russian-to-Latin table for slugs; everything else is left to slugify (NFKD strips diacritics).
 TRANSLIT = {
     "а": "a",
@@ -129,6 +131,18 @@ class Season(models.Model):
         help_text="Для обратного отсчёта на экране игры. Ребаи закрывает организатор.",
     )
     cash_step = models.PositiveIntegerField("шаг закупки в кэше, лей", default=50)
+    # How the live results screen suggests prizes (see club.stats.split_prizes).
+    payout_weights = models.CharField(
+        "доли призовых мест",
+        max_length=100,
+        default="3,2,1",
+        help_text="По одной доле на призовое место, через запятую: 3,2,1 делит банк 3:2:1.",
+    )
+    payout_round = models.PositiveIntegerField(
+        "округление выплат, лей",
+        default=50,
+        help_text="Выплаты округляются вниз до этого шага, остаток получает первое место.",
+    )
 
     class Meta:
         verbose_name = "сезон"
@@ -158,16 +172,47 @@ class Season(models.Model):
                 ),
                 name="season_live_prices_positive",
             ),
+            models.CheckConstraint(
+                condition=Q(payout_round__gte=1), name="season_payout_round_positive"
+            ),
+            models.CheckConstraint(
+                condition=Q(payout_weights__regex=r"^[1-9][0-9]*(,[1-9][0-9]*)*$"),
+                name="season_payout_weights_format",
+            ),
         ]
 
     def __str__(self) -> str:
         return f"{self.get_kind_display()} {self.year}"
 
+    def _clean_payout_weights(self) -> None:
+        """Normalize "3, 2, 1" to "3,2,1" and require one positive weight per paid place."""
+        parts = [part.strip() for part in self.payout_weights.split(",")]
+        if not all(part.isdigit() and int(part) > 0 for part in parts):
+            raise ValidationError(
+                {"payout_weights": "Доли: целые числа больше нуля через запятую, например 3,2,1."}
+            )
+        self.payout_weights = ",".join(str(int(part)) for part in parts)
+        if self.paid_places is not None and len(parts) != self.paid_places:
+            raise ValidationError(
+                {
+                    "payout_weights": (
+                        f"Нужно {self.paid_places} "
+                        f"{ru_plural(self.paid_places, ('доля', 'доли', 'долей'))}: "
+                        f"по одной на призовое место, а указано {len(parts)}."
+                    )
+                }
+            )
+
     def get_absolute_url(self) -> str:
         return reverse("season", args=[self.year, self.kind])
 
+    @property
+    def prize_weights(self) -> list[int]:
+        return [int(weight) for weight in self.payout_weights.split(",")]
+
     def clean(self):
         super().clean()
+        self._clean_payout_weights()
         if self.pk is None:
             return
         results = Result.objects.filter(game__season=self)

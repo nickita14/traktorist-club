@@ -174,6 +174,8 @@ def next_season(kind: str, year: int) -> Season:
         "rebuy_price",
         "addon_price",
         "rebuy_minutes",
+        "payout_weights",
+        "payout_round",
         "cash_step",
     )
     rules = {field: getattr(latest, field) for field in copied} if latest else {}

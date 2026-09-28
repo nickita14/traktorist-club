@@ -24,6 +24,11 @@ class TestSeason:
         assert season.paid_places == 3
         assert (season.entry_price, season.rebuy_price, season.addon_price) == (100, 50, 50)
         assert (season.rebuy_minutes, season.cash_step) == (120, 50)
+        assert (season.payout_weights, season.prize_weights, season.payout_round) == (
+            "3,2,1",
+            [3, 2, 1],
+            50,
+        )
 
     def test_str(self):
         assert str(make_season(2025, SeasonKind.CASH)) == "Кэш 2025"
@@ -46,11 +51,52 @@ class TestSeason:
             ({"addon_price": 0}, "season_live_prices_positive"),
             ({"rebuy_minutes": 0}, "season_live_prices_positive"),
             ({"cash_step": 0}, "season_live_prices_positive"),
+            ({"payout_round": 0}, "season_payout_round_positive"),
+            ({"payout_weights": "3,,1"}, "season_payout_weights_format"),
+            ({"payout_weights": "3,0,1"}, "season_payout_weights_format"),
+            ({"payout_weights": "3, 2, 1"}, "season_payout_weights_format"),
         ],
     )
     def test_check_constraints(self, fields, constraint):
         values = {"year": 2025, "kind": SeasonKind.TOUR} | fields
         assert_integrity_error(constraint, lambda: Season.objects.create(**values))
+
+    def test_weights_are_normalized(self):
+        season = Season(year=2026, kind=SeasonKind.TOUR, payout_weights=" 5 , 3,2 ")
+        season.full_clean()
+        assert season.payout_weights == "5,3,2"
+
+    @pytest.mark.parametrize(
+        ("weights", "paid_places", "message"),
+        [
+            ("3,2", 3, "Нужно 3 доли: по одной на призовое место, а указано 2."),
+            ("3,2,1", 1, "Нужно 1 доля: по одной на призовое место, а указано 3."),
+            ("3,x,1", 3, "Доли: целые числа больше нуля"),
+            ("3,0,1", 3, "Доли: целые числа больше нуля"),
+        ],
+    )
+    def test_weights_must_fit_paid_places(self, weights, paid_places, message):
+        season = Season(
+            year=2026, kind=SeasonKind.TOUR, payout_weights=weights, paid_places=paid_places
+        )
+        with pytest.raises(ValidationError) as exc:
+            season.full_clean()
+        assert message in exc.value.message_dict["payout_weights"][0]
+
+    def test_migration_gives_other_seasons_matching_weights(self):
+        from importlib import import_module
+
+        from django.apps import apps
+
+        migration = import_module("club.migrations.0004_payout_split")
+        three, four = make_season(2024, paid_places=3), make_season(2025, paid_places=4)
+        Season.objects.update(payout_weights="3,2,1")
+
+        migration.weights_for_paid_places(apps, None)
+
+        three.refresh_from_db()
+        four.refresh_from_db()
+        assert (three.payout_weights, four.payout_weights) == ("3,2,1", "4,3,2,1")
 
     def test_kind_change_rejected_when_results_have_places(self):
         season = make_season(kind=SeasonKind.TOUR)

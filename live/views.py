@@ -520,6 +520,27 @@ def _result_rows(game: Game, data=None) -> list[ResultRow]:
     return rows
 
 
+def _split(game: Game, rows: list[ResultRow], *, overwrite: bool) -> str:
+    """Fill the prize rows' payouts with the season's split of the bank (club.stats.split_prizes).
+
+    Only rows in a prize place are touched; without ``overwrite`` only the empty ones. Returns a
+    note for the organizer when fewer prize places are filled in than the season pays.
+    """
+    season = game.season
+    bank = sum(row.result.buyin for row in rows)
+    places = {index: parse_int(row.place, minimum=1) for index, row in enumerate(rows)}
+    payouts = stats.split_prizes(bank, season.prize_weights, places, season.payout_round)
+    for index, amount in payouts.items():
+        if overwrite or not rows[index].payout:
+            rows[index].payout = str(amount)
+    if 0 < len(payouts) < season.paid_places:
+        return (
+            f"Призовых мест заполнено {len(payouts)} из {season.paid_places}: "
+            "банк поделён между ними."
+        )
+    return ""
+
+
 def _balance(game: Game, rows: list[ResultRow]) -> dict:
     bank = sum(row.result.buyin for row in rows)
     paid = sum(parse_int(row.payout) or 0 for row in rows)
@@ -554,8 +575,13 @@ def results(request, pk: int):
         return redirect("live:board", pk)
     data = request.POST if request.method == "POST" else None
     rows = _result_rows(game, data)
-    error = ""
-    if request.method == "POST":
+    error = note = ""
+    if request.method == "GET":
+        note = _split(game, rows, overwrite=False)
+    elif "redistribute" in request.POST:
+        # "Распределить заново": new prize payouts for the places as they are now; no saving.
+        note = _split(game, rows, overwrite=True)
+    else:
         cleaned = _validate(rows)
         key = _key(request)
         if cleaned is not None and key is not None:
@@ -574,6 +600,7 @@ def results(request, pk: int):
         "rows": rows,
         "balance": _balance(game, rows),
         "error": error,
+        "note": note,
         "key": _key(request) if request.method == "POST" else uuid.uuid4(),
     }
     if _is_htmx(request):

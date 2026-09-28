@@ -10,7 +10,7 @@ totals (annotate_game_totals) still work on a live game.
 """
 
 import datetime
-from collections.abc import Hashable, Mapping
+from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 
@@ -457,6 +457,31 @@ def suggest_places[K: Hashable](payouts: Mapping[K, int], paid_places: int) -> d
         rank = ranked.index(payout) + 1 if payout > 0 else None
         places[key] = rank if rank is not None and rank <= paid_places else None
     return places
+
+
+def split_prizes[K: Hashable](
+    bank: int, weights: Sequence[int], places: Mapping[K, int | None], step: int
+) -> dict[K, int]:
+    """Suggested payouts for the prize places: the bank split by ``weights`` (one per paid place).
+
+    Only players whose place is a prize place (1..len(weights)) take part, each with the weight
+    of their place, so blank places (a deal) or missing ones just drop out of the split. Each
+    share is rounded down to ``step`` and the remainder goes to the best place, so the payouts
+    always add up to the bank. Bank 1050, weights 3,2,1, step 50 -> 550, 350, 150.
+    Nobody in a prize place: nothing to split, an empty dict.
+    """
+    prized = {
+        key: weights[place - 1]
+        for key, place in places.items()
+        if place is not None and 1 <= place <= len(weights)
+    }
+    if not prized:
+        return {}
+    total = sum(prized.values())
+    payouts = {key: bank * weight // total // step * step for key, weight in prized.items()}
+    best = min(prized, key=lambda key: places[key])
+    payouts[best] += bank - sum(payouts.values())
+    return payouts
 
 
 def suggest_places_for_game(game: Game) -> dict[int, int | None]:
