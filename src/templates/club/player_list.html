@@ -1,5 +1,5 @@
 {% extends "club/document.html" %}
-{% load ledger %}
+{% load ledger sorting %}
 
 {% block title %}Участники клуба{% endblock %}
 
@@ -9,20 +9,21 @@
 {% block meta %}
   <p class="mt-3 text-muted italic">
     <span class="whitespace-nowrap"><span class="font-num num-run not-italic">{{ players|length|money }}</span> {{ players|length|plural:"участник,участника,участников" }}</span>
-    · по алфавиту
+    · {{ order_label }}
   </p>
 {% endblock %}
 
 {% block body %}
   <section class="mt-6" aria-labelledby="doc-title">
+    <p class="sort-links md:hidden">Сортировать: {% mobile_sort_links %}</p>
     <div class="ledger-scroll">
       <table class="ledger">
         <thead>
           <tr>
-            <th scope="col">Имя</th>
-            <th scope="col">Ник</th>
-            <th scope="col" class="num">Игр</th>
-            <th scope="col" class="num">Итог, лей</th>
+            <th scope="col"{% aria_sort "name" %}>{% sort_header "name" "Имя" %}</th>
+            <th scope="col"{% aria_sort "nick" %}>{% sort_header "nick" "Ник" %}</th>
+            <th scope="col" class="num"{% aria_sort "games" %}>{% sort_header "games" "Игр" %}</th>
+            <th scope="col" class="num"{% aria_sort "net" %}>{% sort_header "net" "Итог, лей" %}</th>
           </tr>
         </thead>
         <tbody>

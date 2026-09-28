@@ -1,15 +1,36 @@
-"""Sorting of the standings tables from the query string: ``?sort=<key>&dir=asc``.
+"""Sortable tables from the query string: ``?sort=<key>&dir=asc``.
 
-Pure parsing and URL building; the ordering itself is in club.stats. Anything unknown falls
-back to the default (ИТОГ, highest first), never an error.
+Pure parsing and URL building; the ordering itself is in club.stats. Each table (a Table) names
+its columns, its default column and which columns start from A (text) instead of the highest
+value. Anything unknown falls back to the table's default order, never an error.
 """
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
-# URL key -> annotation of club.stats._player_totals.
-FIELDS = {
+
+@dataclass(frozen=True)
+class Table:
+    # URL key -> the annotation or field club.stats orders by.
+    fields: Mapping[str, str]
+    default: str
+    # Text columns: their first click (and the default) is A to Я, not the highest first.
+    ascending_first: frozenset[str] = frozenset()
+    # The row above the table on narrow screens: keys in order.
+    mobile: tuple[str, ...] = ()
+
+    def start(self, key: str) -> "Sort":
+        """The order a column starts with."""
+        return Sort(key, key not in self.ascending_first, self)
+
+    @property
+    def default_sort(self) -> "Sort":
+        return self.start(self.default)
+
+
+# Annotations of club.stats._player_totals.
+_STANDINGS_FIELDS = {
     "net": "net",
     "games": "games_played",
     "buyin": "buyin_total",
@@ -19,44 +40,62 @@ FIELDS = {
     "second": "second_places",
     "third": "third_places",
 }
-# The sortable columns of each table: a tournament (or all kinds) table and a cash one.
-TOUR_KEYS = ("games", "itm", "first", "second", "third", "net")
-CASH_KEYS = ("games", "buyin", "payout", "net")
-# The row above the table on narrow screens, where the other columns are hidden.
-MOBILE_KEYS = {False: ("net", "games", "itm"), True: ("net", "games", "buyin", "payout")}
+
+
+def _standings(keys: tuple[str, ...], mobile: tuple[str, ...]) -> Table:
+    return Table({key: _STANDINGS_FIELDS[key] for key in keys}, "net", mobile=mobile)
+
+
+# A tournament (or all kinds) standings table and a cash one.
+TOUR_STANDINGS = _standings(
+    ("games", "itm", "first", "second", "third", "net"), mobile=("net", "games", "itm")
+)
+CASH_STANDINGS = _standings(
+    ("games", "buyin", "payout", "net"), mobile=("net", "games", "buyin", "payout")
+)
+# /players/: by name by default.
+PLAYERS = Table(
+    {"name": "name", "nick": "nickname", "games": "games_played", "net": "net"},
+    "name",
+    ascending_first=frozenset({"name", "nick"}),
+    mobile=("name", "nick", "games", "net"),
+)
+
 MOBILE_LABELS = {
     "net": "итог",
     "games": "игры",
     "itm": "ITM",
     "buyin": "закупки",
     "payout": "выплаты",
+    "name": "имя",
+    "nick": "ник",
 }
-
-DEFAULT_KEY = "net"
 
 
 @dataclass(frozen=True)
 class Sort:
-    key: str = DEFAULT_KEY
-    descending: bool = True
+    key: str
+    descending: bool
+    table: Table
 
     @property
     def field(self) -> str:
-        return FIELDS[self.key]
+        return self.table.fields[self.key]
 
     @property
     def is_default(self) -> bool:
-        """ИТОГ, highest first: the only order in which the season leader is marked."""
-        return self == Sort()
+        """The table's default order (in the standings: ИТОГ, highest first, the only order in
+        which the season leader is marked)."""
+        return self == self.table.default_sort
 
     @property
     def params(self) -> dict[str, str]:
-        """Query parameters of this order; the default needs none."""
+        """Query parameters of this order; a column's starting direction needs no ``dir``."""
         params = {}
-        if self.key != DEFAULT_KEY:
+        if self.key != self.table.default:
             params["sort"] = self.key
-        if not self.descending:
-            params["dir"] = "asc"
+        if self.descending != self.table.start(self.key).descending:
+            params["dir"] = "desc" if self.descending else "asc"
         return params
 
     @property
@@ -65,19 +104,22 @@ class Sort:
         return urlencode(self.params)
 
     def toggled(self, key: str) -> "Sort":
-        """The order a header link of ``key`` leads to: flip the active column, else start
-        with the highest first."""
+        """The order a header link of ``key`` leads to: flip the active column, else start the
+        column in its own direction."""
         if key == self.key:
-            return Sort(key, not self.descending)
-        return Sort(key)
+            return Sort(key, not self.descending, self.table)
+        return self.table.start(key)
 
 
-def parse_sort(params: Mapping[str, str], *, cash: bool) -> Sort:
-    keys = CASH_KEYS if cash else TOUR_KEYS
-    key = params.get("sort", DEFAULT_KEY)
-    if key not in keys:
-        return Sort()
-    return Sort(key, params.get("dir") != "asc")
+def parse_sort(params: Mapping[str, str], table: Table) -> Sort:
+    key = params.get("sort", table.default)
+    if key not in table.fields:
+        return table.default_sort
+    start = table.start(key)
+    direction = params.get("dir")
+    if direction in ("asc", "desc"):
+        return Sort(key, direction == "desc", table)
+    return start
 
 
 def sort_url(path: str, params: Mapping[str, str], sort: Sort) -> str:

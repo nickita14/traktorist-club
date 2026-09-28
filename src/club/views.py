@@ -11,7 +11,7 @@ from django.views.decorators.http import require_GET
 
 from club import charts, stats
 from club.models import Game, Player, Season, SeasonKind
-from club.sorting import CASH_KEYS, TOUR_KEYS, parse_sort
+from club.sorting import CASH_STANDINGS, PLAYERS, TOUR_STANDINGS, parse_sort
 
 RECENT_GAMES = 8
 PLAYER_RECENT_GAMES = 10
@@ -35,7 +35,7 @@ def _season(year: int, kind: str) -> Season:
 def season_standings(request, year: int, kind: str):
     season = _season(year, kind)
     years = list(Season.objects.filter(kind=kind).order_by("year").values_list("year", flat=True))
-    sort = parse_sort(request.GET, cash=kind == SeasonKind.CASH)
+    sort = parse_sort(request.GET, CASH_STANDINGS if kind == SeasonKind.CASH else TOUR_STANDINGS)
     return render(
         request,
         "club/season_standings.html",
@@ -123,11 +123,29 @@ def player_games(request, slug: str):
     )
 
 
+# The meta line of /players/: what the order is, then ", в обратном порядке" if flipped.
+PLAYER_ORDER_LABELS = {
+    "name": "по алфавиту",
+    "nick": "по нику",
+    "games": "по числу игр",
+    "net": "по итогу",
+}
+
+
 def player_list(request):
+    sort = parse_sort(request.GET, PLAYERS)
+    label = PLAYER_ORDER_LABELS[sort.key]
+    if sort.descending != PLAYERS.start(sort.key).descending:
+        label += ", в обратном порядке"
     return render(
         request,
         "club/player_list.html",
-        {"players": stats.player_index(), "nav_section": "players"},
+        {
+            "players": stats.player_index(sort.field, descending=sort.descending),
+            "sort": sort,
+            "order_label": label,
+            "nav_section": "players",
+        },
     )
 
 
@@ -140,7 +158,7 @@ def all_time(request):
     if filter_value not in ALL_TIME_KINDS:
         raise Http404("Нет такого формата.")
     kind = ALL_TIME_KINDS[filter_value]
-    sort = parse_sort(request.GET, cash=kind == SeasonKind.CASH)
+    sort = parse_sort(request.GET, CASH_STANDINGS if kind == SeasonKind.CASH else TOUR_STANDINGS)
     return render(
         request,
         "club/all_time.html",
@@ -164,8 +182,8 @@ def _kind_links(current: str | None, sort) -> list[dict]:
     links = []
     for value, label in [(None, "Все"), ("tour", "Турниры"), ("cash", "Кэш")]:
         params = {"kind": value} if value else {}
-        keys = CASH_KEYS if value == SeasonKind.CASH else TOUR_KEYS
-        if sort.key in keys:
+        table = CASH_STANDINGS if value == SeasonKind.CASH else TOUR_STANDINGS
+        if sort.key in table.fields:
             params |= sort.params
         query = urlencode(params)
         links.append(

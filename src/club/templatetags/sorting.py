@@ -1,10 +1,10 @@
-"""Sortable standings headers: `{% load sorting %}`. The context needs ``sort`` and ``request``."""
+"""Sortable table headers: `{% load sorting %}`. The context needs ``sort`` and ``request``."""
 
 from django import template
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
-from club.sorting import MOBILE_KEYS, MOBILE_LABELS, sort_url
+from club.sorting import MOBILE_LABELS, sort_url
 
 register = template.Library()
 
@@ -47,8 +47,8 @@ def aria_sort(context, key: str):
 
 
 @register.simple_tag(takes_context=True)
-def mobile_sort_links(context, cash: bool):
+def mobile_sort_links(context):
     """ "итог · игры · ..." for narrow screens, where most columns are hidden."""
-    links = [_link(context, key, MOBILE_LABELS[key]) for key in MOBILE_KEYS[bool(cash)]]
+    links = [_link(context, key, MOBILE_LABELS[key]) for key in context["sort"].table.mobile]
     separator = mark_safe('<span aria-hidden="true"> · </span>')
     return mark_safe(separator.join(links))  # the links are built by format_html
