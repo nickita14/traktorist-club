@@ -705,7 +705,7 @@ Follow the steps in this order. The workflow commit goes in last, so its first r
 
 ### 12.1 Put the forced command on the server
 
-**Local:** push the commits that add `deploy/smoke-check.sh` and `deploy/ci-deploy.sh` to `main`, but **not yet** the one that adds the `deploy` job to `ci.yml`. Deploy them by hand:
+Merge the pull request that adds `deploy/smoke-check.sh` and `deploy/ci-deploy.sh` into `main`. That pull request must **not** contain the `deploy` job in `ci.yml` yet. Then deploy by hand. **Local:**
 
 ```bash
 deploy/deploy.sh
@@ -805,17 +805,17 @@ shred -u ~/.config/traktorist/ci_key
 
 ### 12.6 Turn it on
 
-**Local:** push the commit that adds the `deploy` job to `ci.yml`. In the repository's **Actions** tab, that run shows:
+Merge the pull request that adds the `deploy` job to `ci.yml`. Its own merge into `main` is the first automatic deploy. In the repository's **Actions** tab, that run shows:
 1. `lint-and-test` and `docker-image`.
 2. Then `deploy`, in the `production` environment. Its log shows:
-   - `==> At <sha> <subject>` for the pushed commit
+   - `==> At <sha> <subject>` for the commit the merge put on `main`
    - the build
    - `==> Smoke check passed: ...`
 
 **Server:**
 
 ```bash
-git -C /srv/traktorist rev-parse HEAD                  # the pushed commit
+git -C /srv/traktorist rev-parse HEAD                  # the commit the merge put on main
 journalctl -t traktorist-ci-deploy -n 5
 ```
 
