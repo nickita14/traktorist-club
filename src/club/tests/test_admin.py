@@ -505,8 +505,10 @@ def structure_data(name, rows, *, initial=()):
         "levels-MAX_NUM_FORMS": 1000,
     }
     for i, row in enumerate(rows):
+        # The row type follows the values unless given: a label without blinds is a break.
+        kind = "break" if "label" in row and "big_blind" not in row else "level"
         fields = {"position": "", "small_blind": "", "big_blind": "", "ante": 0, "label": ""}
-        fields |= {"minutes": 20} | row
+        fields |= {"minutes": 20, "kind": kind} | row
         if i < len(initial):
             fields["id"] = initial[i]
         if fields.pop("addon_break", False):
@@ -569,6 +571,13 @@ class TestBlindStructureAdmin:
                 "Перерыв на аддон в структуре может быть только один.",
             ),
             ([{"small_blind": 100, "big_blind": 50}], "Большой блайнд не меньше малого"),
+            (
+                [{"small_blind": 25, "big_blind": 50, "addon_break": True}],
+                "Аддон ставится на строку-перерыв: добавьте строку с типом «Перерыв» после "
+                "нужного уровня.",
+            ),
+            ([{"kind": "break", "label": " "}], "Укажите название перерыва"),
+            ([{"kind": "level"}], "Укажите малый и большой блайнд."),
         ],
     )
     def test_invalid_structures(self, admin_client, rows, message):
@@ -599,3 +608,66 @@ class TestBlindStructureAdmin:
         assert 'name="default_blinds"' in response.text
         field = response.text.split('name="default_blinds"')[0].rsplit("x-show=", 1)[1]
         assert field.startswith('"kind == &#x27;tour&#x27;"')
+
+
+class TestBlindRowTypes:
+    def post(self, admin_client, rows):
+        return admin_client.post(
+            reverse("admin:club_blindstructure_add"), structure_data("Типы", rows)
+        )
+
+    def saved(self):
+        return list(
+            BlindStructure.objects.get(name="Типы").levels.values_list(
+                "small_blind", "big_blind", "ante", "label", "addon_break"
+            )
+        )
+
+    def test_break_ignores_leftover_blinds(self, admin_client):
+        rows = [
+            {"small_blind": 25, "big_blind": 50},
+            # Typed as a level first, then switched to a break (no script: the inputs stay).
+            {
+                "kind": "break",
+                "small_blind": 50,
+                "big_blind": 100,
+                "ante": 10,
+                "label": "Перерыв · аддон",
+                "addon_break": True,
+            },
+        ]
+        assert self.post(admin_client, rows).status_code == 302
+        assert self.saved() == [(25, 50, 0, "", False), (None, None, 0, "Перерыв · аддон", True)]
+
+    def test_break_without_posted_ante(self, admin_client):
+        data = structure_data("Типы", [{"small_blind": 25, "big_blind": 50}, {"label": "Пауза"}])
+        del data["levels-1-ante"]  # disabled by the script, so not posted
+        response = admin_client.post(reverse("admin:club_blindstructure_add"), data)
+        assert response.status_code == 302
+        assert self.saved()[1] == (None, None, 0, "Пауза", False)
+
+    def test_level_ignores_a_leftover_label(self, admin_client):
+        rows = [{"kind": "level", "small_blind": 25, "big_blind": 50, "label": "Перерыв"}]
+        assert self.post(admin_client, rows).status_code == 302
+        assert self.saved() == [(25, 50, 0, "", False)]
+
+    def test_level_without_posted_ante(self, admin_client):
+        data = structure_data("Типы", [{"small_blind": 25, "big_blind": 50}])
+        data["levels-0-ante"] = ""
+        response = admin_client.post(reverse("admin:club_blindstructure_add"), data)
+        assert response.status_code == 302
+        assert self.saved() == [(25, 50, 0, "", False)]
+
+    def test_change_page_shows_types_numbers_and_handles(self, admin_client):
+        structure = make_structure()
+        html = admin_client.get(
+            reverse("admin:club_blindstructure_change", args=[structure.pk])
+        ).text
+
+        selected = re.findall(r'<option value="(level|break)"[^>]*selected', html)
+        # Seven rows, then the empty template row for "add another".
+        assert selected == ["level"] * 3 + ["break"] + ["level"] + ["break"] + ["level"] * 2
+        numbers = re.findall(r"<span class=\"admin-num\" data-level-number>([^<]*)</span>", html)
+        assert numbers[:7] == ["1", "2", "3", "перерыв", "4", "перерыв", "5"]
+        assert html.count("x-sort:handle") == 7
+        assert "js/admin-blinds.js" in html

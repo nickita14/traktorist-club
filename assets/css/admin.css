@@ -58,3 +58,19 @@ thead th {
 .val-neg {
   color: var(--accent);
 }
+
+/* Blind structure rows: the other type's inputs (assets/js/admin-blinds.js). The cell keeps its
+   width, so the columns stay put when a row changes type. */
+.blinds-off > * {
+  visibility: hidden;
+}
+
+td.field-kind select {
+  min-width: 8.5rem;
+}
+
+/* The drag handle of sortable inlines, in ink so it reads as something to hold. */
+[x-sort\:handle] {
+  border: 1px solid var(--rule);
+  color: var(--ink);
+}
