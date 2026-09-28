@@ -2,6 +2,7 @@ import datetime
 import uuid
 
 import pytest
+from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import User
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -531,12 +532,40 @@ class TestResults:
 
         payouts = {row.result: row.payout for row in response.context["rows"]}
         # Only 1st and 2nd filled in: the bank goes 3:2 (180, 120), rounded to 150, 100 with the
-        # 50 left over to 1st. Браво, with no place, keeps what was typed.
-        assert payouts == {alpha: "200", charlie: "100", bravo: "30"}
+        # 50 left over to 1st. Браво, with no place, is cleared: the bank is paid out exactly.
+        assert payouts == {alpha: "200", charlie: "100", bravo: ""}
+        assert response.context["balance"]["paid"] == 300
+        assert "Баланс сверен" in response.text
         assert "Призовых мест заполнено 2 из 3: банк поделён между ними." in response.text
         assert response["HX-Retarget"] == "#results-form"
         game.refresh_from_db()
         assert game.live_stage == Game.Stage.FINAL  # nothing saved
+
+    def test_redistribute_clears_places_outside_the_prizes(self, org, final):
+        game, (alpha, bravo, charlie) = final
+        Season.objects.filter(pk=game.season_id).update(paid_places=2, payout_weights="3,2")
+        data = {
+            "key": str(uuid.uuid4()),
+            "redistribute": "1",
+            f"place-{charlie.pk}": "1",
+            f"payout-{charlie.pk}": "10",
+            f"place-{alpha.pk}": "2",
+            f"payout-{alpha.pk}": "10",
+            f"place-{bravo.pk}": "3",
+            f"payout-{bravo.pk}": "50",
+        }
+        response = org.post(reverse("live:results", args=[game.pk]), data, **HTMX)
+
+        payouts = {row.result: row.payout for row in response.context["rows"]}
+        assert payouts == {charlie: "200", alpha: "100", bravo: ""}
+        assert "Баланс сверен" in response.text
+
+    def test_opening_keeps_non_prize_payouts(self, org, final):
+        # Only the button clears; opening the screen never touches what is already stored.
+        game, (alpha, bravo, charlie) = final
+        Result.objects.filter(pk=bravo.pk).update(payout=20)
+        rows = org.get(reverse("live:results", args=[game.pk])).context["rows"]
+        assert {row.result: row.payout for row in rows}[bravo] == "20"
 
     def test_split_follows_the_season(self, org, final):
         game, _ = final
@@ -612,11 +641,18 @@ class TestCloseAndCancel:
             in org.get(reverse("live:close", args=[game.pk])).text
         )
 
-    def test_cancel(self, org):
+    def test_cancel(self, org, organizer):
         game = live_game(SeasonKind.TOUR)
         response = act(org, game, "cancel")
         assert response["HX-Redirect"] == reverse("live:index")
         assert not Game.objects.filter(pk=game.pk).exists()
+        assert LogEntry.objects.get().user == organizer
+
+    def test_cancel_twice_goes_to_the_list(self, org):
+        game = live_game(SeasonKind.TOUR)
+        act(org, game, "cancel")
+        assert act(org, game, "cancel")["HX-Redirect"] == reverse("live:index")
+        assert LogEntry.objects.count() == 1
 
     def test_cancel_refused_with_players(self, org, tour):
         game, _ = tour

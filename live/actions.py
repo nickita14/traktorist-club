@@ -16,6 +16,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from django.contrib.admin.models import DELETION, LogEntry
 from django.db import IntegrityError, transaction
 from django.db.models import F, Max, OuterRef, Subquery
 from django.db.models.functions import Coalesce
@@ -80,7 +81,7 @@ def perform(
         try:
             game = _lock(game_pk, live=live)
         except GameGone:
-            # The game may be gone because this very request cancelled it earlier.
+            # The game may be finished by now, but this very request was applied before it.
             existing = _logged(key)
             if existing is not None:
                 return Outcome(existing, replayed=True)
@@ -91,7 +92,7 @@ def perform(
         change = operation(game)
         action = LiveAction.objects.create(
             key=key,
-            game=game if change.kind != ActionKind.CANCEL else None,
+            game=game,
             result_id=change.result_id,
             kind=change.kind,
             summary=change.summary,
@@ -99,8 +100,6 @@ def perform(
             after=change.after,
             user=user if user and user.is_authenticated else None,
         )
-        if change.kind == ActionKind.CANCEL:
-            game.delete()
         return Outcome(action)
 
 
@@ -490,19 +489,25 @@ def close_cash(game_pk: int, key: uuid.UUID, user) -> Outcome:
 # Any game.
 
 
-def cancel_game(game_pk: int, key: uuid.UUID, user) -> Outcome:
-    """Delete a live game started by mistake. Only while nobody is seated."""
+def cancel_game(game_pk: int, user) -> None:
+    """Delete a live game started by mistake. Only while nobody is seated.
 
-    def operation(game: Game) -> Change:
+    The game's action log goes with it, so the deletion is recorded like an admin deletion: a
+    LogEntry with the game and the user. Idempotent by nature: a repeated request finds no game
+    and raises GameGone.
+    """
+    with transaction.atomic():
+        game = _lock(game_pk)
         if game.results.exists():
             raise RuleError("Игроки уже за столом: такую игру отменить нельзя.")
-        return Change(
-            ActionKind.CANCEL,
-            f"Игра отменена: {game}",
-            before={"game": game.pk, "season": game.season_id, "date": game.date.isoformat()},
+        LogEntry.objects.log_actions(
+            user.pk,
+            [game],
+            DELETION,
+            change_message="Отменена на экране живой игры.",
+            single_object=True,
         )
-
-    return perform(game_pk, key, user, operation)
+        game.delete()
 
 
 def undo(action_pk: int, user) -> Outcome:

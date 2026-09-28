@@ -16,6 +16,7 @@ from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationFo
 from club import stats
 from club.formatting import format_money, format_net
 from club.models import Game, Player, Result, Season, SeasonKind
+from live.models import LiveAction
 
 # Unfold 0.108 ships no translations, so its default search placeholder ("Type to search") stays
 # English; a ModelAdmin's search_help_text replaces it.
@@ -253,6 +254,13 @@ class GameAdmin(ModelAdmin):
 
     def get_queryset(self, request):
         return stats.annotate_leftover_check(super().get_queryset(request))
+
+    def get_deleted_objects(self, objs, request):
+        # A game's live action log is read-only on its own (nobody may delete a row of it) but
+        # goes with its game, so it must not block deleting the game.
+        deleted, counts, perms_needed, protected = super().get_deleted_objects(objs, request)
+        perms_needed.discard(LiveAction._meta.verbose_name)
+        return deleted, counts, perms_needed, protected
 
     def get_fields(self, request, obj=None):
         # Totals only make sense for a saved game.

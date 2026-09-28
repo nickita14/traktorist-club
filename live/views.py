@@ -241,7 +241,7 @@ ACTIONS = {
     ),
     "stage": lambda pk, key, user, post: actions.advance_stage(pk, key, user, post.get("from")),
     "close": lambda pk, key, user, post: actions.close_cash(pk, key, user),
-    "cancel": lambda pk, key, user, post: actions.cancel_game(pk, key, user),
+    "cancel": lambda pk, key, user, post: actions.cancel_game(pk, user),
 }
 
 
@@ -535,16 +535,21 @@ def _result_rows(game: Game, data=None) -> list[ResultRow]:
 def _split(game: Game, rows: list[ResultRow], *, overwrite: bool) -> str:
     """Fill the prize rows' payouts with the season's split of the bank (club.stats.split_prizes).
 
-    Only rows in a prize place are touched; without ``overwrite`` only the empty ones. Returns a
+    Without ``overwrite`` (the screen opening) only empty prize rows are filled. With it
+    ("РАСПРЕДЕЛИТЬ ЗАНОВО") every prize row is recomputed and every other row is cleared: places
+    outside the prizes are always paid 0, so the payouts add up to the bank again. Returns a
     note for the organizer when fewer prize places are filled in than the season pays.
     """
     season = game.season
     bank = sum(row.result.buyin for row in rows)
     places = {index: parse_int(row.place, minimum=1) for index, row in enumerate(rows)}
     payouts = stats.split_prizes(bank, season.prize_weights, places, season.payout_round)
-    for index, amount in payouts.items():
-        if overwrite or not rows[index].payout:
-            rows[index].payout = str(amount)
+    for index, row in enumerate(rows):
+        if index in payouts:
+            if overwrite or not row.payout:
+                row.payout = str(payouts[index])
+        elif overwrite:
+            row.payout = ""
     if 0 < len(payouts) < season.paid_places:
         return (
             f"Призовых мест заполнено {len(payouts)} из {season.paid_places}: "

@@ -1,6 +1,7 @@
 import datetime
 
 import pytest
+from django.contrib.admin.models import DELETION, LogEntry
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
@@ -438,11 +439,13 @@ class TestIdempotency:
         assert second.replayed and second.action.game == first.action.game
         assert Game.objects.count() == 1
 
-    def test_cancel_twice(self):
+    def test_cancel_twice(self, organizer):
+        # The second request finds no game: nothing more happens, and the view goes to the list.
         game = live_game(SeasonKind.CASH)
-        same = key()
-        actions.cancel_game(game.pk, same, None)
-        assert actions.cancel_game(game.pk, same, None).replayed
+        actions.cancel_game(game.pk, organizer)
+        with pytest.raises(actions.GameGone):
+            actions.cancel_game(game.pk, organizer)
+        assert LogEntry.objects.count() == 1
 
 
 class TestUndoRules:
@@ -534,23 +537,35 @@ class TestStartAndCancel:
         assert actions.next_season(SeasonKind.TOUR, 2026) == season
         assert Season.objects.count() == 1
 
-    def test_cancel_deletes_and_keeps_the_log(self, organizer):
-        game = live_game(SeasonKind.TOUR)
-        actions.cancel_game(game.pk, key(), organizer)
-        assert not Game.objects.filter(pk=game.pk).exists()
-        entry = LiveAction.objects.get(kind=LiveAction.Kind.CANCEL)
-        assert entry.game is None
-        assert entry.before == {"game": game.pk, "season": game.season_id, "date": "2026-09-28"}
-        assert entry.user == organizer
+    def test_cancel_deletes_the_game_and_its_log_and_writes_a_log_entry(self, organizer):
+        game = actions.start_game(
+            key(), organizer, season=make_season(2026), date=datetime.date(2026, 9, 28)
+        ).action.game
+        assert game.live_actions.count() == 1  # "игра начата"
 
-    def test_cancel_refused_once_anyone_is_seated(self, tour):
+        actions.cancel_game(game.pk, organizer)
+
+        assert not Game.objects.filter(pk=game.pk).exists()
+        assert not LiveAction.objects.exists()
+        entry = LogEntry.objects.get()
+        assert entry.action_flag == DELETION
+        assert (entry.user, entry.object_id, entry.object_repr) == (
+            organizer,
+            str(game.pk),
+            "Турнир 2026, 28.09.2026",
+        )
+        assert entry.content_type.model_class() is Game
+        assert entry.get_change_message() == "Отменена на экране живой игры."
+
+    def test_cancel_refused_once_anyone_is_seated(self, tour, organizer):
         game, _ = tour
         with pytest.raises(RuleError, match="уже за столом"):
-            actions.cancel_game(game.pk, key(), None)
+            actions.cancel_game(game.pk, organizer)
         assert Game.objects.filter(pk=game.pk).exists()
+        assert not LogEntry.objects.exists()
 
-    def test_cancel_refused_for_a_finished_game(self):
+    def test_cancel_refused_for_a_finished_game(self, organizer):
         game = make_game(make_season(2026))
         with pytest.raises(actions.GameGone):
-            actions.cancel_game(game.pk, key(), None)
+            actions.cancel_game(game.pk, organizer)
         assert Game.objects.filter(pk=game.pk).exists()

@@ -17,7 +17,6 @@ class ActionKind(models.TextChoices):
     STAGE = "stage", "смена этапа"
     START = "start", "игра начата"
     FINISH = "finish", "игра завершена"
-    CANCEL = "cancel", "игра отменена"
 
 
 # Undo restores a result row (or deletes a seated one) or the game's stage; the rest is final.
@@ -41,7 +40,8 @@ class LiveAction(models.Model):
     ``key`` makes the request idempotent: each rendered button carries a fresh key, and a request
     whose key is already here (a double tap, a retry after a lost response) changes nothing.
     ``before`` and ``after`` hold the touched fields, so undo restores exact values.
-    The log outlives a cancelled game (``game`` becomes empty) as an audit trail.
+    The log belongs to its game and is deleted with it; a deletion itself is in Django's LogEntry
+    (the admin writes one, and so does cancelling a game on the live screen).
     """
 
     Kind = ActionKind
@@ -49,9 +49,7 @@ class LiveAction(models.Model):
     key = models.UUIDField("ключ запроса", unique=True, default=uuid.uuid4, editable=False)
     game = models.ForeignKey(
         "club.Game",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        on_delete=models.CASCADE,
         related_name="live_actions",
         verbose_name="игра",
     )
