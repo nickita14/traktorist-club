@@ -36,7 +36,7 @@ jobs:
       ADMIN_URL: club-admin/
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -91,7 +91,7 @@ jobs:
     # outside production mode.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build the production image
         run: docker build -t traktorist-web:ci .
@@ -131,7 +131,7 @@ jobs:
       DEPLOY_HOST: deploy@traktorist.duckdns.org
       DEPLOY_DOMAIN: traktorist.duckdns.org
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
