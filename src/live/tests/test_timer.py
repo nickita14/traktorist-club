@@ -370,6 +370,51 @@ class TestLevelEdits:
         assert len(minutes_of(timed)) == 8
 
 
+class TestAddBreak:
+    def test_break_after_the_last_row(self, timed):
+        outcome = actions.add_break(timed.pk, key(), None, label=" Перерыв на чай ", minutes=10)
+        assert outcome.action.summary == "Таймер: добавлен перерыв «Перерыв на чай», 10 мин"
+        level = BlindTimer.objects.get(game=timed).levels.get(position=8)
+        assert (level.label, level.minutes, level.is_break, level.addon_break) == (
+            "Перерыв на чай",
+            10,
+            True,
+            False,
+        )
+        assert state(timed).level_count == 5
+
+    def test_one_addon_break(self, timed):
+        with pytest.raises(RuleError, match="Перерыв на аддон уже есть: «Перерыв · аддон»"):
+            actions.add_break(timed.pk, key(), None, label="Ещё аддон", minutes=10, addon=True)
+        assert len(minutes_of(timed)) == 7
+
+    def test_addon_break_when_there_is_none(self, frozen):
+        game = live_game(SeasonKind.TOUR)
+        plain = make_structure(name="Без аддона", rows=[(25, 50, 20), (50, 100, 20)])
+        actions.start_timer(game.pk, key(), None, plain.pk)
+        actions.add_break(game.pk, key(), None, label="Аддон", minutes=15, addon=True)
+        assert state(game).addon_row.label == "Аддон"
+        assert state(game).rebuys_until.number == 2
+
+    @pytest.mark.parametrize(
+        ("label", "minutes", "message"),
+        [
+            (" ", 10, "Укажите название перерыва"),
+            ("Перерыв", 0, "Минуты"),
+            ("x" * 61, 10, "длинное"),
+        ],
+    )
+    def test_invalid(self, timed, label, minutes, message):
+        with pytest.raises(RuleError, match=message):
+            actions.add_break(timed.pk, key(), None, label=label, minutes=minutes)
+
+    def test_break_after_the_end_starts_fresh(self, timed, frozen):
+        run(timed)
+        frozen.advance(minutes=200)
+        actions.add_break(timed.pk, key(), None, label="Перерыв", minutes=10)
+        assert where(timed) == (8, "10:00")
+
+
 class TestUndo:
     def test_undo_pause(self, timed, frozen):
         run(timed)

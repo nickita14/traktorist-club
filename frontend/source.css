@@ -1050,6 +1050,30 @@
     grid-column: 1 / -1;
   }
 
+  /* The break form sits right under the level form: one double rule for both. */
+  .blinds-add + .blinds-add-break {
+    border-top: 0;
+  }
+
+  .blinds-label {
+    grid-column: span 3;
+  }
+
+  .blinds-addon {
+    display: flex;
+    grid-column: 1 / -1;
+    gap: 0.5rem;
+    align-items: center;
+    min-height: 2.75rem;
+  }
+
+  /* A checkbox big enough to hit at the table. */
+  .blinds-addon input {
+    width: 2.75rem;
+    height: 2.75rem;
+    accent-color: var(--ink);
+  }
+
   .live-input-xs {
     width: 100%;
     padding-inline: 0.25rem;

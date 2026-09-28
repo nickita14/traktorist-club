@@ -682,7 +682,7 @@ def add_minute(game_pk: int, key: uuid.UUID, user) -> Outcome:
 # Editing a game's levels. Played rows are locked; the current row's minutes cannot drop below
 # the time it has run, and its blinds can be fixed only while paused or in its first minute.
 
-LEVEL_FIELDS = ("small_blind", "big_blind", "ante", "minutes", "label")
+LEVEL_FIELDS = ("small_blind", "big_blind", "ante", "minutes", "label", "addon_break")
 MAX_MINUTES = 240
 
 
@@ -775,37 +775,75 @@ def bulk_minutes(game_pk: int, key: uuid.UUID, user, from_number: int, minutes: 
     return perform(game_pk, key, user, operation)
 
 
-def add_level(
-    game_pk: int, key: uuid.UUID, user, *, small: int, big: int, ante: int, minutes: int
+def _append(
+    game_pk: int,
+    key: uuid.UUID,
+    user,
+    fields: dict,
+    summary: Callable[[clock.Clock], str],
+    check: Callable[[clock.Clock], None] = lambda current: None,
 ) -> Outcome:
-    """A level after the last row. If the clock had run out, the new level starts now."""
+    """A row after the last one. If the clock had run out, the new row starts now.
+
+    ``check`` and ``summary`` get the clock before the change.
+    """
 
     def operation(game: Game) -> Change:
         timer = _timer(game)
         now = timezone.now()
         current = _clock(timer, now)
-        _check_blinds(small, big, ante)
-        if not 1 <= minutes <= MAX_MINUTES:
+        if not 1 <= fields["minutes"] <= MAX_MINUTES:
             raise RuleError(f"Минуты: от 1 до {MAX_MINUTES}.")
+        check(current)
         if current.finished:
             position, started_at = clock.settled(current, timer.paused_at, now)
             BlindTimer.objects.filter(pk=timer.pk).update(position=position, started_at=started_at)
-        level = TimerLevel.objects.create(
-            timer=timer,
-            position=current.rows[-1].position + 1,
-            small_blind=small,
-            big_blind=big,
-            ante=ante,
-            minutes=minutes,
+        row = TimerLevel.objects.create(
+            timer=timer, position=current.rows[-1].position + 1, **fields
         )
-        number = current.level_count + 1
-        return Change(
-            ActionKind.LEVEL_ADD,
-            f"Таймер: добавлен уровень {number} · {small} / {big}",
-            after=_level_snapshot(level),
-        )
+        return Change(ActionKind.LEVEL_ADD, summary(current), after=_level_snapshot(row))
 
     return perform(game_pk, key, user, operation)
+
+
+def add_level(
+    game_pk: int, key: uuid.UUID, user, *, small: int, big: int, ante: int, minutes: int
+) -> Outcome:
+    """A level after the last row."""
+    _check_blinds(small, big, ante)
+    fields = {"small_blind": small, "big_blind": big, "ante": ante, "minutes": minutes}
+    return _append(
+        game_pk,
+        key,
+        user,
+        fields,
+        lambda current: f"Таймер: добавлен уровень {current.level_count + 1} · {small} / {big}",
+    )
+
+
+def add_break(
+    game_pk: int, key: uuid.UUID, user, *, label: str, minutes: int, addon: bool = False
+) -> Outcome:
+    """A break after the last row; ``addon`` makes it the add-on break (one per game)."""
+    label = label.strip()
+    if not label:
+        raise RuleError("Укажите название перерыва, например «Перерыв · аддон».")
+    if len(label) > TimerLevel._meta.get_field("label").max_length:
+        raise RuleError("Название перерыва слишком длинное.")
+
+    def check(current: clock.Clock) -> None:
+        if addon and current.addon_row is not None:
+            raise RuleError(f"Перерыв на аддон уже есть: «{current.addon_row.label}».")
+
+    fields = {"label": label, "minutes": minutes, "addon_break": addon}
+    return _append(
+        game_pk,
+        key,
+        user,
+        fields,
+        lambda current: f"Таймер: добавлен перерыв «{label}», {minutes} мин",
+        check,
+    )
 
 
 def reset_link(game_pk: int, key: uuid.UUID, user) -> Outcome:

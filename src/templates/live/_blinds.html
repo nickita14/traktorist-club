@@ -79,12 +79,22 @@
 
     <form id="add-level" class="blinds-add" hx-post="{% url 'live:act' game.pk 'level-add' %}" hx-target="#blinds" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="key" value="{% new_key %}">
-      <span class="blinds-name field-label">Новый</span>
+      <span class="blinds-name field-label">Уровень</span>
       <input id="add-small" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" name="small" value="{{ last_level.small_blind }}" aria-label="Малый блайнд нового уровня">
       <input id="add-big" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" name="big" value="{{ last_level.big_blind }}" aria-label="Большой блайнд нового уровня">
       <input id="add-ante" class="live-input live-input-xs" type="number" inputmode="numeric" min="0" name="ante" value="{{ last_level.ante }}" aria-label="Анте нового уровня">
       <input id="add-minutes" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" max="240" name="minutes" value="{{ last_level.minutes }}" aria-label="Минут нового уровня">
       <button type="submit" class="btn btn-primary blinds-add-button">+ Уровень</button>
+    </form>
+    <form id="add-break" class="blinds-add blinds-add-break" hx-post="{% url 'live:act' game.pk 'break-add' %}" hx-target="#blinds" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="key" value="{% new_key %}">
+      <span class="blinds-name field-label">Перерыв</span>
+      <input id="add-label" class="live-input live-input-text blinds-label" type="text" name="label" maxlength="60" value="Перерыв" aria-label="Название перерыва">
+      <input id="add-break-minutes" class="live-input live-input-xs" type="number" inputmode="numeric" min="1" max="240" name="minutes" value="10" aria-label="Минут перерыва">
+      {% if not clock.addon_row %}
+        <label class="blinds-addon"><input type="checkbox" name="addon"> перерыв на аддон</label>
+      {% endif %}
+      <button type="submit" class="btn blinds-add-button">+ Перерыв</button>
     </form>
 
     <h2 class="live-heading">Табло</h2>

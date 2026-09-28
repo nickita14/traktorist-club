@@ -225,6 +225,29 @@ class TestStructureEditor:
         minutes = list(timer(timed).levels.values_list("minutes", flat=True))
         assert minutes == [20, 15, 15, 15, 15, 10, 15, 15]
 
+    def test_add_a_break(self, org, timed):
+        page = org.get(self.url(timed)).text
+        assert ">+ Перерыв</button>" in page
+        assert 'name="addon"' not in page  # the structure already has its add-on break
+
+        response = act(org, timed, "break-add", target="blinds", label="Перекус", minutes=20)
+
+        assert "Таймер: добавлен перерыв «Перекус», 20 мин" in response.text
+        assert timer(timed).levels.get(position=8).label == "Перекус"
+
+    def test_add_the_addon_break(self, org, frozen):
+        game = live_game(SeasonKind.TOUR)
+        plain = make_structure(name="Без аддона", rows=[(25, 50, 20), (50, 100, 20)])
+        actions.start_timer(game.pk, key(), None, plain.pk)
+        assert '<input type="checkbox" name="addon">' in org.get(self.url(game)).text
+
+        response = act(
+            org, game, "break-add", target="blinds", label="Аддон", minutes=15, addon="on"
+        )
+
+        assert timer(game).levels.get(position=3).addon_break
+        assert 'name="addon"' not in response.text
+
     def test_attach_a_timer(self, org, frozen):
         structure = make_structure(name="Обычный турнир")
         season = make_season(2026, SeasonKind.TOUR, default_blinds=structure)
