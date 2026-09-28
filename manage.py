@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 import os
 import sys
+from pathlib import Path
+
+# The Django code lives in src/ (see pyproject.toml: pytest pythonpath, ruff src).
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 
 def main() -> None:

@@ -24,7 +24,7 @@ dumps/
 staticfiles/
 .django_tailwind_cli/
 assets/css/tailwind.css
-locale/**/*.mo
+src/locale/**/*.mo
 **/__pycache__
 .pytest_cache
 .ruff_cache

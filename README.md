@@ -17,7 +17,7 @@ uv run python manage.py tailwind runserver   # dev server with Tailwind watcher
 
 The first `tailwind` command downloads the standalone Tailwind binary (no Node needed).
 
-Unfold ships no Russian strings; the project's own are in `locale/ru/LC_MESSAGES/django.po`. Compile them with `uv run python manage.py compilemessages --ignore=.venv` (needs `gettext`: `sudo apt install gettext`); without that step a few admin labels stay in English.
+Unfold ships no Russian strings; the project's own are in `src/locale/ru/LC_MESSAGES/django.po`. Compile them with `uv run python manage.py compilemessages --ignore=.venv` (needs `gettext`: `sudo apt install gettext`); without that step a few admin labels stay in English.
 
 ## Organizer accounts
 

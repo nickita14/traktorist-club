@@ -129,7 +129,7 @@ def production_setting(name: str, **extra_env) -> str:
     env |= PRODUCTION_ENV | extra_env | {"DJANGO_SETTINGS_MODULE": "traktorist_club.settings"}
     result = subprocess.run(
         [sys.executable, "-c", f"from django.conf import settings; print(settings.{name})"],
-        cwd=settings.BASE_DIR,
+        cwd=settings.SRC_DIR,
         env=env,
         capture_output=True,
         text=True,
@@ -282,7 +282,7 @@ class TestTotpEnroll:
             call_command("totp_enroll", "nobody")
 
 
-COMPILED_CATALOG = Path(settings.BASE_DIR) / "locale/ru/LC_MESSAGES/django.mo"
+COMPILED_CATALOG = Path(settings.SRC_DIR) / "locale/ru/LC_MESSAGES/django.mo"
 
 
 @pytest.mark.skipif(

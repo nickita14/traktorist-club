@@ -36,8 +36,9 @@ RUN groupadd --system --gid 10001 app \
     && mkdir -p /srv/static \
     && chown app:app /srv/static
 # ENVIRONMENT defaults to production: a container started without configuration fails the
-# settings validation instead of running in development mode.
+# settings validation instead of running in development mode. The Django code lives in src/.
 ENV PATH=/opt/venv/bin:$PATH \
+    PYTHONPATH=/app/src \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     ENVIRONMENT=production
@@ -46,7 +47,7 @@ COPY --from=builder /opt/venv /opt/venv
 # Code, static files and translations stay owned by root: the app user can read, not change them.
 COPY . .
 COPY --from=assets /app/staticfiles /app/staticfiles
-COPY --from=assets /app/locale /app/locale
+COPY --from=assets /app/src/locale /app/src/locale
 USER app
 EXPOSE 8000
 ENTRYPOINT ["sh", "/app/deploy/entrypoint.sh"]

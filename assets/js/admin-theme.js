@@ -9,7 +9,7 @@
  *
  * Loaded through UNFOLD["SCRIPTS"]: it runs before Alpine (deferred) starts,
  * and "alpine:init" fires after app.js has defined theme().
- * Covered by club/tests/test_admin_browser.py.
+ * Covered by src/club/tests/test_admin_browser.py.
  */
 document.addEventListener("alpine:init", () => {
   const unfoldTheme = window.theme;

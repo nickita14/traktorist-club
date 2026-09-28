@@ -9,7 +9,9 @@ from django.templatetags.static import static
 from django.urls import reverse
 from django.utils.csp import CSP
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# The repository root (.env, assets/, frontend/, staticfiles/); the Django code lives in src/.
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+SRC_DIR = BASE_DIR / "src"
 
 DEV_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/traktorist_club"
 DEV_SECRET_KEY = "django-insecure-dev-only-key-never-use-in-production"
@@ -105,7 +107,7 @@ SITE_INDEXING = env("SITE_INDEXING")
 
 INSTALLED_APPS = [
     # Unfold must come before django.contrib.admin. This config installs the project's admin site
-    # (Unfold plus the 2FA login, traktorist_club/admin_site.py) as django.contrib.admin.site.
+    # (Unfold plus the 2FA login, src/traktorist_club/admin_site.py) as django.contrib.admin.site.
     "traktorist_club.apps.UnfoldConfig",
     "unfold.contrib.filters",
     "django.contrib.admin",
@@ -148,7 +150,7 @@ ROOT_URLCONF = "traktorist_club.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],
+        "DIRS": [SRC_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -187,7 +189,7 @@ TIME_ZONE = "Europe/Chisinau"
 USE_I18N = True
 USE_TZ = True
 # Russian strings for Unfold, which ships no translations (compiled by compilemessages).
-LOCALE_PATHS = [BASE_DIR / "locale"]
+LOCALE_PATHS = [SRC_DIR / "locale"]
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"

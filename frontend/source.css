@@ -297,7 +297,7 @@
   }
 
   /* Total row, closed off from the body by the same double rule as the document heading. */
-  /* Sortable headers (club/sorting.py): links that fill the cell's height, so the header row
+  /* Sortable headers (src/club/sorting.py): links that fill the cell's height, so the header row
      stays as it was; the active one is underlined in accent with a drawn triangle (PT Sans
      Narrow has no ▲▼). */
   .sort-link {
@@ -433,7 +433,7 @@
     }
   }
 
-  /* Cumulative net chart on the player card (geometry in club/charts.py). */
+  /* Cumulative net chart on the player card (geometry in src/club/charts.py). */
   .net-chart {
     display: block;
     width: 100%;
@@ -468,7 +468,7 @@
   }
 
   /*
-   * Live game screens (organizers at the table, templates/live/). Phone first: every control is
+   * Live game screens (organizers at the table, src/templates/live/). Phone first: every control is
    * at least 44px high; buttons are ruled boxes like the rest of the ledger, no rounding.
    */
   .live-bar {

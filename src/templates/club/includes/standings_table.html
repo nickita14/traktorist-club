@@ -1,5 +1,5 @@
 {% load ledger sorting %}
-{# Standings of players with totals. `cash` switches from places and ITM to buy-ins and payouts. Sortable by the linked headers (`sort`, see club/sorting.py). #}
+{# Standings of players with totals. `cash` switches from places and ITM to buy-ins and payouts. Sortable by the linked headers (`sort`, see src/club/sorting.py). #}
 <section aria-labelledby="standings-title">
   <h2 id="standings-title" class="sr-only">{{ standings_title|default:"Сводная таблица сезона" }}</h2>
   <p class="sort-links md:hidden">Сортировать: {% mobile_sort_links cash %}</p>
