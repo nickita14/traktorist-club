@@ -314,6 +314,8 @@ No email is configured for Let's Encrypt: it no longer sends expiry notices, and
 
 The admin lives at `https://traktorist.duckdns.org/<ADMIN_URL>` (the value in `.env`). Login is by username and password. Two-factor login is built in but off; section 10 turns it on.
 
+Organizers can also log in on the public site at `https://traktorist.duckdns.org/prokhodnaya/` (the "Войти" link in the footer), so the admin address never has to be typed or shared. It is the same login: the same lockout, and the code field when two-factor login is on. Only superusers and **Organizer** group members get in.
+
 **Server**, to create your own account:
 
 ```bash
@@ -322,7 +324,7 @@ dc exec web python manage.py createsuperuser
 
 For each **organizer**, open Users in the admin, add the user, tick "Staff status" and add them to the **Organizer** group.
 
-**Lockout:** 5 failed logins for the same username from the same address lock that pair out for an hour. The page says "Слишком много неудачных попыток входа". To unlock early:
+**Lockout:** 5 failed logins for the same username from the same address lock that pair out for an hour, on both login pages together. The page says "Слишком много неудачных попыток входа". To unlock early:
 
 ```bash
 dc exec web python manage.py axes_list_attempts

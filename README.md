@@ -27,7 +27,7 @@ Editing happens in the admin at `ADMIN_URL`. The `Organizer` group (created by a
 uv run python manage.py createsuperuser   # first account; then add organizers in the admin
 ```
 
-Two-factor login (a code from an authenticator app, TOTP) is available but off by default, in production too. To turn it on, first give every staff user a device with `manage.py totp_enroll <username>` (it prints a QR code in the terminal), then set `ADMIN_REQUIRE_2FA=True`. Five failed logins for the same username from the same address lock them out for an hour (`django-axes`).
+Two-factor login (a code from an authenticator app, TOTP) is available but off by default, in production too. To turn it on, first give every staff user a device with `manage.py totp_enroll <username>` (it prints a QR code in the terminal), then set `ADMIN_REQUIRE_2FA=True`. Five failed logins for the same username from the same address lock them out for an hour (`django-axes`). Organizers can also log in on the public site at `/prokhodnaya/` ("Войти" in the footer): the same protection, without revealing the admin address.
 
 ## Blind timer
 
