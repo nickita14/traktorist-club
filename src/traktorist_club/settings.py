@@ -290,6 +290,25 @@ UNFOLD = {
     "SCRIPTS": [
         lambda request: static("js/admin-theme.js"),
     ],
+    # The same tab icon as the public pages (templates/includes/favicons.html).
+    "SITE_FAVICONS": [
+        {
+            "rel": "icon",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "href": lambda request: static("icons/favicon.svg"),
+        },
+        {
+            "rel": "icon",
+            "sizes": "32x32",
+            "type": "image/png",
+            "href": lambda request: static("icons/favicon-32.png"),
+        },
+        {
+            "rel": "apple-touch-icon",
+            "href": lambda request: static("icons/live-180.png"),
+        },
+    ],
     "COLORS": {
         "base": {
             "50": token_mix("paper", 60, "surface"),

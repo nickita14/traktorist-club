@@ -22,6 +22,7 @@ register_converter(SeasonKindConverter, "kind")
 urlpatterns = [
     path("", views.home, name="home"),
     path("robots.txt", views.robots_txt, name="robots_txt"),
+    path("favicon.ico", views.favicon, name="favicon"),
     path("<int:year>/<kind:kind>/", views.season_standings, name="season"),
     path("<int:year>/<kind:kind>/games/", views.season_games, name="season_games"),
     path("games/<int:pk>/", views.game_detail, name="game_detail"),

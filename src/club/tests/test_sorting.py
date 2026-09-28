@@ -1,4 +1,5 @@
-"""Sortable standings: parsing, ordering, ranks, links and the leader circle."""
+"""Sortable tables: parsing, ordering, ranks, links and the leader circle of the standings, and
+the players list."""
 
 import pytest
 from django.urls import reverse
@@ -6,22 +7,39 @@ from django.utils.http import urlencode
 
 from club import stats
 from club.models import SeasonKind
-from club.sorting import CASH_KEYS, FIELDS, TOUR_KEYS, Sort, parse_sort, sort_url
+from club.sorting import CASH_STANDINGS, PLAYERS, TOUR_STANDINGS, Sort, parse_sort, sort_url
 from club.tests.conftest import PAST_YEAR
 from club.tests.factories import make_game, make_player, make_result
 
 LEADER = '<span class="rank-leader">1</span>'
 
+TOUR_KEYS = tuple(TOUR_STANDINGS.fields)
+CASH_KEYS = tuple(CASH_STANDINGS.fields)
+FIELDS = TOUR_STANDINGS.fields | CASH_STANDINGS.fields
+DEFAULT = TOUR_STANDINGS.default_sort
+
+
+def tour(key: str, descending: bool = True) -> Sort:
+    return Sort(key, descending, TOUR_STANDINGS)
+
+
+def cash(key: str, descending: bool = True) -> Sort:
+    return Sort(key, descending, CASH_STANDINGS)
+
+
+def table(is_cash: bool):
+    return CASH_STANDINGS if is_cash else TOUR_STANDINGS
+
 
 class TestParse:
     @pytest.mark.parametrize("key", TOUR_KEYS)
     def test_tour_keys(self, key):
-        assert parse_sort({"sort": key}, cash=False) == Sort(key, True)
-        assert parse_sort({"sort": key, "dir": "asc"}, cash=False) == Sort(key, False)
+        assert parse_sort({"sort": key}, TOUR_STANDINGS) == tour(key)
+        assert parse_sort({"sort": key, "dir": "asc"}, TOUR_STANDINGS) == tour(key, False)
 
     @pytest.mark.parametrize("key", CASH_KEYS)
     def test_cash_keys(self, key):
-        assert parse_sort({"sort": key, "dir": "asc"}, cash=True) == Sort(key, False)
+        assert parse_sort({"sort": key, "dir": "asc"}, CASH_STANDINGS) == cash(key, False)
 
     @pytest.mark.parametrize(
         ("params", "cash"),
@@ -36,25 +54,27 @@ class TestParse:
         ],
     )
     def test_unknown_values_fall_back_to_the_default(self, params, cash):
-        assert parse_sort(params, cash=cash) == Sort()
+        assert parse_sort(params, table(cash)) == table(cash).default_sort
+        assert table(cash).default_sort.key == "net"
 
-    def test_any_other_direction_is_descending(self):
-        assert parse_sort({"sort": "games", "dir": "sideways"}, cash=False) == Sort("games")
+    def test_any_other_direction_is_the_starting_one(self):
+        assert parse_sort({"sort": "games", "dir": "sideways"}, TOUR_STANDINGS) == tour("games")
+        assert parse_sort({"sort": "games", "dir": "desc"}, TOUR_STANDINGS) == tour("games")
 
     def test_toggle(self):
-        assert Sort().toggled("net") == Sort("net", False)
-        assert Sort("net", False).toggled("net") == Sort()
-        assert Sort("net", False).toggled("games") == Sort("games", True)
+        assert DEFAULT.toggled("net") == tour("net", False)
+        assert tour("net", False).toggled("net") == DEFAULT
+        assert tour("net", False).toggled("games") == tour("games", True)
 
     def test_default_needs_no_parameters(self):
-        assert (Sort().params, Sort().query) == ({}, "")
-        assert Sort("net", False).query == "dir=asc"
-        assert Sort("games", False).query == "sort=games&dir=asc"
+        assert (DEFAULT.params, DEFAULT.query) == ({}, "")
+        assert tour("net", False).query == "dir=asc"
+        assert tour("games", False).query == "sort=games&dir=asc"
 
     def test_url_keeps_other_parameters(self):
         params = {"kind": "tour", "sort": "games", "dir": "asc"}
-        assert sort_url("/all-time/", params, Sort("itm")) == "/all-time/?kind=tour&sort=itm"
-        assert sort_url("/all-time/", {"sort": "games"}, Sort()) == "/all-time/"
+        assert sort_url("/all-time/", params, tour("itm")) == "/all-time/?kind=tour&sort=itm"
+        assert sort_url("/all-time/", {"sort": "games"}, DEFAULT) == "/all-time/"
 
 
 def expected_order(players, key, descending):
@@ -122,7 +142,7 @@ class TestSeasonPage:
     def test_every_tour_key(self, client, club, key, direction):
         response = season_page(client, sort=key, dir=direction)
         assert response.status_code == 200
-        assert response.context["sort"] == Sort(key, direction == "desc")
+        assert response.context["sort"] == tour(key, direction == "desc")
         rows = list(response.context["standings"])
         assert [row.pk for row in rows] == expected_order(rows, key, direction == "desc")
 
@@ -143,7 +163,8 @@ class TestSeasonPage:
         assert "<script>" not in response.text
 
     def test_cash_table_ignores_a_tour_key(self, client, club):
-        assert season_page(client, SeasonKind.CASH, sort="itm").context["sort"] == Sort()
+        sort = season_page(client, SeasonKind.CASH, sort="itm").context["sort"]
+        assert sort == CASH_STANDINGS.default_sort
 
     def test_header_links(self, client, club):
         html = season_page(client).text
@@ -243,3 +264,103 @@ class TestQueryCounts:
             make_result(game, make_player(f"Лишний {i}"), buyin=50)
         with django_assert_num_queries(6):
             season_page(client, sort="itm")
+
+
+class TestPlayersParse:
+    def test_default_is_name_from_a(self):
+        assert parse_sort({}, PLAYERS) == Sort("name", False, PLAYERS)
+        assert PLAYERS.default_sort.params == {}
+
+    def test_text_columns_start_from_a_numbers_from_the_highest(self):
+        assert parse_sort({"sort": "nick"}, PLAYERS) == Sort("nick", False, PLAYERS)
+        assert parse_sort({"sort": "games"}, PLAYERS) == Sort("games", True, PLAYERS)
+        assert parse_sort({"sort": "net", "dir": "asc"}, PLAYERS) == Sort("net", False, PLAYERS)
+
+    def test_reverse_of_a_text_column_says_desc(self):
+        reverse_names = Sort("name", True, PLAYERS)
+        assert reverse_names.query == "dir=desc"
+        assert parse_sort({"dir": "desc"}, PLAYERS) == reverse_names
+        assert Sort("nick", True, PLAYERS).query == "sort=nick&dir=desc"
+
+    @pytest.mark.parametrize(
+        "params",
+        [{"sort": "bogus"}, {"sort": "itm"}, {"sort": "NAME"}, {"sort": ""}, {"dir": "up"}],
+    )
+    def test_bad_values_fall_back_to_names(self, params):
+        assert parse_sort(params, PLAYERS) == PLAYERS.default_sort
+
+
+def players_page(client, **params):
+    return client.get(reverse("player_list") + (f"?{urlencode(params)}" if params else ""))
+
+
+@pytest.mark.django_db
+class TestPlayersPage:
+    """All-time: Альфа (Трактор) 6 games +190, Браво 6 −230, Дельта 1 +10, Чарли 2 0."""
+
+    @pytest.mark.parametrize(
+        ("params", "names", "label"),
+        [
+            ({}, ["Альфа", "Браво", "Дельта", "Чарли"], "по алфавиту"),
+            (
+                {"dir": "desc"},
+                ["Чарли", "Дельта", "Браво", "Альфа"],
+                "по алфавиту, в обратном порядке",
+            ),
+            # Without a nickname: last in both directions, by name.
+            ({"sort": "nick"}, ["Альфа", "Браво", "Дельта", "Чарли"], "по нику"),
+            ({"sort": "nick", "dir": "desc"}, ["Альфа", "Браво", "Дельта", "Чарли"], None),
+            # Equal games: by name.
+            ({"sort": "games"}, ["Альфа", "Браво", "Чарли", "Дельта"], "по числу игр"),
+            ({"sort": "games", "dir": "asc"}, ["Дельта", "Чарли", "Альфа", "Браво"], None),
+            ({"sort": "net"}, ["Альфа", "Дельта", "Чарли", "Браво"], "по итогу"),
+            ({"sort": "net", "dir": "asc"}, ["Браво", "Чарли", "Дельта", "Альфа"], None),
+        ],
+    )
+    def test_orders(self, client, club, params, names, label):
+        response = players_page(client, **params)
+        assert response.status_code == 200
+        assert [player.name for player in response.context["players"]] == names
+        if label:
+            assert f"· {label}\n" in response.text
+
+    def test_default_headers(self, client, club):
+        html = players_page(client).text
+        base = reverse("player_list")
+        assert '<th scope="col" aria-sort="ascending"><a class="sort-link sort-asc"' in html
+        assert html.count("aria-sort=") == 1
+        assert header_link(html, "Имя") == f"{base}?dir=desc"  # the active column flips
+        assert header_link(html, "Ник") == f"{base}?sort=nick"
+        assert header_link(html, "Игр") == f"{base}?sort=games"
+        assert header_link(html, "Итог, лей") == f"{base}?sort=net"
+
+    def test_active_numeric_header(self, client, club):
+        html = players_page(client, sort="games").text
+        base = reverse("player_list")
+        assert '<th scope="col" class="num" aria-sort="descending">' in html
+        assert 'class="sort-link sort-desc"' in html and 'aria-current="true">Игр</a>' in html
+        assert header_link(html, "Игр") == f"{base}?sort=games&dir=asc"
+        assert header_link(html, "Имя") == base
+
+    def test_mobile_links(self, client, club):
+        html = players_page(client, sort="net").text
+        row = html[html.index('class="sort-links') : html.index('class="ledger-scroll')]
+        assert row.startswith('class="sort-links md:hidden">Сортировать: ')
+        for label in ("имя", "ник", "игры"):
+            assert f">{label}</a>" in row
+        assert 'aria-current="true">итог</a>' in row
+
+    @pytest.mark.parametrize(
+        "params", [{"sort": "bogus"}, {"sort": "net", "dir": "up"}, {"sort": "<script>"}]
+    )
+    def test_bad_values_are_not_an_error(self, client, club, params):
+        response = players_page(client, **params)
+        assert response.status_code == 200
+        assert "<script>" not in response.text
+
+    def test_query_count_does_not_depend_on_the_order(
+        self, client, club, django_assert_num_queries
+    ):
+        for params in [{}, {"sort": "nick", "dir": "desc"}, {"sort": "net"}, {"sort": "x"}]:
+            with django_assert_num_queries(2):
+                players_page(client, **params)

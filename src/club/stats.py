@@ -143,13 +143,15 @@ def club_totals(kind: str | None = None) -> dict:
     )
 
 
-def player_index() -> QuerySet[Player]:
-    """Players with at least one game, all-time totals, in name order."""
-    return (
-        annotate_player_totals(Player.objects.all())
-        .filter(games_played__gt=0)
-        .order_by("name", "nickname")
-    )
+def player_index(order_by: str = "name", descending: bool = False) -> QuerySet[Player]:
+    """Players with at least one game, all-time totals, by name or by ``order_by`` (``nickname``
+    or an annotation of _player_totals). Players without a nickname come last when ordered by it,
+    whichever the direction; ties go by name."""
+    key = F(order_by).desc() if descending else F(order_by).asc()
+    order = [key, "name", "nickname"]
+    if order_by == "nickname":
+        order.insert(0, Case(When(nickname="", then=1), default=0))
+    return annotate_player_totals(Player.objects.all()).filter(games_played__gt=0).order_by(*order)
 
 
 # Prefixes of annotate_player_card: all-time, tour only, cash only.
