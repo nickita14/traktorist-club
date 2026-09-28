@@ -218,6 +218,12 @@ def annotate_game_number(games: QuerySet[Game]) -> QuerySet[Game]:
     return games.annotate(number=_game_number("season", "date"))
 
 
+def annotate_live_number(games: QuerySet[Game]) -> QuerySet[Game]:
+    """Add ``number`` to live games: the number the game will get in its season once finished
+    (finished games up to its date, plus itself)."""
+    return games.annotate(number=Coalesce(_game_number("season", "date"), 0) + 1)
+
+
 # The one leftover rule (over annotate_game_totals fields). Tour buy-ins must be paid out in full;
 # a cash game may keep rounding change in the pot but can never pay out more than was bought in.
 # A live game is not checked until its results are saved.

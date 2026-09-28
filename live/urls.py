@@ -7,6 +7,7 @@ app_name = "live"
 urlpatterns = [
     path("", views.index, name="index"),
     path("start/", views.start, name="start"),
+    path("manifest.webmanifest", views.manifest, name="manifest"),
     path("<int:pk>/", views.board, name="board"),
     path("<int:pk>/act/<slug:name>/", views.act, name="act"),
     path("<int:pk>/undo/<int:action_pk>/", views.undo, name="undo"),

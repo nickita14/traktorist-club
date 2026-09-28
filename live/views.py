@@ -14,7 +14,7 @@ from fractions import Fraction
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db.models import F, Max, Q
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -24,7 +24,8 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from club import stats
 from club.models import Game, Player, Result, SeasonKind
 from live import actions
-from live.access import organizer_required
+from live import manifest as app_manifest
+from live.access import is_organizer, organizer_required
 from live.actions import GameGone, Outcome, RuleError
 from live.forms import ExitForm, NewPlayerForm, StartForm, parse_int
 from live.models import LiveAction
@@ -51,6 +52,17 @@ def _hx_redirect(url: str) -> HttpResponse:
 
 def _is_htmx(request) -> bool:
     return request.headers.get("HX-Request") == "true"
+
+
+@require_GET
+def manifest(request):
+    """The home screen manifest. It holds the admin path, so everyone else gets a plain 404."""
+    user = request.user
+    if not (user.is_authenticated and is_organizer(user)):
+        raise Http404
+    response = JsonResponse(app_manifest.manifest(), json_dumps_params={"ensure_ascii": False})
+    response["Content-Type"] = "application/manifest+json"
+    return response
 
 
 # Board.

@@ -7,6 +7,11 @@
   <title>{% block title %}{% endblock %} · Кочующий Клуб Тракториста</title>
   <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
   {% tailwind_css %}
+  {% if organizer.is_organizer %}
+    {# Organizers only: these point under the admin prefix, which nobody else may see. #}
+    <link rel="manifest" href="{% url 'live:manifest' %}">
+    <link rel="apple-touch-icon" href="{% static 'icons/live-180.png' %}">
+  {% endif %}
 </head>
 <body>
   <div class="mx-auto flex min-h-screen max-w-page flex-col px-4 md:px-8">
@@ -32,9 +37,21 @@
           </li>
           <li><a href="{% url 'all_time' %}"{% if nav_section == "all-time" %} aria-current="true"{% endif %}>За всё время</a></li>
           <li><a href="{% url 'player_list' %}"{% if nav_section == "players" %} aria-current="true"{% endif %}>Игроки</a></li>
+          {% if organizer.is_organizer %}
+            <li class="site-nav-staff"><a href="{% url 'live:index' %}">Живая игра</a></li>
+            <li><a href="{% url 'admin:index' %}">Админка</a></li>
+          {% endif %}
         </ul>
       </nav>
     </header>
+    {% if organizer.is_organizer %}
+      {% for game in organizer.live_games %}
+        <a class="live-strip" href="{% url 'live:board' game.pk %}">
+          <span><span class="live-dot" aria-hidden="true"></span>Идёт {% if game.kind == "cash" %}кэш-вечер{% else %}турнир{% endif %} №&nbsp;<span class="font-num">{{ game.number }}</span></span>
+          <span class="live-strip-open">открыть</span>
+        </a>
+      {% endfor %}
+    {% endif %}
 
     <main class="flex-1">
       {% block content %}{% endblock %}

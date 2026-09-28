@@ -156,6 +156,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "club.context_processors.site",
+                "live.context_processors.organizer",
             ],
         },
     },
