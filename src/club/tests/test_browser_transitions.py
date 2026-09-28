@@ -27,6 +27,14 @@ if (document.startViewTransition) {
   document.startViewTransition = callback => { window.transitions += 1; return start(callback); };
 }"""
 
+
+def revealed_with_transition(page) -> bool:
+    """Wait for the new page's pagereveal: it comes after the URL commits (a view transition
+    delays it until the new page is ready to animate)."""
+    page.wait_for_function("window.revealedWithTransition !== undefined")
+    return page.evaluate("window.revealedWithTransition")
+
+
 VIEW_TRANSITION_RULES = """() => {
   const found = [];
   const walk = (rules, media) => {
@@ -96,7 +104,7 @@ def test_navigation_between_pages_transitions(open_page, season):
     page.get_by_role("link", name="Игроки").click()
     page.wait_for_url(f"**{reverse('player_list')}")
 
-    assert page.evaluate("window.revealedWithTransition") is True
+    assert revealed_with_transition(page) is True
     assert page.evaluate("window.cspViolations") == []
 
 
@@ -107,7 +115,7 @@ def test_reduced_motion_navigates_without_a_transition(open_page, season):
     page.get_by_role("link", name="Игроки").click()
     page.wait_for_url(f"**{reverse('player_list')}")
 
-    assert page.evaluate("window.revealedWithTransition") is False
+    assert revealed_with_transition(page) is False
     assert page.evaluate("window.cspViolations") == []
 
 
