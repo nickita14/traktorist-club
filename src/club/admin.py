@@ -2,6 +2,8 @@ from django.contrib import admin, messages
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, User
+from django.core.exceptions import ValidationError
+from django.db.models import Count, Q
 from django.utils.html import format_html
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from unfold.admin import ModelAdmin, TabularInline
@@ -11,11 +13,16 @@ from unfold.contrib.filters.admin import (
     RelatedDropdownFilter,
 )
 from unfold.decorators import action, display
-from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
+from unfold.forms import (
+    AdminPasswordChangeForm,
+    PaginationInlineFormSet,
+    UserChangeForm,
+    UserCreationForm,
+)
 
 from club import stats
 from club.formatting import format_money, format_net
-from club.models import Game, Player, Result, Season, SeasonKind
+from club.models import BlindLevel, BlindStructure, Game, Player, Result, Season, SeasonKind
 from live.models import LiveAction
 
 # Unfold 0.108 ships no translations, so its default search placeholder ("Type to search") stays
@@ -125,6 +132,7 @@ class SeasonAdmin(ModelAdmin):
         "rebuy_minutes",
         "payout_weights",
         "payout_round",
+        "default_blinds",
         "cash_step",
     ]
     # Prices of the live game screens: only the ones of the chosen kind (Alpine expressions).
@@ -135,6 +143,7 @@ class SeasonAdmin(ModelAdmin):
         "rebuy_minutes": "kind == 'tour'",
         "payout_weights": "kind == 'tour'",
         "payout_round": "kind == 'tour'",
+        "default_blinds": "kind == 'tour'",
         "cash_step": "kind == 'cash'",
     }
 
@@ -161,6 +170,64 @@ class SeasonAdmin(ModelAdmin):
     @display(description="игроков", ordering="players_count", **number)
     def players_count(self, obj):
         return number_cell(obj.players_count)
+
+
+class BlindLevelFormSet(PaginationInlineFormSet):
+    """A structure needs at least one level with blinds and at most one add-on break."""
+
+    def clean(self):
+        super().clean()
+        kept = [
+            form.cleaned_data
+            for form in self.forms
+            if form.cleaned_data and not form.cleaned_data.get("DELETE")
+        ]
+        if not any(data.get("big_blind") for data in kept):
+            raise ValidationError("В структуре нужен хотя бы один уровень с блайндами.")
+        if sum(1 for data in kept if data.get("addon_break")) > 1:
+            raise ValidationError("Перерыв на аддон в структуре может быть только один.")
+
+
+class BlindLevelInline(TabularInline):
+    model = BlindLevel
+    formset = BlindLevelFormSet
+    fields = ["position", "small_blind", "big_blind", "ante", "minutes", "label", "addon_break"]
+    # Drag to reorder (Unfold); new rows go to the end and can be moved after saving.
+    ordering_field = "position"
+    hide_ordering_field = True
+    extra = 0
+    show_count = True
+
+
+@admin.register(BlindStructure)
+class BlindStructureAdmin(ModelAdmin):
+    list_display = ["name", "levels_count", "breaks_count"]
+    search_fields = ["name"]
+    search_help_text = "Название структуры"
+    fields = ["name"]
+    inlines = [BlindLevelInline]
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(
+                levels_count=Count("levels", filter=Q(levels__big_blind__isnull=False)),
+                breaks_count=Count("levels", filter=Q(levels__big_blind__isnull=True)),
+            )
+        )
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        form.instance.renumber()
+
+    @display(description="уровней", ordering="levels_count", **number)
+    def levels_count(self, obj):
+        return number_cell(obj.levels_count)
+
+    @display(description="перерывов", ordering="breaks_count", **number)
+    def breaks_count(self, obj):
+        return number_cell(obj.breaks_count)
 
 
 class ResultInline(TabularInline):

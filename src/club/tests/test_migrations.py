@@ -23,5 +23,12 @@ def test_organizer_group_has_exact_permissions():
         "add_result",
         "change_result",
         "delete_result",
+        "view_blindstructure",
+        "add_blindstructure",
+        "change_blindstructure",
+        "view_blindlevel",
+        "add_blindlevel",
+        "change_blindlevel",
+        "delete_blindlevel",
     }
     assert set(group.permissions.values_list("content_type__app_label", flat=True)) == {"club"}

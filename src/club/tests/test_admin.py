@@ -5,8 +5,14 @@ from django.contrib.auth.models import Group, User
 from django.urls import reverse
 from django.utils import timezone
 
-from club.models import Game, Player, Result, Season, SeasonKind
-from club.tests.factories import make_game, make_player, make_result, make_season
+from club.models import BlindStructure, Game, Player, Result, Season, SeasonKind
+from club.tests.factories import (
+    make_game,
+    make_player,
+    make_result,
+    make_season,
+    make_structure,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -55,7 +61,7 @@ def inline_data(game, row_overrides=None):
 
 
 class TestSuperuserPages:
-    @pytest.mark.parametrize("model", ["player", "season", "game"])
+    @pytest.mark.parametrize("model", ["player", "season", "game", "blindstructure"])
     def test_changelists_render(self, admin_client, cash_game, model):
         response = admin_client.get(reverse(f"admin:club_{model}_changelist"))
         assert response.status_code == 200
@@ -197,6 +203,32 @@ class TestOrganizer:
 
         assert response.status_code == 302
         assert cash_game.results.count() == 2
+
+
+class TestOrganizerBlinds:
+    def test_can_add_a_structure(self, organizer_client):
+        rows = [{"small_blind": 25, "big_blind": 50}, {"label": "Перерыв", "minutes": 10}]
+        response = organizer_client.post(
+            reverse("admin:club_blindstructure_add"), structure_data("Обычный турнир", rows)
+        )
+        assert response.status_code == 302
+        assert BlindStructure.objects.get().levels.count() == 2
+
+    def test_can_remove_a_row_but_not_the_structure(self, organizer_client):
+        structure = make_structure(rows=[(25, 50, 20), (50, 100, 20)])
+        first, second = structure.levels.values_list("pk", flat=True)
+        data = structure_data(
+            structure.name,
+            [{"small_blind": 25, "big_blind": 50}, {"small_blind": 50, "big_blind": 100}],
+            initial=[first, second],
+        )
+        data["levels-1-DELETE"] = "on"
+        url = reverse("admin:club_blindstructure_change", args=[structure.pk])
+
+        assert organizer_client.post(url, data).status_code == 302
+        assert structure.levels.count() == 1
+        delete = reverse("admin:club_blindstructure_delete", args=[structure.pk])
+        assert organizer_client.post(delete, {"post": "yes"}).status_code == 403
 
 
 class TestPlayerAddForm:
@@ -449,10 +481,121 @@ class TestNumberFormatting:
 class TestSearchPlaceholder:
     @pytest.mark.parametrize(
         ("model", "placeholder"),
-        [("player", "Имя, ник или slug"), ("game", "Место или игрок")],
+        [
+            ("player", "Имя, ник или slug"),
+            ("game", "Место или игрок"),
+            ("blindstructure", "Название структуры"),
+        ],
     )
     def test_placeholder_is_russian(self, admin_client, model, placeholder):
         html = admin_client.get(reverse(f"admin:club_{model}_changelist")).content.decode()
 
         assert f'placeholder="{placeholder}"' in html
         assert "Type to search" not in html.split('id="changelist-search"')[1].split("</form>")[0]
+
+
+def structure_data(name, rows, *, initial=()):
+    """POST data for the BlindStructure form: ``rows`` are dicts of level fields, ``initial`` the
+    saved rows' pks in the same order (the rest are new)."""
+    data = {
+        "name": name,
+        "levels-TOTAL_FORMS": len(rows),
+        "levels-INITIAL_FORMS": len(initial),
+        "levels-MIN_NUM_FORMS": 0,
+        "levels-MAX_NUM_FORMS": 1000,
+    }
+    for i, row in enumerate(rows):
+        fields = {"position": "", "small_blind": "", "big_blind": "", "ante": 0, "label": ""}
+        fields |= {"minutes": 20} | row
+        if i < len(initial):
+            fields["id"] = initial[i]
+        if fields.pop("addon_break", False):
+            fields["addon_break"] = "on"
+        data |= {f"levels-{i}-{key}": value for key, value in fields.items()}
+    return data
+
+
+class TestBlindStructureAdmin:
+    def test_create_with_levels_and_breaks(self, admin_client):
+        rows = [
+            {"small_blind": 25, "big_blind": 50},
+            {"small_blind": 50, "big_blind": 100, "ante": 10, "minutes": 15},
+            {"label": "Перерыв · аддон", "minutes": 15, "addon_break": True},
+            {"small_blind": 100, "big_blind": 200},
+        ]
+        response = admin_client.post(
+            reverse("admin:club_blindstructure_add"), structure_data("Обычный турнир", rows)
+        )
+
+        assert response.status_code == 302
+        structure = BlindStructure.objects.get(name="Обычный турнир")
+        levels = structure.levels.values_list(
+            "position", "small_blind", "ante", "minutes", "label", "addon_break"
+        )
+        assert list(levels) == [
+            (1, 25, 0, 20, "", False),
+            (2, 50, 10, 15, "", False),
+            (3, None, 0, 15, "Перерыв · аддон", True),
+            (4, 100, 0, 20, "", False),
+        ]
+
+    def test_dragged_order_is_kept_and_new_rows_go_last(self, admin_client):
+        structure = make_structure(rows=[(25, 50, 20), (50, 100, 20)])
+        first, second = structure.levels.values_list("pk", flat=True)
+        rows = [
+            {"small_blind": 25, "big_blind": 50, "position": 1},
+            {"small_blind": 50, "big_blind": 100, "position": 0},  # dragged to the top
+            {"small_blind": 100, "big_blind": 200},
+        ]
+        response = admin_client.post(
+            reverse("admin:club_blindstructure_change", args=[structure.pk]),
+            structure_data(structure.name, rows, initial=[first, second]),
+        )
+
+        assert response.status_code == 302
+        order = structure.levels.values_list("position", "small_blind")
+        assert list(order) == [(1, 50), (2, 25), (3, 100)]
+
+    @pytest.mark.parametrize(
+        ("rows", "message"),
+        [
+            ([{"label": "Перерыв"}], "хотя бы один уровень с блайндами"),
+            (
+                [
+                    {"small_blind": 25, "big_blind": 50},
+                    {"label": "Аддон", "addon_break": True},
+                    {"label": "Ещё аддон", "addon_break": True},
+                ],
+                "Перерыв на аддон в структуре может быть только один.",
+            ),
+            ([{"small_blind": 100, "big_blind": 50}], "Большой блайнд не меньше малого"),
+        ],
+    )
+    def test_invalid_structures(self, admin_client, rows, message):
+        response = admin_client.post(
+            reverse("admin:club_blindstructure_add"), structure_data("Кривая", rows)
+        )
+
+        assert response.status_code == 200
+        assert message in response.text
+        assert not BlindStructure.objects.exists()
+
+    def test_inline_is_sortable_with_a_hidden_position(self, admin_client):
+        structure = make_structure()
+        response = admin_client.get(
+            reverse("admin:club_blindstructure_change", args=[structure.pk])
+        )
+
+        assert 'data-ordering-field="position"' in response.text
+
+    def test_changelist_counts(self, admin_client):
+        make_structure()
+        html = admin_client.get(reverse("admin:club_blindstructure_changelist")).text
+        cells = re.findall(r'<span class="admin-num">(\d+)</span>', html)
+        assert cells == ["5", "2"]
+
+    def test_season_default_blinds_for_tournaments_only(self, admin_client):
+        response = admin_client.get(reverse("admin:club_season_add"))
+        assert 'name="default_blinds"' in response.text
+        field = response.text.split('name="default_blinds"')[0].rsplit("x-show=", 1)[1]
+        assert field.startswith('"kind == &#x27;tour&#x27;"')

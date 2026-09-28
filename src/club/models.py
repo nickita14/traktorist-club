@@ -146,6 +146,15 @@ class Season(models.Model):
         default=50,
         help_text="Выплаты округляются вниз до этого шага, остаток получает первое место.",
     )
+    default_blinds = models.ForeignKey(
+        "BlindStructure",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="структура блайндов",
+        help_text="Предлагается при старте турнира; у игры своя копия.",
+    )
 
     class Meta:
         verbose_name = "сезон"
@@ -227,6 +236,130 @@ class Season(models.Model):
             raise ValidationError(
                 {"kind": "В сезоне есть результаты с фишками на выходе: турниром он быть не может."}
             )
+
+
+class LevelFields(models.Model):
+    """One row of a blind structure: a level (blinds set) or a break (no blinds, a label).
+
+    Shared by the templates (BlindLevel) and a game's own copy (live.TimerLevel).
+    """
+
+    small_blind = models.PositiveIntegerField("малый блайнд", null=True, blank=True)
+    big_blind = models.PositiveIntegerField("большой блайнд", null=True, blank=True)
+    ante = models.PositiveIntegerField("анте", default=0, help_text="0: без анте.")
+    minutes = models.PositiveSmallIntegerField("минут")
+    label = models.CharField(
+        "название перерыва",
+        max_length=60,
+        blank=True,
+        default="",
+        help_text="Только для перерыва, например «Перерыв · аддон».",
+    )
+    addon_break = models.BooleanField("перерыв на аддон", default=False)
+
+    class Meta:
+        abstract = True
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(minutes__gte=1), name="%(app_label)s_%(class)s_minutes_positive"
+            ),
+            # A level: 1 <= small <= big (NULLs spelled out: a CHECK passes on NULL). A break: no
+            # blinds, no ante, a label.
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        small_blind__isnull=False,
+                        big_blind__isnull=False,
+                        small_blind__gte=1,
+                        big_blind__gte=F("small_blind"),
+                    )
+                    | Q(small_blind__isnull=True, big_blind__isnull=True, ante=0) & ~Q(label="")
+                ),
+                name="%(app_label)s_%(class)s_level_or_break",
+            ),
+            models.CheckConstraint(
+                condition=Q(addon_break=False) | Q(big_blind__isnull=True),
+                name="%(app_label)s_%(class)s_addon_is_a_break",
+            ),
+        ]
+
+    @property
+    def is_break(self) -> bool:
+        return self.big_blind is None
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        has_blinds = self.small_blind is not None or self.big_blind is not None
+        if has_blinds:
+            if self.small_blind is None or self.big_blind is None:
+                errors["big_blind"] = "Укажите оба блайнда или ни одного (перерыв)."
+            elif not 1 <= self.small_blind <= self.big_blind:
+                errors["big_blind"] = "Большой блайнд не меньше малого, малый от 1."
+            if self.addon_break:
+                errors["addon_break"] = "Аддон бывает только в перерыве."
+        else:
+            if not self.label.strip():
+                errors["label"] = "Перерыву нужно название, уровню нужны блайнды."
+            if self.ante:
+                errors["ante"] = "В перерыве нет анте."
+        if errors:
+            raise ValidationError(errors)
+
+
+class BlindStructure(models.Model):
+    """A blind structure template. A tournament gets its own copy at the start (live.BlindTimer),
+    so editing or deleting a template never changes a game."""
+
+    name = models.CharField("название", max_length=100, unique=True)
+
+    class Meta:
+        verbose_name = "структура блайндов"
+        verbose_name_plural = "структуры блайндов"
+        ordering = ["name"]
+        constraints = [
+            models.CheckConstraint(condition=~Q(name=""), name="blindstructure_name_not_empty"),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+    def renumber(self) -> None:
+        """Positions 1..n in the current order; rows without one (new in the admin) go last."""
+        levels = list(self.levels.order_by(F("position").asc(nulls_last=True), "pk"))
+        for number, level in enumerate(levels, start=1):
+            level.position = number
+        BlindLevel.objects.bulk_update(levels, ["position"])
+
+
+class BlindLevel(LevelFields):
+    structure = models.ForeignKey(
+        BlindStructure,
+        on_delete=models.CASCADE,
+        related_name="levels",
+        verbose_name="структура",
+    )
+    # Sortable in the admin (Unfold fills it); renumbered 1..n on save, so no unique constraint.
+    position = models.PositiveIntegerField("порядок", null=True, blank=True, db_index=True)
+
+    class Meta(LevelFields.Meta):
+        verbose_name = "уровень"
+        verbose_name_plural = "уровни и перерывы"
+        ordering = [F("position").asc(nulls_last=True), "pk"]
+        constraints = [
+            *LevelFields.Meta.constraints,
+            models.UniqueConstraint(
+                fields=["structure"],
+                condition=Q(addon_break=True),
+                name="blindlevel_one_addon_break",
+                violation_error_message="Перерыв на аддон в структуре может быть только один.",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        if self.is_break:
+            return self.label
+        return f"{self.small_blind} / {self.big_blind}"
 
 
 class LiveStage(models.TextChoices):
