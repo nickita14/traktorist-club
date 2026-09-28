@@ -10,8 +10,8 @@ The ``browser`` fixture (headless Chromium, skipped when it is missing) is in th
 import pytest
 from django.urls import reverse
 
-from club.models import SeasonKind
-from club.tests.factories import make_game, make_player, make_result, make_season
+from club.models import BlindStructure, SeasonKind
+from club.tests.factories import make_game, make_player, make_result, make_season, make_structure
 from conftest import COLLECT_CSP_VIOLATIONS
 
 pytest.importorskip("playwright.sync_api")
@@ -175,4 +175,43 @@ def test_pages_run_without_csp_violations(admin_page, game, path):
     page = admin_page(path(game))
     page.wait_for_load_state("networkidle")
 
+    assert page.evaluate("window.cspViolations") == []
+
+
+def test_blind_rows_switch_type_and_renumber(admin_page):
+    structure = make_structure(rows=[(25, 50, 20), (50, 100, 20), ("Перерыв", 10), (100, 200, 20)])
+    page = admin_page(reverse("admin:club_blindstructure_change", args=[structure.pk]))
+    numbers = page.locator("[data-level-number]")
+    kinds = page.locator("select[data-row-kind]")
+    second = page.locator("tbody.form-group").nth(1)
+
+    assert numbers.all_inner_texts()[:4] == ["1", "2", "перерыв", "3"]
+    # A level: blinds usable, the break fields hidden and off.
+    assert second.locator("input[name$=-label]").is_disabled()
+    assert not second.locator("input[name$=-small_blind]").is_disabled()
+    handle = page.locator("[x-sort\\:handle]").first
+    assert handle.is_visible()
+
+    kinds.nth(1).select_option("break")
+
+    assert numbers.all_inner_texts()[:4] == ["1", "перерыв", "перерыв", "2"]
+    assert second.locator("input[name$=-small_blind]").is_disabled()
+    assert not second.locator("input[name$=-small_blind]").is_visible()
+    assert not second.locator("input[name$=-label]").is_disabled()
+    assert second.locator("input[name$=-label]").is_visible()
+
+    second.locator("input[name$=-label]").fill("Перерыв · аддон")
+    second.locator("td.field-addon_break label, td.field-addon_break input").first.click()
+    page.get_by_role("button", name="Сохранить", exact=True).click()
+    page.wait_for_url("**/blindstructure/")
+
+    rows = BlindStructure.objects.get(pk=structure.pk).levels.values_list(
+        "big_blind", "label", "addon_break"
+    )
+    assert list(rows) == [
+        (50, "", False),
+        (None, "Перерыв · аддон", True),
+        (None, "Перерыв", False),
+        (200, "", False),
+    ]
     assert page.evaluate("window.cspViolations") == []

@@ -1,9 +1,10 @@
+from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, User
 from django.core.exceptions import ValidationError
-from django.db.models import Count, Q
+from django.db.models import Case, Count, F, IntegerField, Q, Sum, When, Window
 from django.utils.html import format_html
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from unfold.admin import ModelAdmin, TabularInline
@@ -19,10 +20,20 @@ from unfold.forms import (
     UserChangeForm,
     UserCreationForm,
 )
+from unfold.widgets import UnfoldAdminSelectWidget
 
 from club import stats
 from club.formatting import format_money, format_net
-from club.models import BlindLevel, BlindStructure, Game, Player, Result, Season, SeasonKind
+from club.models import (
+    ADDON_ON_LEVEL,
+    BlindLevel,
+    BlindStructure,
+    Game,
+    Player,
+    Result,
+    Season,
+    SeasonKind,
+)
 from live.models import LiveAction
 
 # Unfold 0.108 ships no translations, so its default search placeholder ("Type to search") stays
@@ -188,15 +199,109 @@ class BlindLevelFormSet(PaginationInlineFormSet):
             raise ValidationError("Перерыв на аддон в структуре может быть только один.")
 
 
+class RowKind:
+    LEVEL = "level"
+    BREAK = "break"
+    CHOICES = [(LEVEL, "Уровень"), (BREAK, "Перерыв")]
+
+
+class BlindLevelForm(forms.ModelForm):
+    """One row with an explicit type: a level has blinds (and maybe an ante), a break has a label
+    (and maybe the add-on). The model tells them apart by the empty blinds of a break.
+
+    assets/js/admin-blinds.js hides and disables the other type's inputs; without it, the type
+    still decides what is stored.
+    """
+
+    kind = forms.ChoiceField(
+        label="Тип",
+        choices=RowKind.CHOICES,
+        initial=RowKind.LEVEL,
+        widget=UnfoldAdminSelectWidget(attrs={"data-row-kind": ""}),
+    )
+
+    class Meta:
+        model = BlindLevel
+        fields = ["small_blind", "big_blind", "ante", "minutes", "label", "addon_break"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk and self.instance.is_break:
+            self.initial["kind"] = RowKind.BREAK
+        # A break posts no ante (its input is disabled): blank means 0.
+        self.fields["ante"].required = False
+
+    def clean(self):
+        data = super().clean()
+        if data.get("kind") == RowKind.BREAK:
+            data |= {"small_blind": None, "big_blind": None, "ante": 0}
+            if not (data.get("label") or "").strip():
+                self.add_error("label", "Укажите название перерыва, например «Перерыв · аддон».")
+        else:
+            if data.get("addon_break"):
+                self.add_error("addon_break", ADDON_ON_LEVEL)
+            data["label"] = ""
+            data["ante"] = data.get("ante") or 0
+            for field in ("small_blind", "big_blind"):
+                if data.get(field) is None and field not in self.errors:
+                    self.add_error(field, "Укажите малый и большой блайнд.")
+        return data
+
+
 class BlindLevelInline(TabularInline):
     model = BlindLevel
+    form = BlindLevelForm
     formset = BlindLevelFormSet
-    fields = ["position", "small_blind", "big_blind", "ante", "minutes", "label", "addon_break"]
+    # "Ур." comes first: Unfold draws the drag handle in the first column.
+    fields = [
+        "level_number",
+        "kind",
+        "small_blind",
+        "big_blind",
+        "ante",
+        "minutes",
+        "label",
+        "addon_break",
+        "position",
+    ]
+    readonly_fields = ["level_number"]
     # Drag to reorder (Unfold); new rows go to the end and can be moved after saving.
     ordering_field = "position"
     hide_ordering_field = True
+    show_title = False
     extra = 0
     show_count = True
+
+    def get_queryset(self, request):
+        # Level numbers skip breaks: a running count of the rows with blinds.
+        is_level = Case(
+            When(big_blind__isnull=False, then=1), default=0, output_field=IntegerField()
+        )
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(
+                level_number=Window(
+                    Sum(is_level),
+                    partition_by=[F("structure")],
+                    order_by=[F("position").asc(nulls_last=True), F("pk").asc()],
+                )
+            )
+        )
+
+    @display(description="Ур.")
+    def level_number(self, obj):
+        # admin-blinds.js keeps the numbers right while rows are dragged or change type.
+        if obj is None or obj.pk is None:
+            number = ""
+        elif obj.is_break:
+            number = "перерыв"
+        else:
+            number = obj.level_number
+        return format_html('<span class="admin-num" data-level-number>{}</span>', number)
+
+    class Media:
+        js = ["js/admin-blinds.js"]
 
 
 @admin.register(BlindStructure)

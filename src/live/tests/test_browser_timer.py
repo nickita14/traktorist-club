@@ -236,3 +236,21 @@ def test_phone_strip_ticks_and_opens_the_editor(phone):  # noqa: F811
     assert_touch_targets(page)
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
     assert_clean(page)
+
+
+def test_phone_adds_a_break_with_the_addon(phone):  # noqa: F811
+    game = timed_game(rows=[(25, 50, 20), (50, 100, 20)])
+    page = phone(reverse("live:blinds", args=[game.pk]))
+    assert_touch_targets(page)
+
+    page.get_by_label("Название перерыва").fill("Перерыв · аддон")
+    page.get_by_label("Минут перерыва").fill("15")
+    page.get_by_label("перерыв на аддон").check()
+    page.get_by_role("button", name="+ Перерыв").click()
+
+    expect(page.locator(".toast")).to_contain_text("добавлен перерыв «Перерыв · аддон», 15 мин")
+    expect(page.get_by_label("перерыв на аддон")).to_have_count(0)
+    level = BlindTimer.objects.get(game=game).levels.get(position=3)
+    assert (level.label, level.minutes, level.addon_break) == ("Перерыв · аддон", 15, True)
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    assert_clean(page)

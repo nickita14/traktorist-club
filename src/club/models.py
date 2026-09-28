@@ -238,6 +238,12 @@ class Season(models.Model):
             )
 
 
+# What to do when the add-on flag is set on a level instead of a break row.
+ADDON_ON_LEVEL = (
+    "Аддон ставится на строку-перерыв: добавьте строку с типом «Перерыв» после нужного уровня."
+)
+
+
 class LevelFields(models.Model):
     """One row of a blind structure: a level (blinds set) or a break (no blinds, a label).
 
@@ -297,7 +303,7 @@ class LevelFields(models.Model):
             elif not 1 <= self.small_blind <= self.big_blind:
                 errors["big_blind"] = "Большой блайнд не меньше малого, малый от 1."
             if self.addon_break:
-                errors["addon_break"] = "Аддон бывает только в перерыве."
+                errors["addon_break"] = ADDON_ON_LEVEL
         else:
             if not self.label.strip():
                 errors["label"] = "Перерыву нужно название, уровню нужны блайнды."
@@ -343,7 +349,7 @@ class BlindLevel(LevelFields):
     position = models.PositiveIntegerField("порядок", null=True, blank=True, db_index=True)
 
     class Meta(LevelFields.Meta):
-        verbose_name = "уровень"
+        verbose_name = "уровень или перерыв"
         verbose_name_plural = "уровни и перерывы"
         ordering = [F("position").asc(nulls_last=True), "pk"]
         constraints = [

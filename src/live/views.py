@@ -279,6 +279,12 @@ def _add_level(pk, key, user, post):
     return actions.add_level(pk, key, user, small=small, big=big, ante=ante, minutes=minutes)
 
 
+def _add_break(pk, key, user, post):
+    (minutes,) = _numbers(post, "minutes", minimum=1)
+    label, addon = post.get("label", ""), post.get("addon") == "on"
+    return actions.add_break(pk, key, user, label=label, minutes=minutes, addon=addon)
+
+
 def _step(step: int):
     def call(pk, key, user, post):
         (position,) = _numbers(post, "from", minimum=1)
@@ -311,6 +317,7 @@ ACTIONS = {
     "timer-plus": lambda pk, key, user, post: actions.add_minute(pk, key, user),
     "level-edit": _edit_level,
     "level-add": _add_level,
+    "break-add": _add_break,
     "bulk-minutes": lambda pk, key, user, post: actions.bulk_minutes(
         pk, key, user, *_numbers(post, "from", "minutes", minimum=1)
     ),
