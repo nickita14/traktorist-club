@@ -1,0 +1,23 @@
+{% load ledger %}
+{# The player's step on each rank ladder, with the way to the next one (club.achievements.RankProgress). #}
+<div class="rank-cells mt-3">
+  {% for rank in ranks %}
+    <div>
+      <p class="rank-label">{{ rank.ladder.title }} · {{ rank.ladder.counter_label }}</p>
+      <p class="rank-head">
+        <span class="rank-title">{% if rank.step %}{{ rank.step.title }}{% else %}{% no_value %}{% endif %}</span>
+        {% if rank.step %}<span class="rank-of">{{ rank.step_number|roman }} из {{ rank.step_count|roman }}</span>{% endif %}
+      </p>
+      {% if rank.next_step %}
+        <progress class="rank-progress" value="{{ rank.progress_value }}" max="{{ rank.progress_max }}"></progress>
+      {% else %}
+        <progress class="rank-progress" value="1" max="1"></progress>
+      {% endif %}
+      <p class="rank-figures">
+        <span><span class="font-num num-run">{{ rank.value|money }}</span> {{ rank.value|plural:rank.ladder.unit_forms }}</span>
+        <span class="text-muted">{% if rank.next_step %}до «{{ rank.next_step.title }}» ещё <span class="font-num num-run">{{ rank.remaining|money }}</span>{% else %}высшая ступень{% endif %}</span>
+      </p>
+      <p class="rank-steps">{% for step, state in rank.step_states %}<span class="rank-step-{{ state }}">{{ step.title }}</span>{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+    </div>
+  {% endfor %}
+</div>

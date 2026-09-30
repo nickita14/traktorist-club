@@ -203,7 +203,7 @@ def annotate_game_totals(games: QuerySet[Game]) -> QuerySet[Game]:
     )
 
 
-def _game_number(season: str, date: str) -> Subquery:
+def game_number(season: str, date: str) -> Subquery:
     """Number of a game within its season: 1 for the earliest date.
 
     Counts the season's games up to this date; dates are unique per season, so this is the
@@ -221,14 +221,14 @@ def _game_number(season: str, date: str) -> Subquery:
 
 
 def annotate_game_number(games: QuerySet[Game]) -> QuerySet[Game]:
-    """Add ``number``, the game's position in its season (see _game_number)."""
-    return games.annotate(number=_game_number("season", "date"))
+    """Add ``number``, the game's position in its season (see game_number)."""
+    return games.annotate(number=game_number("season", "date"))
 
 
 def annotate_live_number(games: QuerySet[Game]) -> QuerySet[Game]:
     """Add ``number`` to live games: the number the game will get in its season once finished
     (finished games up to its date, plus itself)."""
-    return games.annotate(number=Coalesce(_game_number("season", "date"), 0) + 1)
+    return games.annotate(number=Coalesce(game_number("season", "date"), 0) + 1)
 
 
 # The one leftover rule (over annotate_game_totals fields). Tour buy-ins must be paid out in full;
@@ -465,7 +465,7 @@ def player_results(player: Player) -> QuerySet[Result]:
         annotate_result_net(
             player.results.filter(game__live_stage="").select_related("game__season")
         )
-        .annotate(game_number=_game_number("game__season", "game__date"))
+        .annotate(game_number=game_number("game__season", "game__date"))
         .order_by("-game__date", "game__season__kind")
     )
 

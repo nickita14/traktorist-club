@@ -6,7 +6,10 @@
 {% block form_label %}Форма № 2-И · Личная карточка участника{% endblock %}
 {% block doc_title %}{% include "club/includes/player_head.html" %}{% endblock %}
 {% block stamp %}
-  {% if player.games_played %}
+  {% if awards.veteran %}
+    {# The join year is in the meta line too ("первая ..."), so the rank takes the stamp. #}
+    <p class="stamp stamp-ink"><span class="block">Звание</span><span class="block">«{{ awards.veteran.step.title }}»</span></p>
+  {% elif player.games_played %}
     <p class="stamp stamp-ink">В клубе с {{ player.first_game_date|date:"Y" }} года</p>
   {% endif %}
 {% endblock %}
@@ -46,6 +49,28 @@
         <dd class="stat-value">{% count_value player.first_places %} · {% count_value player.second_places %} · {% count_value player.third_places %}</dd>
       </div>
     </dl>
+
+    {% if awards.ranks %}
+      <section class="mt-8" aria-labelledby="ranks-title">
+        <div class="section-head"><h2 id="ranks-title">Звания</h2></div>
+        {% include "club/includes/rank_cells.html" with ranks=awards.ranks %}
+      </section>
+    {% endif %}
+
+    <section class="mt-8" aria-labelledby="badges-title">
+      <div class="section-head">
+        <h2 id="badges-title">Знаки отличия</h2>
+        <p class="section-note">получено <span class="font-num not-italic">{{ awards.badge_total|money }}</span> {{ awards.badge_total|plural:"знак,знака,знаков" }}</p>
+      </div>
+      {% include "club/includes/badge_grid.html" with badges=awards.badge_slots %}
+    </section>
+
+    {% if awards.record or awards.lead_lines %}
+      <section class="mt-8" aria-labelledby="record-title">
+        <div class="section-head"><h2 id="record-title">Грамоты и титулы</h2></div>
+        {% include "club/includes/award_record.html" with record=awards.record lead_lines=awards.lead_lines %}
+      </section>
+    {% endif %}
 
     {% if chart %}
       <section class="mt-8" aria-labelledby="chart-title">

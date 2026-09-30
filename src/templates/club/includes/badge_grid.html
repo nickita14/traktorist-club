@@ -1,0 +1,14 @@
+{% load ledger %}
+{# Every badge as a stamp: earned ones inked and tilted with their count, the rest dashed and faint. #}
+<ul class="award-grid mt-4">
+  {% for badge in badges %}
+    <li>
+      <div class="award-stamp{% if not badge.count %} award-stamp-none{% endif %}" data-badge="{{ badge.code }}">
+        <span class="award-stamp-name">{{ badge.title }}</span>
+        <span class="award-stamp-count">{% if badge.count %}×{{ badge.count }}{% else %}<span aria-hidden="true">·</span><span class="sr-only">не получен</span>{% endif %}</span>
+      </div>
+      <p class="award-rule">{{ badge.rule }}</p>
+      <p class="award-last">{% if badge.last %}последний <time class="font-num not-italic" datetime="{{ badge.last.date|date:'Y-m-d' }}">{{ badge.last.date|date:"d.m.Y" }}</time>{% else %}ещё не получен{% endif %}</p>
+    </li>
+  {% endfor %}
+</ul>
