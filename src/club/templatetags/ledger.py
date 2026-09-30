@@ -4,10 +4,20 @@ Filters return plain text; the ``*_value`` tags wrap it in a span with the CSS c
 negative (``val-neg``) or zero (``val-zero``) values, defined in frontend/source.css.
 """
 
-from django import template
-from django.utils.html import format_html
+import re
 
-from club.formatting import format_amount, format_money, format_net, format_roman, ru_plural
+from django import template
+from django.utils.html import conditional_escape, format_html
+from django.utils.safestring import mark_safe
+
+from club.formatting import (
+    FIGURE,
+    format_amount,
+    format_money,
+    format_net,
+    format_roman,
+    ru_plural,
+)
 
 register = template.Library()
 
@@ -37,6 +47,25 @@ def amount(value) -> str:
 @register.filter
 def net(value: int) -> str:
     return format_net(value)
+
+
+# Tags and entities of the escaped text are kept whole, so "&#x27;" never gets a figure span.
+_MARKUP_OR_FIGURE = re.compile(rf"(<[^>]*>|&#?\w+;)|{FIGURE.pattern}")
+
+
+@register.filter
+def figures(value) -> str:
+    """A text with figures ("11 вечеров", "2 из 2", "15 020 лей"): each figure in the number
+    face with the narrowed thousands space, the words in the text face with normal spacing.
+    Plain input is escaped, safe input is not escaped twice."""
+
+    def wrap(match: re.Match) -> str:
+        if match.group(1):
+            return match.group(1)
+        # not-italic: the number face has no italic, and captions and notes are italic.
+        return f'<span class="font-num num-run not-italic">{match.group()}</span>'
+
+    return mark_safe(_MARKUP_OR_FIGURE.sub(wrap, conditional_escape(value)))
 
 
 @register.filter

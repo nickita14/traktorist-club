@@ -1,9 +1,10 @@
 """/honors/ ("Доска почёта") on the club fixture and a few hand-made seasons.
 
 With ``award_rules`` and the club fixture (Y = PAST_YEAR, every period has ended):
-- titles of Y: "Всегда в деньгах" and "Меценат" (31.12), spring's "Ударник" (31.05), March's
-  "Ни одного прогула" (31.03); of Y-1: autumn's "Ударник".
-- badges: Альфа one_buyin x3 (t0, t1, t3), hat_trick (t2), cashier (c2); Чарли cashier (c1).
+- titles of Y: "Всегда в деньгах" and "Меценат" (31.12), spring's "Ударник" (31.05); of Y-1:
+  autumn's "Ударник".
+- badges: Альфа one_buyin x3 (t0, t1, t3), hat_trick (t2), cashier (c2); Чарли cashier (c1);
+  "Ни одного прогула" for March (four evenings) to Альфа and Браво, on c2.
 - diplomas: Альфа's first win, evening series 3 and 5 for Альфа and Браво.
 """
 
@@ -14,7 +15,7 @@ from django.urls import reverse
 
 from club import achievements
 from club.models import RankLadder, SeasonKind
-from club.tests.conftest import PAST_YEAR
+from club.tests.conftest import NUM, PAST_YEAR, plain_text
 from club.tests.factories import make_game, make_player, make_result, make_season
 from club.views import RECENT_AWARDS
 
@@ -56,9 +57,9 @@ class TestHead:
             '<span class="block">гордится</span><span class="block">клуб</span></p>'
         ) in html
         assert '<span class="font-num num-run not-italic">4</span> участника' in html
-        assert '<span class="font-num num-run not-italic">6</span> знаков' in html
-        # 5 diplomas and 7 ended titles (four of them shared by two).
-        assert '<span class="font-num num-run not-italic">12</span> грамот и титулов' in html
+        assert '<span class="font-num num-run not-italic">8</span> знаков' in html
+        # 5 diplomas and 5 ended titles (three of them shared by two).
+        assert '<span class="font-num num-run not-italic">10</span> грамот и титулов' in html
 
     def test_nav_marks_honors(self, client, club, award_rules):
         html = html_of(client)
@@ -84,21 +85,21 @@ class TestHead:
 class TestTitles:
     def test_default_year_is_the_latest_with_games(self, client, club, award_rules):
         titles = section(html_of(client), "titles-title")
-        labels = [row.split("<td")[1].split(">")[1].split("<")[0].strip() for row in rows(titles)]
+        labels = [plain_text(row.split("</td>")[0]).strip() for row in rows(titles)]
         # Newest period first; the two seasons end on the same day, in the titles' order.
-        assert labels == [f"Турниры {Y}", f"Кэш {Y}", f"Весна {Y}", f"Март {Y}"]
+        assert labels == [f"Турниры {Y}", f"Кэш {Y}", f"Весна {Y}"]
 
     def test_notes_and_figures(self, client, club, award_rules):
         found = rows(section(html_of(client), "titles-title"))
-        always, patron, spring, march = found
+        always, patron, spring = found
         assert '<span class="val-zero">' in always and "претендентов нет" in always
         bravo = club["players"]["B"]
         assert f'<a href="{bravo.get_absolute_url()}">Браво</a>' in patron
-        assert "7,70 лея" in patron and "ничья" not in patron
+        assert f"{NUM}7,70</span> лея" in patron and "ничья" not in patron
         assert "Трактор</a>, <a" in spring  # labels, comma-separated
         assert '<span class="award-note">ничья</span>' in spring
-        assert ">4 вечера</td>" in spring
-        assert ">4 из 4</td>" in march
+        assert f"{NUM}4</span> вечера</td>" in spring  # only the number in the number face
+        assert '<td class="text-right whitespace-nowrap">' in spring  # the cell is not mono
 
     def test_switcher(self, client, club, award_rules):
         html = html_of(client, sort="cashier")
@@ -110,7 +111,9 @@ class TestTitles:
     def test_explicit_year(self, client, club, award_rules):
         found = rows(section(html_of(client, year=Y - 1), "titles-title"))
         # The tournaments' "Всегда в деньгах" (31.12), then autumn's "Ударник" (30.11).
-        assert [f"Турниры {Y - 1}" in found[0], f"Осень {Y - 1}" in found[1]] == [True, True]
+        assert f"Турниры {Y - 1}" in plain_text(found[0])
+        assert f"Осень {Y - 1}" in plain_text(found[1])
+        assert f"Осень {NUM}{Y - 1}</span>" in found[1]
         html = html_of(client, year=Y - 1)
         assert f'aria-current="page">{Y - 1}</a>' in html
 
@@ -136,10 +139,33 @@ class TestTitles:
         make_result(make_game(season, day=8, month=3), a, place=1)
         row = next(r for r in rows(section(html_of(client), "titles-title")) if "Всегда" in r)
         assert (
-            f'<a href="{a.get_absolute_url()}">Плуг</a>, <span class="font-num">2 из 2</span>; '
-            f'<a href="{b.get_absolute_url()}">Сеялка</a>, <span class="font-num">1 из 1</span>'
+            f'<a href="{a.get_absolute_url()}">Плуг</a>, {NUM}2</span> из {NUM}2</span>; '
+            f'<a href="{b.get_absolute_url()}">Сеялка</a>, {NUM}1</span> из {NUM}1</span>'
         ) in row
         assert row.count('<span class="val-zero">') == 1  # ПОКАЗАТЕЛЬ
+        assert "ничья" not in row  # several players clearing the bar is not a tie
+
+    def test_running_always_itm(self, client, award_rules, monkeypatch):
+        pin_today(monkeypatch, datetime.date(Y, 6, 1))
+        award_rules.always_itm_min_tournaments = 2
+        award_rules.save()
+        season = make_season(Y, SeasonKind.TOUR)
+        a, b = make_player("Точнов"), make_player("Второв")
+
+        def always():
+            titles = rows(section(html_of(client), "titles-title"))
+            return next(r for r in titles if "Всегда" in r)
+
+        first = make_game(season, day=5, month=3)
+        make_result(first, a, place=1)
+        make_result(first, b, place=2)
+        assert "претендентов нет" in always()  # one tournament is below the minimum
+        second = make_game(season, day=12, month=3)
+        make_result(second, a, place=1)
+        make_result(second, b, place=2)
+        row = always()
+        assert '<span class="award-note">пока без промахов</span>' in row
+        assert "лидирует" not in row and "ничья" not in row
 
     def test_running_winter_in_december(self, client, award_rules, monkeypatch):
         pin_today(monkeypatch, datetime.date(Y, 12, 25))
@@ -149,11 +175,12 @@ class TestTitles:
         make_result(make_game(season, day=20, month=12), a, place=1)
         found = rows(section(html_of(client), "titles-title"))
         winter = f"Зима {Y}/{(Y + 1) % 100:02d}"
-        assert winter in found[0]  # running first, though filed under Y + 1
+        assert winter in plain_text(found[0])  # running first, though filed under Y + 1
+        assert f"Зима {NUM}{Y}/{(Y + 1) % 100:02d}</span>" in found[0]
         assert '<span class="award-kind block">идёт</span>' in found[0]
         assert '<span class="award-note">лидирует</span>' in found[0]
         explicit = section(html_of(client, year=Y), "titles-title")
-        assert winter not in explicit
+        assert winter not in plain_text(explicit)
         assert get(client, year=Y + 1).status_code == 404  # running titles only
 
 
@@ -161,15 +188,19 @@ class TestBadges:
     def test_matrix(self, client, club, award_rules):
         badges = section(html_of(client), "badges-title")
         found = rows(badges)
-        assert len(found) == 2  # players without badges are not listed
-        alpha, charlie = found
-        assert "Альфа" in alpha and "Чарли" in charlie
+        assert len(found) == 3  # Дельта has no badge: not listed
+        alpha, bravo, charlie = found
+        assert "Альфа" in alpha and "Браво" in bravo and "Чарли" in charlie
         cells = [cell.split("</td>")[0] for cell in alpha.split('<td class="num">')[1:]]
         assert cells[0].startswith('<span class="val-zero">')  # no bubble
-        assert cells[1:] == ["1", "3", cells[3], "1", "5"]
-        assert "Хет-трик: в деньгах в 3 своих турнирах подряд" in badges
-        assert "Камбэк: в деньгах после 2 докупок и более" in badges
-        assert "С одной закупки: победа в турнире без докупок" in badges
+        assert cells[1:] == ["1", "3", cells[3], "1", "1", "6"]
+        assert "Ни одного прогула" in section(html_of(client), "badges-title").split("</thead>")[0]
+        caption = plain_text(badges)
+        assert "Ни одного прогула: на всех клубных вечерах месяца, если их 2 и больше." in caption
+        assert "Хет-трик: в деньгах в 3 своих турнирах подряд" in caption
+        assert "Камбэк: в деньгах после 2 докупок и более" in caption
+        assert "С одной закупки: победа в турнире без докупок" in caption
+        assert f"после {NUM}2</span> докупок" in badges
 
     def test_default_order_is_marked(self, client, club, award_rules):
         badges = section(html_of(client), "badges-title")
@@ -179,15 +210,17 @@ class TestBadges:
     @pytest.mark.parametrize(
         ("params", "order"),
         [
-            ({"sort": "one_buyin", "dir": "asc"}, ["Чарли", "Альфа"]),
-            ({"sort": "cashier"}, ["Альфа", "Чарли"]),  # tie: by name
-            ({"sort": "name", "dir": "desc"}, ["Чарли", "Альфа"]),
-            ({"sort": "nonsense"}, ["Альфа", "Чарли"]),  # falls back to the default
+            ({"sort": "one_buyin", "dir": "asc"}, ["Браво", "Чарли", "Альфа"]),
+            ({"sort": "cashier"}, ["Альфа", "Чарли", "Браво"]),  # tie: by name
+            ({"sort": "no_skip", "dir": "asc"}, ["Чарли", "Альфа", "Браво"]),
+            ({"sort": "name", "dir": "desc"}, ["Чарли", "Браво", "Альфа"]),
+            ({"sort": "nonsense"}, ["Альфа", "Браво", "Чарли"]),  # falls back to the default
         ],
     )
     def test_sorting(self, client, club, award_rules, params, order):
         found = rows(section(html_of(client, **params), "badges-title"))
-        assert [next(n for n in ("Альфа", "Чарли") if n in row) for row in found] == order
+        names = ("Альфа", "Браво", "Чарли")
+        assert [next(n for n in names if n in row) for row in found] == order
 
     def test_sort_keeps_the_year(self, client, club, award_rules):
         badges = section(html_of(client, year=Y - 1), "badges-title")
@@ -223,3 +256,4 @@ class TestRecent:
         assert '<span class="award-kind">Титул</span>' in items[0]
         assert any(f'href="/games/{club["games"]["c2"].pk}/"' in item for item in items)
         assert '<span class="award-kind">Грамота</span>' in aside
+        assert "Новобранец" not in aside and "Пайщик" not in aside  # first steps

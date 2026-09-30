@@ -4,6 +4,7 @@ Money is integer lei (see CLAUDE.md). The one exception is the value of a chip s
 derived and may fall between whole lei: format_amount prints it with two decimals when needed.
 """
 
+import re
 from collections.abc import Sequence
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
@@ -38,6 +39,25 @@ def format_net(value: int) -> str:
     if value > 0:
         return f"+{format_money(value)}"
     return format_money(value)
+
+
+# A figure inside a text: digits with the separators a figure keeps inside it (no-break space,
+# decimal comma, date dots, the slash of "2025/26") and an optional sign.
+FIGURE = re.compile(rf"[+{MINUS}]?\d(?:\d|[{THOUSANDS_SEPARATOR}.,/](?=\d))*")
+
+
+def split_figures(text: str) -> list[tuple[str, bool]]:
+    """'15 020 лей' -> [('15 020', True), (' лей', False)]: figures (True) and the words
+    around them, so only the figures are set in the number face."""
+    parts, position = [], 0
+    for match in FIGURE.finditer(text):
+        if match.start() > position:
+            parts.append((text[position : match.start()], False))
+        parts.append((match.group(), True))
+        position = match.end()
+    if position < len(text):
+        parts.append((text[position:], False))
+    return parts
 
 
 ROMAN = [(10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]

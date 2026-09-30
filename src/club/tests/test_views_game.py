@@ -5,7 +5,7 @@ from django.urls import reverse
 
 from club import achievements
 from club.models import RankLadder
-from club.tests.conftest import PAST_YEAR
+from club.tests.conftest import NUM, PAST_YEAR, plain_text
 from club.tests.factories import make_game, make_result
 
 pytestmark = pytest.mark.django_db
@@ -323,6 +323,12 @@ class TestGameAwards:
         assert 'data-badge="cashier"' in charlie
         assert cash.count('class="award-mark"') == 1
 
+    def test_no_skip_is_marked_on_the_last_game_of_the_month(self, client, club, award_rules):
+        # March had four evenings; Альфа and Браво came to all, c2 (22.03) was their last game.
+        html = html_of(client, club["games"]["c2"])
+        assert html.count('data-badge="no_skip"') == 2
+        assert 'data-badge="no_skip"' not in html_of(client, club["games"]["t3"])
+
     def test_reached_section(self, client, club, award_rules):
         html = html_of(client, club["games"]["t2"])
         start = html.index('id="reached-title"')
@@ -331,12 +337,17 @@ class TestGameAwards:
         alpha = club["players"]["A"]
         assert (
             f'<a href="{alpha.get_absolute_url()}">Трактор</a> · Бывалый</td>\n'
-            '                <td class="text-right text-sm text-muted">3 игры</td>'
+            f'                <td class="text-right text-sm text-muted">{NUM}3</span> игры</td>'
         ) in reached
-        assert reached.count("Серия: 3 вечера подряд") == 2  # Альфа and Браво
+        assert plain_text(reached).count("Серия: 3 вечера подряд") == 2  # Альфа and Браво
         assert '<span class="award-kind">Грамота</span>' in reached
         assert '<span class="award-kind">Звание</span>' in reached
         assert "Знаки отмечены у имён в ведомости." in reached
+        # Дельта's first game made her a "Новобранец": a first step, not listed.
+        c2 = html_of(client, club["games"]["c2"])
+        c2_reached = c2[c2.index('id="reached-title"') :]
+        assert "Серия: 5 вечеров подряд" in plain_text(c2_reached)
+        assert "Новобранец" not in c2_reached
 
     def test_no_reached_section_without_ranks_and_diplomas(self, client, club, award_rules):
         RankLadder.objects.all().delete()

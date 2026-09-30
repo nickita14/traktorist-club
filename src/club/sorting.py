@@ -66,7 +66,16 @@ PLAYERS = Table(
 BADGES = Table(
     {
         key: key
-        for key in ("name", "bubble", "cashier", "one_buyin", "comeback", "hat_trick", "total")
+        for key in (
+            "name",
+            "bubble",
+            "cashier",
+            "one_buyin",
+            "comeback",
+            "hat_trick",
+            "no_skip",
+            "total",
+        )
     },
     "total",
     ascending_first=frozenset({"name"}),

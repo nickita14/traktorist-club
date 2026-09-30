@@ -15,7 +15,7 @@
       {% endif %}
       <p class="rank-figures">
         <span><span class="font-num num-run">{{ rank.value|money }}</span> {{ rank.value|plural:rank.ladder.unit_forms }}</span>
-        <span class="text-muted">{% if rank.next_step %}до «{{ rank.next_step.title }}» ещё <span class="font-num num-run">{{ rank.remaining|money }}</span>{% else %}высшая ступень{% endif %}</span>
+        <span class="text-muted">{% if rank.next_step %}до звания «{{ rank.next_step.title }}» ещё <span class="font-num num-run">{{ rank.remaining|money }}</span>{% else %}высшая ступень{% endif %}</span>
       </p>
       <p class="rank-steps">{% for step, state in rank.step_states %}<span class="rank-step-{{ state }}">{{ step.title }}</span>{% if not forloop.last %} · {% endif %}{% endfor %}</p>
     </div>

@@ -51,21 +51,21 @@
                 {% with result=row.result shared=row.result.shared_metric %}
                   <tr>
                     <td class="whitespace-nowrap">
-                      {{ result.period.label }}
+                      {{ result.period.label|figures }}
                       {% if result.running %}<span class="award-kind block">идёт</span>{% endif %}
                     </td>
                     <td>{{ result.title }}</td>
                     <td>
-                      {% for player, metric in row.holders %}<a href="{{ player.get_absolute_url }}">{{ player.label }}</a>{% if not shared %}, <span class="font-num">{{ metric }}</span>{% endif %}{% if not forloop.last %}{% if shared %}, {% else %}; {% endif %}{% endif %}{% empty %}{% no_value %}{% endfor %}
+                      {% for player, metric in row.holders %}<a href="{{ player.get_absolute_url }}">{{ player.label }}</a>{% if not shared %}, {{ metric|figures }}{% endif %}{% if not forloop.last %}{% if shared %}, {% else %}; {% endif %}{% endif %}{% empty %}{% no_value %}{% endfor %}
                       {% if not row.holders %}
                         <span class="award-note">{% if result.no_data %}нет данных о фишках{% else %}претендентов нет{% endif %}</span>
                       {% elif result.running %}
-                        <span class="award-note">лидирует</span>
+                        <span class="award-note">{{ result.running_note }}</span>
                       {% elif row.tie %}
                         <span class="award-note">ничья</span>
                       {% endif %}
                     </td>
-                    <td class="text-right font-num whitespace-nowrap">{% if shared %}{{ shared }}{% else %}{% no_value %}{% endif %}</td>
+                    <td class="text-right whitespace-nowrap">{% if shared %}{{ shared|figures }}{% else %}{% no_value %}{% endif %}</td>
                   </tr>
                 {% endwith %}
               {% empty %}
@@ -114,7 +114,7 @@
             </tbody>
           </table>
         </div>
-        <p class="mt-3 max-w-prose text-sm text-muted italic">{% for code, title, rule in badge_columns %}{{ title }}: {{ rule }}{% if not forloop.last %}; {% else %}.{% endif %}{% endfor %}</p>
+        <p class="mt-3 max-w-prose text-sm text-muted italic">{% for code, title, rule in badge_columns %}{{ title }}: {{ rule|figures }}{% if not forloop.last %}; {% else %}.{% endif %}{% endfor %}</p>
       </section>
 
       {% if ladders %}
@@ -168,7 +168,7 @@
                 </span>
                 <span class="award-feed-line">
                   <span class="award-kind">{{ award.kind_label }}</span>
-                  <span class="award-feed-title">{{ award.title }}</span>
+                  <span class="award-feed-title">{{ award.title|figures }}</span>
                 </span>
               </a>
             </li>

@@ -1,7 +1,7 @@
-{% load awards %}
+{% load awards ledger %}
 {# Diplomas, titles and rank steps of one player, newest first (PlayerAwards.record). #}
 {% for line in lead_lines %}
-  <p class="mt-3"><span class="award-kind">Идёт</span> <span class="text-muted italic">{{ line }}</span></p>
+  <p class="mt-3"><span class="award-kind">Идёт</span> <span class="text-muted italic">{{ line|figures }}</span></p>
 {% endfor %}
 {% if record %}
   <div class="ledger-scroll mt-3">
@@ -21,10 +21,10 @@
             <td class="num"><time datetime="{{ award.date|date:'Y-m-d' }}">{{ award.date|date:"d.m.Y" }}</time></td>
             <td class="max-md:hidden"><span class="award-kind">{{ award.kind_label }}</span></td>
             <td>
-              <a href="{% award_url award %}">{{ award.title }}</a>
-              <span class="block text-sm text-muted md:hidden"><span class="award-kind">{{ award.kind_label }}</span> · {{ award.basis }}</span>
+              <a href="{% award_url award %}">{{ award.title|figures }}</a>
+              <span class="block text-sm text-muted md:hidden"><span class="award-kind">{{ award.kind_label }}</span> · {{ award.basis|figures }}</span>
             </td>
-            <td class="text-muted max-md:hidden">{{ award.basis }}</td>
+            <td class="text-muted max-md:hidden">{{ award.basis|figures }}</td>
             <td class="whitespace-nowrap max-md:hidden"><a class="font-head tracking-label uppercase" href="{% award_url award %}">{{ award.document }}</a></td>
           </tr>
         {% endfor %}

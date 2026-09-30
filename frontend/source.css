@@ -570,6 +570,10 @@
     --award-tilt: -3deg;
   }
 
+  [data-badge="no_skip"] {
+    --award-tilt: 1deg;
+  }
+
   /* An award's kind in small caps: ЗНАК, ЗВАНИЕ, ГРАМОТА, ТИТУЛ; also "ИДЁТ". */
   .award-kind {
     color: var(--muted);
@@ -587,8 +591,8 @@
     font-style: italic;
   }
 
-  /* Badge stamps on the player card: 2 per row on phones, all 5 in one row from md. The grid
-     cells stay upright; only the stamp inside is tilted. */
+  /* Badge stamps on the player card: 2 per row on phones, 3 from md, all 6 in one row from lg.
+     The grid cells stay upright; only the stamp inside is tilted. */
   .award-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -597,7 +601,13 @@
 
   @media (width >= 48rem) {
     .award-grid {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (width >= 64rem) {
+    .award-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
     }
   }
 

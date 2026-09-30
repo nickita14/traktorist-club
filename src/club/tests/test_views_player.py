@@ -5,7 +5,7 @@ from django.urls import reverse
 
 from club import achievements, views
 from club.models import RankLadder
-from club.tests.conftest import PAST_YEAR
+from club.tests.conftest import NUM, PAST_YEAR, plain_text
 
 pytestmark = pytest.mark.django_db
 
@@ -301,11 +301,11 @@ class TestPlayerAwards:
         # Middle step: progress from Пайщик (100) to Меценат (1000).
         assert '<span class="rank-of">I из II</span>' in ranks
         assert '<progress class="rank-progress" value="300" max="900"></progress>' in ranks
-        assert 'до «Меценат» ещё <span class="font-num num-run">600</span>' in ranks
+        assert 'до звания «Меценат» ещё <span class="font-num num-run">600</span>' in ranks
         assert '<span class="font-num num-run">400</span> лей' in ranks
         # No step yet: a faint dot, an empty bar, the way to the first step.
         assert 'value="0" max="1"' in ranks
-        assert "до «Первый аддон» ещё" in ranks
+        assert "до звания «Первый аддон» ещё" in ranks
         assert '<span class="font-num num-run">0</span> аддонов' in ranks
         assert (
             '<span class="rank-step-passed">Новобранец</span> · '
@@ -316,22 +316,26 @@ class TestPlayerAwards:
 
     def test_badge_grid(self, card):
         badges = section(card, "badges-title")
-        assert 'получено <span class="font-num not-italic">5</span> знаков' in badges
-        assert badges.count('<div class="award-stamp" data-badge=') == 3
+        assert 'получено <span class="font-num not-italic">6</span> знаков' in badges
+        assert badges.count('<div class="award-stamp" data-badge=') == 4
         assert badges.count('<div class="award-stamp award-stamp-none" data-badge=') == 2
         assert '<span class="award-stamp-count">×3</span>' in badges  # one_buyin
         assert f">15.03.{PAST_YEAR}</time>" in badges  # the last one without rebuys
         assert badges.count("ещё не получен") == 2
         # The hat-trick rule, with the length from the settings.
-        assert "в деньгах в 3 своих турнирах подряд" in badges
+        assert "в деньгах в 3 своих турнирах подряд" in plain_text(badges)
+        assert f"в деньгах в {NUM}3</span> своих турнирах подряд" in badges
 
     def test_record(self, card, club):
         record = section(card, "record-title")
         rows = record.split("<tr>")[2:]
         dates = [row.split("<time")[1].split(">")[1].split("<")[0] for row in rows]
         assert dates[0] == f"31.05.{PAST_YEAR}"  # spring's "Ударник", shared with Браво
+        # First steps of the ladders are no events: only the rank cells show them.
+        assert "Новобранец" not in record and "Пайщик" not in record
         assert [d[-4:] for d in dates] == sorted((d[-4:] for d in dates), reverse=True)
-        assert "Первая победа" in record and "Серия: 5 вечеров подряд" in record
+        assert "Первая победа" in record and f"Серия: {NUM}5</span> вечеров подряд" in record
+        assert f'<td class="text-muted max-md:hidden">{NUM}3</span> игры</td>' in record
         assert "Старожил" in record and ">Звание<" in record
         t0 = club["games"]["t0"]
         assert f'<a href="/games/{t0.pk}/">Первая победа</a>' in record
@@ -344,7 +348,7 @@ class TestPlayerAwards:
         html = get_card(client, club["players"]["D"]).content.decode()  # one cash game, +10
         badges = section(html, "badges-title")
         assert 'получено <span class="font-num not-italic">0</span> знаков' in badges
-        assert badges.count("ещё не получен") == 5
+        assert badges.count("ещё не получен") == 6
         assert 'id="ranks-title"' not in html  # no ladders
         assert 'id="record-title"' not in html  # nothing to list
         # Чарли took c1's best net.
@@ -365,5 +369,5 @@ class TestPlayerAwards:
         html = get_card(client, leader).content.decode()
         assert (
             '<span class="award-kind">Идёт</span> <span class="text-muted italic">'
-            f"Лидирует в «Ударнике осени {PAST_YEAR}»: 2 вечера.</span>"
+            f"Лидирует в «Ударнике осени {NUM}{PAST_YEAR}</span>»: {NUM}2</span> вечера.</span>"
         ) in html
