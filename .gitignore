@@ -244,8 +244,6 @@ __marimo__/
 
 # AI
 claude/
-CLAUDE.md
-PLAN.md
 
 # Playwright traces and screenshots of failed browser tests
 test-results/
