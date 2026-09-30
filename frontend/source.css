@@ -369,6 +369,25 @@
     color: var(--ink);
   }
 
+  /* Headers of a row where some break onto two lines (the badge matrix): every link's text and
+     arrow sit at the bottom of the cell, level with a plain header's text; each line keeps the
+     column's alignment. */
+  .sort-link-lines {
+    align-items: flex-end;
+    padding-bottom: 0.375rem;
+    vertical-align: bottom;
+  }
+
+  .sort-lines {
+    display: block;
+    line-height: 1.15;
+  }
+
+  .sort-link-lines.sort-asc::after,
+  .sort-link-lines.sort-desc::after {
+    margin-bottom: 0.35em;
+  }
+
   .sort-link[aria-current],
   .ledger .sort-link[aria-current]:hover {
     color: var(--ink);

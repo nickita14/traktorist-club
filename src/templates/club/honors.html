@@ -89,18 +89,19 @@
             <thead>
               <tr>
                 <th scope="col" class="col-rank num">№</th>
-                <th scope="col" class="col-player"{% aria_sort "name" %}>{% sort_header "name" "Участник" %}</th>
-                {% for code, title, rule in badge_columns %}
-                  <th scope="col" class="num"{% aria_sort code %}>{% sort_header code title %}</th>
+                <th scope="col" class="col-player"{% aria_sort "name" %}>{% sort_header_lines "name" "Участник" "Участник" %}</th>
+                {% for code, title, rule, lines in badge_columns %}
+                  <th scope="col" class="num"{% aria_sort code %}>{% sort_header_lines code lines title %}</th>
                 {% endfor %}
-                <th scope="col" class="num"{% aria_sort "total" %}>{% sort_header "total" "Всего" %}</th>
+                <th scope="col" class="num"{% aria_sort "total" %}>{% sort_header_lines "total" "Всего" "Всего" %}</th>
               </tr>
             </thead>
             <tbody>
               {% for row in badge_rows %}
                 <tr>
                   <td class="col-rank num">{{ forloop.counter }}</td>
-                  <td class="col-player">{% include "club/includes/player_name.html" with player=row.player %}</td>
+                  {# One line from lg, where the six two-line headers leave room for the names. #}
+                  <td class="col-player lg:whitespace-nowrap">{% include "club/includes/player_name.html" with player=row.player %}</td>
                   {% for count in row.counts %}
                     <td class="num">{% count_value count %}</td>
                   {% endfor %}
@@ -114,7 +115,7 @@
             </tbody>
           </table>
         </div>
-        <p class="mt-3 max-w-prose text-sm text-muted italic">{% for code, title, rule in badge_columns %}{{ title }}: {{ rule|figures }}{% if not forloop.last %}; {% else %}.{% endif %}{% endfor %}</p>
+        <p class="mt-3 max-w-prose text-sm text-muted italic">{% for code, title, rule, lines in badge_columns %}{{ title }}: {{ rule|figures }}{% if not forloop.last %}; {% else %}.{% endif %}{% endfor %}</p>
       </section>
 
       {% if ladders %}

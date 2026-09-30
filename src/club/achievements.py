@@ -60,6 +60,17 @@ BADGES = {
     "no_skip": "Ни одного прогула",
 }
 
+# The badge matrix's column headers, broken onto two lines so six columns leave room for the
+# names. One line where the name is short.
+BADGE_HEADERS = {
+    "bubble": ("Бабл-", "гёрл"),
+    "cashier": ("Снял", "кассу"),
+    "one_buyin": ("С одной", "закупки"),
+    "comeback": ("Камбэк",),
+    "hat_trick": ("Хет-", "трик"),
+    "no_skip": ("Ни одного", "прогула"),
+}
+
 FIRST_WIN = "first_win"
 FIRST_WIN_TITLE = "Первая победа"
 

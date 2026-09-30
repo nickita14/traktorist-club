@@ -202,9 +202,20 @@ class TestBadges:
         assert "С одной закупки: победа в турнире без докупок" in caption
         assert f"после {NUM}2</span> докупок" in badges
 
+    def test_long_headers_on_two_lines(self, client, club, award_rules):
+        head = section(html_of(client), "badges-title").split("</thead>")[0]
+        assert (
+            '<a class="sort-link sort-link-lines" href="/honors/?sort=no_skip">'
+            '<span aria-hidden="true"><span class="sort-lines">Ни одного<br>прогула</span></span>'
+            '<span class="sr-only">Ни одного прогула</span></a>'
+        ) in head
+        assert '<span class="sort-lines">Бабл-<br>гёрл</span>' in head
+        assert '<span class="sort-lines">Камбэк</span>' in head  # short: one line
+        assert head.count("sort-link-lines") == 8  # the one-line headers of the row too
+
     def test_default_order_is_marked(self, client, club, award_rules):
         badges = section(html_of(client), "badges-title")
-        assert 'aria-sort="descending"><a class="sort-link sort-desc"' in badges
+        assert 'aria-sort="descending"><a class="sort-link sort-link-lines sort-desc"' in badges
         assert 'href="/honors/?dir=asc"' in badges  # the default column flips
 
     @pytest.mark.parametrize(
