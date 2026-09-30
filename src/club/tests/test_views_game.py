@@ -323,6 +323,12 @@ class TestGameAwards:
         assert 'data-badge="cashier"' in charlie
         assert cash.count('class="award-mark"') == 1
 
+    def test_no_skip_is_marked_on_the_last_game_of_the_month(self, client, club, award_rules):
+        # March had four evenings; Альфа and Браво came to all, c2 (22.03) was their last game.
+        html = html_of(client, club["games"]["c2"])
+        assert html.count('data-badge="no_skip"') == 2
+        assert 'data-badge="no_skip"' not in html_of(client, club["games"]["t3"])
+
     def test_reached_section(self, client, club, award_rules):
         html = html_of(client, club["games"]["t2"])
         start = html.index('id="reached-title"')

@@ -316,8 +316,8 @@ class TestPlayerAwards:
 
     def test_badge_grid(self, card):
         badges = section(card, "badges-title")
-        assert 'получено <span class="font-num not-italic">5</span> знаков' in badges
-        assert badges.count('<div class="award-stamp" data-badge=') == 3
+        assert 'получено <span class="font-num not-italic">6</span> знаков' in badges
+        assert badges.count('<div class="award-stamp" data-badge=') == 4
         assert badges.count('<div class="award-stamp award-stamp-none" data-badge=') == 2
         assert '<span class="award-stamp-count">×3</span>' in badges  # one_buyin
         assert f">15.03.{PAST_YEAR}</time>" in badges  # the last one without rebuys
@@ -344,7 +344,7 @@ class TestPlayerAwards:
         html = get_card(client, club["players"]["D"]).content.decode()  # one cash game, +10
         badges = section(html, "badges-title")
         assert 'получено <span class="font-num not-italic">0</span> знаков' in badges
-        assert badges.count("ещё не получен") == 5
+        assert badges.count("ещё не получен") == 6
         assert 'id="ranks-title"' not in html  # no ladders
         assert 'id="record-title"' not in html  # nothing to list
         # Чарли took c1's best net.

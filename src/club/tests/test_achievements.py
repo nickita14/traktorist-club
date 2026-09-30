@@ -366,9 +366,8 @@ class TestUdarnik:
         running = title("udarnik", "Лето 2026")
         assert (running.running, names(running.holders)) == (True, ["Альфа"])
         loaded = achievements.load(TODAY)
-        # By period start: summer since June, July. Two tournaments are below the "always ITM"
-        # minimum, even while the season runs.
-        assert [r.code for r in loaded.player(a.pk).leading] == ["udarnik", "no_skip"]
+        # Two tournaments are below the "always ITM" minimum, even while the season runs.
+        assert [r.code for r in loaded.player(a.pk).leading] == ["udarnik"]
         assert not any(x.kind == Kind.TITLE and x.code == "udarnik" for x in loaded.awards)
 
         ended = title("udarnik", "Лето 2026", today=datetime.date(2026, 9, 1))
@@ -383,30 +382,57 @@ class TestUdarnik:
 
 
 class TestNoSkip:
+    """A monthly badge: every club evening of an ended month with at least the minimum."""
+
     def test_every_evening_of_the_month(self, tour25, cash25, players):
         a, b, *_ = players
         tour(tour25, 3, 1, [(a, 1), (b, 2)])
-        cash(cash25, 3, 15, [(a, 50, 50)])
-        result = title("no_skip", "Март 2025")
-        assert (names(result.holders), result.value) == (["Альфа"], 2)
+        last = cash(cash25, 3, 15, [(a, 50, 50)])
+        found = awards(Kind.BADGE, "no_skip")
+        assert who(found) == ["Альфа"]
+        badge = found[0]
+        assert (badge.date, badge.game.pk) == (datetime.date(2025, 3, 31), last.pk)
+        assert badge.basis == "2 из 2 вечеров, март 2025"
+        assert "no_skip" not in {r.code for r in achievements.load(TODAY).titles}
+
+    def test_last_game_of_an_evening_with_both_kinds(self, tour25, cash25, players):
+        a, *_ = players
+        tour(tour25, 3, 1, [(a, 1)])
+        tour(tour25, 3, 8, [(a, 1)])
+        last = cash(cash25, 3, 8, [(a, 50, 50)])  # the tournament comes first that evening
+        assert awards(Kind.BADGE, "no_skip")[0].game.pk == last.pk
+
+    def test_one_per_month(self, tour25, players):
+        a, *_ = players
+        for month in (3, 4):
+            for day in (1, 8):
+                tour(tour25, month, day, [(a, 1)])
+        found = awards(Kind.BADGE, "no_skip")
+        assert [x.date for x in found] == [datetime.date(2025, 3, 31), datetime.date(2025, 4, 30)]
 
     def test_month_under_the_minimum_does_not_count(self, tour25, players):
         a, *_ = players
         tour(tour25, 4, 1, [(a, 1)])
-        loaded = achievements.load(TODAY)
-        assert [r for r in loaded.titles if r.code == "no_skip"] == []
+        assert awards(Kind.BADGE, "no_skip") == []
 
     def test_nobody_at_every_evening(self, tour25, players):
         a, b, *_ = players
         tour(tour25, 3, 1, [(a, 1)])
         tour(tour25, 3, 8, [(b, 1)])
-        assert title("no_skip", "Март 2025").holders == ()
+        assert awards(Kind.BADGE, "no_skip") == []
 
-    def test_running_month_counts_so_far(self, players):
-        a, b, *_ = players
-        tour(make_season(2026, SeasonKind.TOUR), 7, 2, [(a, 1), (b, 2)])
-        result = title("no_skip", "Июль 2026")
-        assert (result.running, names(result.holders)) == (True, ["Альфа", "Браво"])
+    def test_only_once_the_month_has_ended(self, players):
+        a, *_ = players
+        season = make_season(2026, SeasonKind.TOUR)
+        tour(season, 7, 2, [(a, 1)])
+        tour(season, 7, 9, [(a, 1)])
+        assert awards(Kind.BADGE, "no_skip") == []  # July 2026 runs until the 31st
+        # No running state: nothing on the card while the month runs.
+        assert not any(
+            "прогул" in line for line in achievements.load(TODAY).player(a.pk).lead_lines
+        )
+        ended = awards(Kind.BADGE, "no_skip", today=datetime.date(2026, 8, 1))
+        assert [x.date for x in ended] == [datetime.date(2026, 7, 31)]
 
 
 class TestAlwaysItm:
@@ -565,7 +591,8 @@ class TestViews:
         last = tour(tour25, 3, 8, [(a, 1), (b, 2)])
         card = achievements.load(TODAY).player(a.pk)
         assert [(x.code, x.count, x.last.game.pk) for x in card.badges] == [
-            ("one_buyin", 2, last.pk)
+            ("one_buyin", 2, last.pk),
+            ("no_skip", 1, last.pk),  # both March evenings
         ]
         assert [x.code for x in card.diplomas] == ["first_win"]
 
@@ -662,7 +689,6 @@ class TestDisplay:
         tour(tour25, 3, 1, [(a, 1), (b, 2)])
         cash(cash25, 3, 15, [(a, 50, 40, 5123), (b, 50, 60, 5000)])
         assert title("udarnik", "Весна 2025").shared_metric == "2 вечера"
-        assert title("no_skip", "Март 2025").shared_metric == "2 из 2"
         patron = title("patron", "Кэш 2025")
         assert (patron.shared_metric, names(patron.holders)) == ("11,23 лея", ["Альфа"])
         found = awards(Kind.TITLE, "patron")[0]
@@ -696,7 +722,6 @@ class TestDisplay:
             "Всегда в деньгах в турнирах 2026: пока 2 из 2.",
             "Лидирует в «Меценате» кэша 2026: 12,30 лея.",
             "Лидирует в «Ударнике лета 2026»: 3 вечера.",
-            "Ни одного прогула за июль 2026: пока 2 из 2.",
         ]
 
     def test_winter_genitive(self, tour25, players):
@@ -731,10 +756,12 @@ class TestDisplay:
             ("one_buyin", 1),
             ("comeback", 0),
             ("hat_trick", 0),
+            ("no_skip", 1),
         ]
         assert card.badge_slots[1].last is None
         assert card.badge_slots[4].rule == "в деньгах в 3 своих турнирах подряд"
-        assert card.badge_total == 2
+        assert card.badge_slots[5].rule == "на всех клубных вечерах месяца, если их 2 и больше"
+        assert card.badge_total == 3
         assert card.veteran.step.title == "Новичок"
         # Newest first: spring 2025's title (31.05), then the ranks and diplomas of the games.
         assert [(x.kind, x.code) for x in card.record][:1] == [(Kind.TITLE, "udarnik")]
@@ -820,7 +847,7 @@ class TestSortBadgeRows:
 
     def test_default_total(self, rows):
         assert [(row.player.name, row.total) for row in rows] == [
-            ("Альфа", 3),
+            ("Альфа", 4),  # with March's "Ни одного прогула"
             ("Браво", 1),
             ("Дельта", 1),
             ("Чарли", 1),
@@ -850,7 +877,6 @@ class TestContests:
             "udarnik": (True, True),
             "patron": (True, True),
             "always_itm": (False, False),
-            "no_skip": (False, False),
         }
 
     def test_running_notes(self, players):

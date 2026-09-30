@@ -1,9 +1,10 @@
 """/honors/ ("Доска почёта") on the club fixture and a few hand-made seasons.
 
 With ``award_rules`` and the club fixture (Y = PAST_YEAR, every period has ended):
-- titles of Y: "Всегда в деньгах" and "Меценат" (31.12), spring's "Ударник" (31.05), March's
-  "Ни одного прогула" (31.03); of Y-1: autumn's "Ударник".
-- badges: Альфа one_buyin x3 (t0, t1, t3), hat_trick (t2), cashier (c2); Чарли cashier (c1).
+- titles of Y: "Всегда в деньгах" and "Меценат" (31.12), spring's "Ударник" (31.05); of Y-1:
+  autumn's "Ударник".
+- badges: Альфа one_buyin x3 (t0, t1, t3), hat_trick (t2), cashier (c2); Чарли cashier (c1);
+  "Ни одного прогула" for March (four evenings) to Альфа and Браво, on c2.
 - diplomas: Альфа's first win, evening series 3 and 5 for Альфа and Браво.
 """
 
@@ -56,9 +57,9 @@ class TestHead:
             '<span class="block">гордится</span><span class="block">клуб</span></p>'
         ) in html
         assert '<span class="font-num num-run not-italic">4</span> участника' in html
-        assert '<span class="font-num num-run not-italic">6</span> знаков' in html
-        # 5 diplomas and 7 ended titles (four of them shared by two).
-        assert '<span class="font-num num-run not-italic">12</span> грамот и титулов' in html
+        assert '<span class="font-num num-run not-italic">8</span> знаков' in html
+        # 5 diplomas and 5 ended titles (three of them shared by two).
+        assert '<span class="font-num num-run not-italic">10</span> грамот и титулов' in html
 
     def test_nav_marks_honors(self, client, club, award_rules):
         html = html_of(client)
@@ -86,11 +87,11 @@ class TestTitles:
         titles = section(html_of(client), "titles-title")
         labels = [row.split("<td")[1].split(">")[1].split("<")[0].strip() for row in rows(titles)]
         # Newest period first; the two seasons end on the same day, in the titles' order.
-        assert labels == [f"Турниры {Y}", f"Кэш {Y}", f"Весна {Y}", f"Март {Y}"]
+        assert labels == [f"Турниры {Y}", f"Кэш {Y}", f"Весна {Y}"]
 
     def test_notes_and_figures(self, client, club, award_rules):
         found = rows(section(html_of(client), "titles-title"))
-        always, patron, spring, march = found
+        always, patron, spring = found
         assert '<span class="val-zero">' in always and "претендентов нет" in always
         bravo = club["players"]["B"]
         assert f'<a href="{bravo.get_absolute_url()}">Браво</a>' in patron
@@ -98,8 +99,6 @@ class TestTitles:
         assert "Трактор</a>, <a" in spring  # labels, comma-separated
         assert '<span class="award-note">ничья</span>' in spring
         assert ">4 вечера</td>" in spring
-        assert ">4 из 4</td>" in march
-        assert "ничья" not in march  # several players at every evening: not a contest
 
     def test_switcher(self, client, club, award_rules):
         html = html_of(client, sort="cashier")
@@ -141,6 +140,7 @@ class TestTitles:
             f'<a href="{b.get_absolute_url()}">Сеялка</a>, <span class="font-num">1 из 1</span>'
         ) in row
         assert row.count('<span class="val-zero">') == 1  # ПОКАЗАТЕЛЬ
+        assert "ничья" not in row  # several players clearing the bar is not a tie
 
     def test_running_always_itm(self, client, award_rules, monkeypatch):
         pin_today(monkeypatch, datetime.date(Y, 6, 1))
@@ -184,12 +184,14 @@ class TestBadges:
     def test_matrix(self, client, club, award_rules):
         badges = section(html_of(client), "badges-title")
         found = rows(badges)
-        assert len(found) == 2  # players without badges are not listed
-        alpha, charlie = found
-        assert "Альфа" in alpha and "Чарли" in charlie
+        assert len(found) == 3  # Дельта has no badge: not listed
+        alpha, bravo, charlie = found
+        assert "Альфа" in alpha and "Браво" in bravo and "Чарли" in charlie
         cells = [cell.split("</td>")[0] for cell in alpha.split('<td class="num">')[1:]]
         assert cells[0].startswith('<span class="val-zero">')  # no bubble
-        assert cells[1:] == ["1", "3", cells[3], "1", "5"]
+        assert cells[1:] == ["1", "3", cells[3], "1", "1", "6"]
+        assert "Ни одного прогула" in section(html_of(client), "badges-title").split("</thead>")[0]
+        assert "Ни одного прогула: на всех клубных вечерах месяца, если их 2 и больше." in badges
         assert "Хет-трик: в деньгах в 3 своих турнирах подряд" in badges
         assert "Камбэк: в деньгах после 2 докупок и более" in badges
         assert "С одной закупки: победа в турнире без докупок" in badges
@@ -202,15 +204,17 @@ class TestBadges:
     @pytest.mark.parametrize(
         ("params", "order"),
         [
-            ({"sort": "one_buyin", "dir": "asc"}, ["Чарли", "Альфа"]),
-            ({"sort": "cashier"}, ["Альфа", "Чарли"]),  # tie: by name
-            ({"sort": "name", "dir": "desc"}, ["Чарли", "Альфа"]),
-            ({"sort": "nonsense"}, ["Альфа", "Чарли"]),  # falls back to the default
+            ({"sort": "one_buyin", "dir": "asc"}, ["Браво", "Чарли", "Альфа"]),
+            ({"sort": "cashier"}, ["Альфа", "Чарли", "Браво"]),  # tie: by name
+            ({"sort": "no_skip", "dir": "asc"}, ["Чарли", "Альфа", "Браво"]),
+            ({"sort": "name", "dir": "desc"}, ["Чарли", "Браво", "Альфа"]),
+            ({"sort": "nonsense"}, ["Альфа", "Браво", "Чарли"]),  # falls back to the default
         ],
     )
     def test_sorting(self, client, club, award_rules, params, order):
         found = rows(section(html_of(client, **params), "badges-title"))
-        assert [next(n for n in ("Альфа", "Чарли") if n in row) for row in found] == order
+        names = ("Альфа", "Браво", "Чарли")
+        assert [next(n for n in names if n in row) for row in found] == order
 
     def test_sort_keeps_the_year(self, client, club, award_rules):
         badges = section(html_of(client, year=Y - 1), "badges-title")

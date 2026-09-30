@@ -535,8 +535,11 @@ class AchievementSettingsAdmin(ModelAdmin):
     """One row of parameters: the list goes straight to it."""
 
     fieldsets = [
-        ("Титулы", {"fields": ["no_skip_min_evenings", "always_itm_min_tournaments"]}),
-        ("Знаки отличия", {"fields": ["hat_trick_length", "comeback_min_rebuys"]}),
+        ("Титулы", {"fields": ["always_itm_min_tournaments"]}),
+        (
+            "Знаки отличия",
+            {"fields": ["hat_trick_length", "comeback_min_rebuys", "no_skip_min_evenings"]},
+        ),
         ("Грамоты", {"fields": ["itm_series_steps", "evening_series_steps"]}),
     ]
 

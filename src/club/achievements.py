@@ -57,6 +57,7 @@ BADGES = {
     "one_buyin": "С одной закупки",
     "comeback": "Камбэк",
     "hat_trick": "Хет-трик",
+    "no_skip": "Ни одного прогула",
 }
 
 FIRST_WIN = "first_win"
@@ -64,7 +65,6 @@ FIRST_WIN_TITLE = "Первая победа"
 
 TITLES = {
     "udarnik": "Ударник сезона",
-    "no_skip": "Ни одного прогула",
     "always_itm": "Всегда в деньгах",
     "patron": "Меценат",
 }
@@ -311,11 +311,8 @@ class TitleResult:
     def lead_text(self, player_id: int) -> str:
         """The player card's line for a running title the player leads."""
         metric = self.holder_metric(player_id)
-        label = self.period.label
         if self.code == "udarnik":
             return f"Лидирует в «Ударнике {self.period.genitive}»: {metric}."
-        if self.code == "no_skip":
-            return f"Ни одного прогула за {label[0].lower()}{label[1:]}: пока {metric}."
         if self.code == "always_itm":
             return f"Всегда в деньгах в турнирах {self.period.year}: пока {metric}."
         return f"Лидирует в «Меценате» кэша {self.period.year}: {metric}."
@@ -512,6 +509,7 @@ class ClubAwards:
         self._badges()
         self._streaks()
         self._evenings()
+        self._no_skip()
         self._ranks()
         self.titles = self._titles()
         for result in self.titles:
@@ -653,7 +651,6 @@ class ClubAwards:
     def _titles(self) -> list[TitleResult]:
         results = []
         results += self._udarnik()
-        results += self._no_skip()
         results += self._always_itm()
         results += self._patron()
         return sorted(results, key=lambda r: (r.period.start, list(TITLES).index(r.code)))
@@ -688,31 +685,38 @@ class ClubAwards:
             )
         return results
 
-    def _no_skip(self) -> list[TitleResult]:
-        """Months with at least the minimum number of evenings (a running month counts so far,
-        since more evenings may come): everyone who came to all of them."""
+    def _no_skip(self) -> None:
+        """The badge «Ни одного прогула»: every club evening of an ended month with at least the
+        minimum of them. Dated on the month's last day, linked to the player's last game that
+        month."""
         attendance = self._attendance()
         months: dict[Period, list[datetime.date]] = defaultdict(list)
         for date in self.evenings:
             months[_month_period(date)].append(date)
-        results = []
+        last_game: dict[tuple[int, Period], _Row] = {}
+        for row in self._rows:  # oldest first: the last one seen is the month's last game
+            last_game[(row.player_id, _month_period(row.game.date))] = row
         for period, dates in months.items():
-            running = self._running(period)
-            if not running and len(dates) < self.settings.no_skip_min_evenings:
+            if self._running(period) or len(dates) < self.settings.no_skip_min_evenings:
                 continue
-            holders = set.intersection(*(attendance[date] for date in dates))
-            results.append(
-                TitleResult(
-                    "no_skip",
-                    TITLES["no_skip"],
-                    period,
-                    running,
-                    tuple(sorted(holders)),
-                    len(dates),
-                    holder_values=(len(dates),) * len(holders),
+            count = len(dates)
+            evenings = ru_plural(count, ("вечера", "вечеров", "вечеров"))
+            month = period.label[0].lower() + period.label[1:]
+            basis = f"{count} из {count} {evenings}, {month}"
+            for player_id in sorted(set.intersection(*(attendance[date] for date in dates))):
+                row = last_game[(player_id, period)]
+                self.awards.append(
+                    Award(
+                        Kind.BADGE,
+                        "no_skip",
+                        BADGES["no_skip"],
+                        player_id,
+                        period.end,
+                        row.game,
+                        basis=basis,
+                        player=self.players.get(player_id),
+                    )
                 )
-            )
-        return results
 
     def _by_season(self, kind: str) -> dict[int, list[_Row]]:
         seasons: dict[int, list[_Row]] = defaultdict(list)
@@ -816,6 +820,10 @@ class ClubAwards:
             "hat_trick": (
                 f"в деньгах в {length} "
                 f"{ru_plural(length, ('своём турнире', 'своих турнирах', 'своих турнирах'))} подряд"
+            ),
+            "no_skip": (
+                "на всех клубных вечерах месяца, если их "
+                f"{self.settings.no_skip_min_evenings} и больше"
             ),
         }
 

@@ -77,11 +77,14 @@ CELLS = """() => [...document.querySelectorAll('.award-grid > li')].map(cell => 
 def test_badge_grid_columns(open_page, club, award_rules):
     path = pages(club)["card"]
     cells = open_page(path, PHONE).evaluate(CELLS)
-    assert len(cells) == 5
+    assert len(cells) == 6
     assert cells[0][1] == cells[1][1] and cells[0][0] < cells[1][0]  # two per row
     assert cells[2][1] > cells[0][1] and cells[2][0] == cells[0][0]
+    assert len({top for _, top in cells}) == 3  # rows aligned: three of them
+    cells = open_page(path, 800).evaluate(CELLS)
+    assert len({top for _, top in cells}) == 2  # three per row from md
     cells = open_page(path, 1280).evaluate(CELLS)
-    assert len({top for _, top in cells}) == 1  # one row of five
+    assert len({top for _, top in cells}) == 1  # one row of six from lg
 
 
 def test_rank_bar_and_cells(open_page, club, award_rules):
