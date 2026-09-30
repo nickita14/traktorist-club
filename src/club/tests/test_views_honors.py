@@ -15,7 +15,7 @@ from django.urls import reverse
 
 from club import achievements
 from club.models import RankLadder, SeasonKind
-from club.tests.conftest import PAST_YEAR
+from club.tests.conftest import NUM, PAST_YEAR, plain_text
 from club.tests.factories import make_game, make_player, make_result, make_season
 from club.views import RECENT_AWARDS
 
@@ -85,7 +85,7 @@ class TestHead:
 class TestTitles:
     def test_default_year_is_the_latest_with_games(self, client, club, award_rules):
         titles = section(html_of(client), "titles-title")
-        labels = [row.split("<td")[1].split(">")[1].split("<")[0].strip() for row in rows(titles)]
+        labels = [plain_text(row.split("</td>")[0]).strip() for row in rows(titles)]
         # Newest period first; the two seasons end on the same day, in the titles' order.
         assert labels == [f"Турниры {Y}", f"Кэш {Y}", f"Весна {Y}"]
 
@@ -95,10 +95,11 @@ class TestTitles:
         assert '<span class="val-zero">' in always and "претендентов нет" in always
         bravo = club["players"]["B"]
         assert f'<a href="{bravo.get_absolute_url()}">Браво</a>' in patron
-        assert "7,70 лея" in patron and "ничья" not in patron
+        assert f"{NUM}7,70</span> лея" in patron and "ничья" not in patron
         assert "Трактор</a>, <a" in spring  # labels, comma-separated
         assert '<span class="award-note">ничья</span>' in spring
-        assert ">4 вечера</td>" in spring
+        assert f"{NUM}4</span> вечера</td>" in spring  # only the number in the number face
+        assert '<td class="text-right whitespace-nowrap">' in spring  # the cell is not mono
 
     def test_switcher(self, client, club, award_rules):
         html = html_of(client, sort="cashier")
@@ -110,7 +111,9 @@ class TestTitles:
     def test_explicit_year(self, client, club, award_rules):
         found = rows(section(html_of(client, year=Y - 1), "titles-title"))
         # The tournaments' "Всегда в деньгах" (31.12), then autumn's "Ударник" (30.11).
-        assert [f"Турниры {Y - 1}" in found[0], f"Осень {Y - 1}" in found[1]] == [True, True]
+        assert f"Турниры {Y - 1}" in plain_text(found[0])
+        assert f"Осень {Y - 1}" in plain_text(found[1])
+        assert f"Осень {NUM}{Y - 1}</span>" in found[1]
         html = html_of(client, year=Y - 1)
         assert f'aria-current="page">{Y - 1}</a>' in html
 
@@ -136,8 +139,8 @@ class TestTitles:
         make_result(make_game(season, day=8, month=3), a, place=1)
         row = next(r for r in rows(section(html_of(client), "titles-title")) if "Всегда" in r)
         assert (
-            f'<a href="{a.get_absolute_url()}">Плуг</a>, <span class="font-num">2 из 2</span>; '
-            f'<a href="{b.get_absolute_url()}">Сеялка</a>, <span class="font-num">1 из 1</span>'
+            f'<a href="{a.get_absolute_url()}">Плуг</a>, {NUM}2</span> из {NUM}2</span>; '
+            f'<a href="{b.get_absolute_url()}">Сеялка</a>, {NUM}1</span> из {NUM}1</span>'
         ) in row
         assert row.count('<span class="val-zero">') == 1  # ПОКАЗАТЕЛЬ
         assert "ничья" not in row  # several players clearing the bar is not a tie
@@ -172,11 +175,12 @@ class TestTitles:
         make_result(make_game(season, day=20, month=12), a, place=1)
         found = rows(section(html_of(client), "titles-title"))
         winter = f"Зима {Y}/{(Y + 1) % 100:02d}"
-        assert winter in found[0]  # running first, though filed under Y + 1
+        assert winter in plain_text(found[0])  # running first, though filed under Y + 1
+        assert f"Зима {NUM}{Y}/{(Y + 1) % 100:02d}</span>" in found[0]
         assert '<span class="award-kind block">идёт</span>' in found[0]
         assert '<span class="award-note">лидирует</span>' in found[0]
         explicit = section(html_of(client, year=Y), "titles-title")
-        assert winter not in explicit
+        assert winter not in plain_text(explicit)
         assert get(client, year=Y + 1).status_code == 404  # running titles only
 
 
@@ -191,10 +195,12 @@ class TestBadges:
         assert cells[0].startswith('<span class="val-zero">')  # no bubble
         assert cells[1:] == ["1", "3", cells[3], "1", "1", "6"]
         assert "Ни одного прогула" in section(html_of(client), "badges-title").split("</thead>")[0]
-        assert "Ни одного прогула: на всех клубных вечерах месяца, если их 2 и больше." in badges
-        assert "Хет-трик: в деньгах в 3 своих турнирах подряд" in badges
-        assert "Камбэк: в деньгах после 2 докупок и более" in badges
-        assert "С одной закупки: победа в турнире без докупок" in badges
+        caption = plain_text(badges)
+        assert "Ни одного прогула: на всех клубных вечерах месяца, если их 2 и больше." in caption
+        assert "Хет-трик: в деньгах в 3 своих турнирах подряд" in caption
+        assert "Камбэк: в деньгах после 2 докупок и более" in caption
+        assert "С одной закупки: победа в турнире без докупок" in caption
+        assert f"после {NUM}2</span> докупок" in badges
 
     def test_default_order_is_marked(self, client, club, award_rules):
         badges = section(html_of(client), "badges-title")

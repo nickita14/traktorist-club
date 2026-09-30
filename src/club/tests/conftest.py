@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from django.utils import timezone
 
@@ -5,6 +7,14 @@ from club.models import AchievementSettings, RankLadder, RankStep, SeasonKind
 from club.tests.factories import make_game, make_player, make_result, make_season
 
 PAST_YEAR = timezone.localdate().year - 1
+
+# How the ``figures`` filter marks a number inside a text (club.templatetags.ledger).
+NUM = '<span class="font-num num-run not-italic">'
+
+
+def plain_text(html: str) -> str:
+    """The text of a piece of HTML without its tags, to check wording apart from markup."""
+    return re.sub(r"<[^>]+>", "", html)
 
 
 @pytest.fixture

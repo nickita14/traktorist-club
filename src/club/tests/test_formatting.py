@@ -2,8 +2,16 @@ from fractions import Fraction
 
 import pytest
 from django.template import Context, Template
+from django.utils.safestring import mark_safe
 
-from club.formatting import format_amount, format_money, format_net, format_roman, ru_plural
+from club.formatting import (
+    format_amount,
+    format_money,
+    format_net,
+    format_roman,
+    ru_plural,
+    split_figures,
+)
 
 NBSP = "\u00a0"
 MINUS = "−"
@@ -78,6 +86,28 @@ class TestFormatRoman:
         assert format_roman(value) == expected
 
 
+class TestSplitFigures:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            (f"15{NBSP}020 лей", [(f"15{NBSP}020", True), (" лей", False)]),
+            ("4 из 4", [("4", True), (" из ", False), ("4", True)]),
+            ("12,30 лея", [("12,30", True), (" лея", False)]),
+            ("подряд с 01.03.2025.", [("подряд с ", False), ("01.03.2025", True), (".", False)]),
+            ("Зима 2025/26", [("Зима ", False), ("2025/26", True)]),
+            (
+                f"итог +30, {MINUS}20",
+                [("итог ", False), ("+30", True), (", ", False), (f"{MINUS}20", True)],
+            ),
+            ("Хет-трик", [("Хет-трик", False)]),
+            ("101 игра", [("101", True), (" игра", False)]),
+            ("", []),
+        ],
+    )
+    def test_split(self, text, expected):
+        assert split_figures(text) == expected
+
+
 class TestRuPlural:
     @pytest.mark.parametrize(
         ("value", "expected"),
@@ -123,6 +153,24 @@ class TestTemplateTags:
 
     def test_roman_filter(self):
         assert render("{{ n|roman }} из {{ m|roman }}", n=5, m=6) == "V из VI"
+
+    def test_figures_filter_marks_only_numbers(self):
+        html = render("{{ t|figures }}", t=f"11 вечеров, 15{NBSP}020 лей")
+        num = '<span class="font-num num-run not-italic">'
+        assert html == f"{num}11</span> вечеров, {num}15{NBSP}020</span> лей"
+
+    def test_figures_filter_escapes_plain_text(self):
+        html = render("{{ t|figures }}", t="<b>2</b> & 'Альфа'")
+        num = '<span class="font-num num-run not-italic">'
+        assert (
+            html == f"&lt;b&gt;{num}2</span>&lt;/b&gt; &amp; &#x27;Альфа&#x27;"
+        )  # no span in &#x27;
+
+    def test_figures_filter_does_not_escape_safe_text_twice(self):
+        html = render("{{ t|figures }}", t=mark_safe("Трактор &amp; <i>Плуг</i>, 3 игры"))
+        assert html == (
+            'Трактор &amp; <i>Плуг</i>, <span class="font-num num-run not-italic">3</span> игры'
+        )
 
     def test_plural_filter(self):
         assert render('{{ n }} {{ n|plural:"игра,игры,игр" }}', n=23) == "23 игры"
