@@ -602,3 +602,228 @@ class TestViews:
             rebuys_known=1,
             addon_known=1,
         )
+
+
+class TestDisplay:
+    """What the pages print: game numbers, bases, figures, rank steps, the board's rows."""
+
+    def test_games_are_numbered_as_on_the_site(self, tour25, players):
+        a, b, *_ = players
+        make_game(tour25, day=1, month=2)  # finished, no results yet: still game 1
+        game = tour(tour25, 3, 1, [(a, 1), (b, 2)])
+        found = achievements.load(TODAY).game(game.pk).reached[0].game
+        assert (found.number, found.document) == (2, "Турнир № 2")
+        assert stats.game_position(game).number == 2
+
+    def test_cash_game_is_an_evening(self, cash25, players):
+        a, b, *_ = players
+        game = cash(cash25, 3, 1, [(a, 50, 80), (b, 50, 20)])
+        award = achievements.load(TODAY).game(game.pk).badges[a.pk][0]
+        assert (award.game.document, award.basis) == ("Вечер № 1", "лучший итог вечера, +30")
+        assert (award.kind_label, award.document, award.player) == ("Знак", award.game.document, a)
+
+    def test_badge_bases(self, tour25, players):
+        a, b, c, d, _ = players
+        tour(tour25, 3, 1, [(a, 1), (b, 2, 150, 0), (c, 3), (d, 4)])
+        by_code = {x.code: x.basis for x in awards(Kind.BADGE)}
+        assert by_code == {
+            "bubble": "4 место при 3 призовых",
+            "one_buyin": "1 место без докупок",
+            "comeback": "2 место, закупка 150 лей",
+        }
+
+    def test_streak_and_series_bases_name_the_start(self, tour25, players):
+        a, b, *_ = players
+        for day in (1, 8, 15):
+            tour(tour25, 3, day, [(a, 1), (b, 2)])
+        hat_trick = awards(Kind.BADGE, "hat_trick")[0]
+        assert hat_trick.basis == "в деньгах подряд с 01.03.2025"
+        evenings = awards(Kind.DIPLOMA, "evening_series_3")[0]
+        assert evenings.basis == "на вечерах подряд с 01.03.2025"
+        assert awards(Kind.DIPLOMA, "first_win")[0].basis == "1 место в турнире"
+
+    def test_rank_basis_is_the_threshold_in_the_ladder_unit(self, tour25, players):
+        a, b, *_ = players
+        for day in (1, 8, 15):
+            tour(tour25, 3, day, [(a, 1, 100), (b, 2)])
+        mine = {x.title: x.basis for x in awards(Kind.RANK) if x.player_id == a.pk}
+        assert mine["Новичок"] == "1 игра"
+        assert mine["Мастер"] == "3 игры"
+        assert mine["Пайщик"] == "100 лей закупок"
+
+    def test_title_figures(self, tour25, cash25, players):
+        a, b, *_ = players
+        tour(tour25, 3, 1, [(a, 1), (b, 2)])
+        cash(cash25, 3, 15, [(a, 50, 40, 5123), (b, 50, 60, 5000)])
+        assert title("udarnik", "Весна 2025").shared_metric == "2 вечера"
+        assert title("no_skip", "Март 2025").shared_metric == "2 из 2"
+        patron = title("patron", "Кэш 2025")
+        assert (patron.shared_metric, names(patron.holders)) == ("11,23 лея", ["Альфа"])
+        found = awards(Kind.TITLE, "patron")[0]
+        assert (found.basis, found.document) == ("11,23 лея", "Кэш 2025")
+
+    def test_always_itm_holders_keep_their_own_figures(self, rules, tour25, players):
+        rules.always_itm_min_tournaments = 1
+        rules.save()
+        a, b, c, *_ = players
+        tour(tour25, 3, 1, [(a, 1), (b, 2), (c, 4)])
+        tour(tour25, 3, 8, [(a, 1), (c, 2)])
+        result = title("always_itm", "Турниры 2025")
+        assert names(result.holders) == ["Альфа", "Браво"]
+        assert (result.holder_metric(a.pk), result.holder_metric(b.pk)) == ("2 из 2", "1 из 1")
+        assert result.shared_metric is None
+        board = achievements.load(TODAY).honors(2025)
+        row = next(r for r in board.title_rows if r.result.code == "always_itm")
+        assert [(p.name, m) for p, m in row.holders] == [("Альфа", "2 из 2"), ("Браво", "1 из 1")]
+        assert row.tie
+
+    def test_lead_lines(self, players):
+        a, b, *_ = players
+        season = make_season(2026, SeasonKind.TOUR)
+        tour(season, 6, 5, [(a, 1), (b, 2)])
+        tour(season, 7, 3, [(a, 1)])
+        cash(make_season(2026, SeasonKind.CASH), 7, 10, [(a, 50, 0, 1230)])
+        card = achievements.load(TODAY).player(a.pk)
+        assert card.lead_lines == [
+            "Всегда в деньгах в турнирах 2026: пока 2 из 2.",
+            "Лидирует в «Меценате» кэша 2026: 12,30 лея.",
+            "Лидирует в «Ударнике лета 2026»: 3 вечера.",
+            "Ни одного прогула за июль 2026: пока 2 из 2.",
+        ]
+
+    def test_winter_genitive(self, tour25, players):
+        a, *_ = players
+        tour(tour25, 12, 20, [(a, 1)])
+        result = title("udarnik", "Зима 2025/26", today=datetime.date(2025, 12, 25))
+        assert result.lead_text(a.pk) == "Лидирует в «Ударнике зимы 2025/26»: 1 вечер."
+
+    def test_rank_steps(self, tour25, players):
+        a, b, *_ = players
+        tour(tour25, 3, 1, [(a, 1, 100), (b, 2)])
+        veteran, feeder, addon = achievements.load(TODAY).rank_progress(a.pk)
+        assert (veteran.step_number, veteran.step_count, veteran.value_text) == (1, 2, "1 игра")
+        assert [state for _, state in veteran.step_states] == ["current", "future"]
+        assert [state for _, state in addon.step_states] == ["future", "future"]
+        assert (addon.step_number, addon.value_text) == (0, "0 аддонов")
+        assert (feeder.ladder.counter_label, feeder.value_text) == ("Закупки", "100 лей")
+        assert feeder.ladder.unit_forms == "лей,лея,лей"
+        tour(tour25, 3, 8, [(a, 1, 150)])
+        feeder = achievements.load(TODAY).rank_progress(a.pk)[1]
+        assert [state for _, state in feeder.step_states] == ["passed", "passed", "current"]
+        assert (feeder.next_step, feeder.progress_value, feeder.progress_max) == (None, 0, 0)
+
+    def test_player_badge_slots_and_record(self, tour25, players):
+        a, b, c, d, _ = players
+        tour(tour25, 3, 1, [(a, 1), (b, 2), (c, 3), (d, 4)])
+        tour(tour25, 3, 8, [(d, 1), (a, 4)])
+        card = achievements.load(TODAY).player(a.pk)
+        assert [(x.code, x.count) for x in card.badge_slots] == [
+            ("bubble", 1),
+            ("cashier", 0),
+            ("one_buyin", 1),
+            ("comeback", 0),
+            ("hat_trick", 0),
+        ]
+        assert card.badge_slots[1].last is None
+        assert card.badge_slots[4].rule == "в деньгах в 3 своих турнирах подряд"
+        assert card.badge_total == 2
+        assert card.veteran.step.title == "Новичок"
+        # Newest first: spring 2025's title (31.05), then the ranks and diplomas of the games.
+        assert [(x.kind, x.code) for x in card.record][:1] == [(Kind.TITLE, "udarnik")]
+        assert Kind.BADGE not in {x.kind for x in card.record}
+        assert {x.title for x in card.record if x.kind == Kind.RANK} == {"Новичок", "Пайщик"}
+        dates = [x.date for x in card.record]
+        assert dates == sorted(dates, reverse=True)
+
+    def test_no_veteran_step(self, tour25, players):
+        a, *_ = players
+        RankStep.objects.filter(ladder__code="veteran", threshold=3).update(threshold=30)
+        RankStep.objects.filter(ladder__code="veteran", threshold=1).update(threshold=10)
+        tour(tour25, 3, 1, [(a, 1)])
+        assert achievements.load(TODAY).player(a.pk).veteran is None
+
+    def test_badge_rules_follow_the_settings(self, rules):
+        rules.comeback_min_rebuys = 1
+        rules.hat_trick_length = 5
+        rules.save()
+        found = achievements.load(TODAY).badge_rules()
+        assert found["comeback"] == "в деньгах после 1 докупки и более"
+        assert found["hat_trick"] == "в деньгах в 5 своих турнирах подряд"
+        assert found["one_buyin"] == "победа в турнире без докупок"
+        assert list(found) == list(achievements.BADGES)
+
+
+class TestHonorsBoardYears:
+    def test_running_winter_is_on_the_default_page_only(self, tour25, players):
+        a, b, *_ = players
+        tour(tour25, 11, 20, [(a, 1), (b, 2)])
+        tour(tour25, 12, 20, [(a, 1)])
+        december = datetime.date(2025, 12, 25)
+        loaded = achievements.load(december)
+        # Winter 2025/26 is filed under 2026, which has no game and no ended title yet.
+        assert loaded.honor_years() == [2025]
+        assert loaded.latest_game_year() == 2025
+        default = loaded.honors(2025, running=True)
+        assert [r.result.period.label for r in default.title_rows if r.result.running][:1] == [
+            "Зима 2025/26"
+        ]
+        explicit = loaded.honors(2025)
+        assert "Зима 2025/26" not in {r.result.period.label for r in explicit.title_rows}
+        # Once it has ended, 2026 is listed.
+        assert achievements.load(datetime.date(2026, 3, 1)).honor_years() == [2026, 2025]
+
+    def test_rows_running_first_then_newest(self, players):
+        a, b, *_ = players
+        season = make_season(2026, SeasonKind.TOUR)
+        tour(season, 3, 1, [(a, 1), (b, 2)])
+        tour(season, 7, 3, [(a, 1)])
+        board = achievements.load(TODAY).honors(2026, running=True)
+        running = [r.result.running for r in board.title_rows]
+        assert running == sorted(running, reverse=True)
+        ended = [r.result.period.end for r in board.title_rows if not r.result.running]
+        assert ended == sorted(ended, reverse=True)
+
+    def test_totals(self, tour25, players):
+        a, b, c, d, e = players
+        tour(tour25, 3, 1, [(a, 1), (b, 2), (c, 3), (d, 4)])
+        make_player("Без игр")
+        board = achievements.load(TODAY).honors(2025)
+        assert board.participants == 4
+        assert board.badge_total == 2  # one_buyin, bubble
+        # first_win and spring 2025's "Ударник", shared by all four; March had one evening.
+        assert board.diploma_title_total == 5
+
+    def test_no_games(self):
+        loaded = achievements.load(TODAY)
+        assert (loaded.honor_years(), loaded.latest_game_year()) == ([], None)
+
+
+class TestSortBadgeRows:
+    @pytest.fixture
+    def rows(self, tour25, players):
+        a, b, c, d, _ = players
+        tour(tour25, 3, 1, [(a, 1), (b, 2), (c, 3), (d, 4)])
+        tour(tour25, 3, 8, [(b, 1), (a, 4)])
+        tour(tour25, 3, 15, [(c, 1), (a, 4)])
+        return achievements.load(TODAY).honors(2025).badge_rows
+
+    def sort(self, rows, key, descending):
+        return [row.player.name for row in achievements.sort_badge_rows(rows, key, descending)]
+
+    def test_default_total(self, rows):
+        assert [(row.player.name, row.total) for row in rows] == [
+            ("Альфа", 3),
+            ("Браво", 1),
+            ("Дельта", 1),
+            ("Чарли", 1),
+        ]
+        assert self.sort(rows, "total", True) == ["Альфа", "Браво", "Дельта", "Чарли"]
+        assert self.sort(rows, "total", False) == ["Браво", "Дельта", "Чарли", "Альфа"]
+
+    def test_by_badge_ties_by_name(self, rows):
+        assert self.sort(rows, "bubble", True) == ["Альфа", "Дельта", "Браво", "Чарли"]
+        assert self.sort(rows, "one_buyin", False)[-3:] == ["Альфа", "Браво", "Чарли"]
+
+    def test_by_name(self, rows):
+        assert self.sort(rows, "name", False) == ["Альфа", "Браво", "Дельта", "Чарли"]
+        assert self.sort(rows, "name", True) == ["Чарли", "Дельта", "Браво", "Альфа"]

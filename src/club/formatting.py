@@ -40,6 +40,18 @@ def format_net(value: int) -> str:
     return format_money(value)
 
 
+ROMAN = [(10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
+
+
+def format_roman(value: int) -> str:
+    """A rank step number: 1 -> 'I', 6 -> 'VI', 14 -> 'XIV'; 0 (no step) -> ''."""
+    text = ""
+    for number, letters in ROMAN:
+        count, value = divmod(value, number)
+        text += letters * count
+    return text
+
+
 def ru_plural(value: int, forms: Sequence[str]) -> str:
     """Pick the Russian form for ``value`` from (one, few, many): игра, игры, игр.
 
