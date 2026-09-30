@@ -25,6 +25,7 @@ dev = [
     "ruff>=0.16.9",
     "pre-commit>=4.0.0",
     "playwright>=1.63.0",
+    "coverage>=7.16.2",
 ]
 
 [tool.uv]
@@ -36,8 +37,20 @@ pythonpath = ["src"]
 python_files = ["tests.py", "test_*.py"]
 addopts = "-ra --strict-markers"
 markers = [
+    # Set by conftest.py on every test that uses the `browser` fixture.
     "browser: renders pages in headless Chromium (Playwright); skipped when it is not installed",
 ]
+
+# The unit job's report for Sonar: `coverage run -m pytest -m "not browser"`, then `coverage xml`.
+[tool.coverage.run]
+source = ["src"]
+branch = true
+# Repository-relative paths in coverage.xml: Sonar reads it in another job's checkout.
+relative_files = true
+omit = ["*/tests/*", "*/migrations/*"]
+
+[tool.coverage.xml]
+output = "coverage.xml"
 
 [tool.ruff]
 line-length = 100

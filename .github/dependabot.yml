@@ -1,16 +1,24 @@
 version: 2
+# Every update waits a week after its release (security updates do not wait), so a hijacked
+# release is more likely to be caught and pulled before it reaches a pull request here.
 updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
   # Version pins in the Dockerfile (uv image). python:3.13-slim, postgres:17 and caddy:2-alpine
   # follow their tags: deploy/server-deploy.sh pulls them on every deploy.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7

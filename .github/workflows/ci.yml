@@ -1,5 +1,9 @@
 name: CI
 
+# Independent jobs, one kind of problem each. Required for merging and deploying: lint, unit,
+# browser, security, image. Advisory: sonar here, image-scan (image-scan.yml) and CodeQL
+# (codeql.yml).
+
 on:
   push:
     branches: [main]
@@ -8,10 +12,51 @@ on:
 permissions:
   contents: read
 
-jobs:
-  lint-and-test:
-    runs-on: ubuntu-latest
+# A new push to a pull request cancels its older run. Pushes to main get a group of their own
+# (the run id), so nothing on main is ever cancelled here: the deploy job queues on its own.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
 
+jobs:
+  lint:
+    # Ruff and every pre-commit hook (whitespace, YAML/TOML, large files, no em dash, gitleaks on
+    # the staged tree). No database, no project dependencies beyond the dev group.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install the dev tools
+        run: uv sync --locked --only-dev
+
+      - name: Ruff check
+        run: uv run --no-sync ruff check .
+
+      - name: Ruff format check
+        run: uv run --no-sync ruff format --check .
+
+      - name: Cache pre-commit hooks
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Pre-commit
+        run: uv run --no-sync pre-commit run --all-files --show-diff-on-failure
+
+  unit:
+    # Every test that does not need Chromium (pytest -m "not browser"), with the compiled
+    # messages, and the coverage report the sonar job reads.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17
@@ -26,7 +71,6 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
-
     env:
       DEBUG: "True"
       ENVIRONMENT: "development"
@@ -34,26 +78,18 @@ jobs:
       ALLOWED_HOSTS: localhost,127.0.0.1
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/traktorist_club
       ADMIN_URL: club-admin/
-
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           python-version: "3.13"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+          enable-cache: true
 
       - name: Install dependencies
         run: uv sync --locked
-
-      - name: Ruff check
-        run: uv run ruff check .
-
-      - name: Ruff format check
-        run: uv run ruff format --check .
 
       - name: Compile translations
         run: |
@@ -61,40 +97,181 @@ jobs:
           sudo apt-get install -y --no-install-recommends gettext
           uv run python manage.py compilemessages --ignore=.venv
 
+      - name: Unit and browser tests together are the whole suite
+        # conftest.py marks every test that uses the browser fixture; this job and the browser
+        # job must split the suite without losing a test.
+        run: |
+          collected() { uv run pytest --collect-only -q -p no:warnings "$@" | grep -c '::'; }
+          all=$(collected)
+          unit=$(collected -m "not browser")
+          browser=$(collected -m browser)
+          echo "all $all, unit $unit, browser $browser"
+          if (( browser == 0 || unit + browser != all )); then
+            echo "::error::unit ($unit) + browser ($browser) != all ($all)"
+            exit 1
+          fi
+
+      - name: Run pytest
+        env:
+          # The translation test skips locally without compiled .mo files; here it must run.
+          REQUIRE_COMPILED_MESSAGES: "1"
+        run: uv run coverage run -m pytest -v -m "not browser"
+
+      - name: Coverage report
+        run: uv run coverage xml
+
+      - name: Upload the coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: coverage.xml
+          retention-days: 7
+          if-no-files-found: error
+
+  browser:
+    # Every test that uses the browser fixture (pytest -m browser), in headless Chromium against
+    # the built Tailwind CSS. A failure uploads traces and screenshots (conftest.py).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: traktorist_club
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d traktorist_club"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      DEBUG: "True"
+      ENVIRONMENT: "development"
+      SECRET_KEY: test-secret-key-for-ci-with-a-long-random-value-1234567890
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/traktorist_club
+      ADMIN_URL: club-admin/
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
       - name: Build Tailwind CSS
         # assets/css/tailwind.css is gitignored; without it the browser tests measure unstyled pages.
         run: uv run python manage.py tailwind build
 
-      - name: Install Chromium for browser tests
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(uv run python -c 'from importlib.metadata import version; print(version("playwright"))')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Chromium
+        id: chromium-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.chromium-cache.outputs.cache-hit != 'true'
         run: uv run playwright install --with-deps chromium
+
+      - name: Install Chromium's system libraries
+        # The browser comes from the cache; its apt packages do not.
+        if: steps.chromium-cache.outputs.cache-hit == 'true'
+        run: uv run playwright install-deps chromium
 
       - name: Run pytest
         env:
-          # Browser tests skip locally without Chromium, the translation test without compiled
-          # .mo files; in CI either one missing is a failure.
+          # Browser tests skip locally without Chromium; here they must run.
           REQUIRE_BROWSER_TESTS: "1"
-          REQUIRE_COMPILED_MESSAGES: "1"
-        run: uv run pytest -v
+        run: uv run pytest -v -m browser
 
-      - name: Django deployment check
-        env:
-          DEBUG: "False"
-          ENVIRONMENT: "production"
-          SECRET_KEY: production-test-secret-key-for-deploy-check-q8Zr2mXv7LpN4wTk9HsB
-          ALLOWED_HOSTS: club.example.com
-          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/traktorist_club
-          ADMIN_URL: hq-7f3k/
-        run: uv run python manage.py check --deploy --fail-level WARNING
+      - name: Upload Playwright traces and screenshots
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-failures
+          path: test-results/playwright/
+          retention-days: 7
+          if-no-files-found: ignore
 
-  docker-image:
-    # The production image must build (Tailwind, compilemessages, collectstatic) and refuse to run
-    # outside production mode.
-    runs-on: ubuntu-latest
+  security:
+    # Secrets in the whole git history, known vulnerabilities in the locked dependencies, and
+    # the workflows' own security (zizmor). No database.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Gitleaks over the full history
+        # The same release as the pre-commit hook (.pre-commit-config.yaml): change both together,
+        # with the checksum from the release's gitleaks_<version>_checksums.txt.
+        env:
+          GITLEAKS_VERSION: 8.24.0
+          GITLEAKS_SHA256: cb49b7de5ee986510fe8666ca0273a6cc15eb82571f2f14832c9e8920751f3a4
+        run: |
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl -fsSL -o "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "$GITLEAKS_SHA256  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner --exit-code 1 .
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+
+      - name: pip-audit over the locked dependencies
+        # Every group (the dev tools run here too), exactly as locked, with hashes; no resolving.
+        # An advisory that does not apply is ignored with one line in the array below:
+        #   --ignore-vuln GHSA-xxxx-xxxx-xxxx  # why it does not apply; review by YYYY-MM-DD
+        # Remove the line once a fixed version is locked or on its review date.
+        run: |
+          ignored=(
+          )
+          uv export --locked --all-groups --no-emit-project --format requirements.txt \
+            -o "$RUNNER_TEMP/requirements-audit.txt"
+          uvx pip-audit==2.10.1 --strict --require-hashes --disable-pip "${ignored[@]}" \
+            -r "$RUNNER_TEMP/requirements-audit.txt"
+
+      - name: zizmor over the workflows and dependabot.yml
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          version: 1.30.1
+          # Plain output and annotations; the job fails on any finding. No code scanning upload,
+          # so the job needs no security-events permission.
+          advanced-security: false
+          annotations: true
+
+  image:
+    # The production image must build (Tailwind, compilemessages, collectstatic), refuse to run
+    # outside production mode, carry no pip, and pass Django's deployment checks with production
+    # settings. One-off commands bypass the entrypoint (--entrypoint python): it expects the
+    # production environment and does work before exec, which is not what they test.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Build the production image
-        run: docker build -t traktorist-web:ci .
+        # --pull: always the newest python:3.13-slim and uv images, as the server builds them.
+        run: docker build --pull -t traktorist-web:ci .
 
       - name: Refuses to start in development mode
         run: |
@@ -103,18 +280,80 @@ jobs:
             exit 1
           fi
 
+      - name: Runtime has no pip
+        # The Dockerfile removes the base image's pip; the app runs from /opt/venv without it.
+        # The base interpreter, not `python` (/opt/venv's, which never sees /usr/local's packages
+        # and would pass with pip still there).
+        run: |
+          docker run --rm --entrypoint /usr/local/bin/python traktorist-web:ci -c \
+            "import importlib.util, sys; sys.exit(importlib.util.find_spec('pip') is not None)"
+
+      - name: Django deployment check
+        # Inside the image, so it checks the settings and packages that ship. check without
+        # --database never connects: DATABASE_URL only has to be valid.
+        env:
+          DEBUG: "False"
+          ENVIRONMENT: "production"
+          SECRET_KEY: production-test-secret-key-for-deploy-check-q8Zr2mXv7LpN4wTk9HsB
+          ALLOWED_HOSTS: club.example.com
+          DATABASE_URL: postgresql://ci:ci@db.invalid:5432/ci
+          ADMIN_URL: hq-7f3k/
+        run: |
+          docker run --rm -e DEBUG -e ENVIRONMENT -e SECRET_KEY -e ALLOWED_HOSTS -e DATABASE_URL \
+            -e ADMIN_URL --entrypoint python traktorist-web:ci \
+            manage.py check --deploy --fail-level WARNING
+
+  sonar:
+    # Advisory: SonarQube Cloud analysis with the unit job's coverage. Skipped (green, with a
+    # notice) when SONAR_TOKEN is not available: pull requests from forks and Dependabot.
+    needs: unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Sonar token
+        id: token
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [[ -n $SONAR_TOKEN ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::SONAR_TOKEN is not available, Sonar analysis skipped."
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.token.outputs.available == 'true'
+        with:
+          # Full history: Sonar uses blame to tell new code from old.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download the coverage report
+        if: steps.token.outputs.available == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage
+
+      - name: SonarQube Cloud scan
+        # Settings in sonar-project.properties.
+        if: steps.token.outputs.available == 'true'
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
   deploy:
-    # Pushes to main only, after both jobs above pass: pull requests (Dependabot's and forks'
-    # included) never get here, and a fork's own main skips it. It deploys the tested commit
+    # Pushes to main only, after the required jobs above pass: pull requests (Dependabot's and
+    # forks' included) never get here, and a fork's own main skips it. It deploys the tested commit
     # (github.sha) through the CI key, whose forced command on the server (deploy/ci-deploy.sh)
     # accepts a commit SHA of main and nothing else. Setup: docs/deploy.md, section 12.
-    needs: [lint-and-test, docker-image]
+    # sonar, image-scan and CodeQL are advisory and not waited for.
+    needs: [lint, unit, browser, security, image]
     if: >-
       github.event_name == 'push'
       && github.ref == 'refs/heads/main'
       && github.repository == 'nickita14/traktorist-club'
       && github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A hung build or connection fails the job instead of holding the deploy lock for hours.
     timeout-minutes: 30
     environment:
@@ -131,7 +370,7 @@ jobs:
       DEPLOY_HOST: deploy@traktorist.duckdns.org
       DEPLOY_DOMAIN: traktorist.duckdns.org
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 

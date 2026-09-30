@@ -15,7 +15,7 @@ from live.tests.test_browser import (  # noqa: F401 - phone is a fixture
 sync_api = pytest.importorskip("playwright.sync_api")
 expect = sync_api.expect
 
-pytestmark = [pytest.mark.browser, pytest.mark.django_db(transaction=True)]
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def test_header_links_and_live_strip(phone):  # noqa: F811

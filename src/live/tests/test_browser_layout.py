@@ -13,7 +13,7 @@ from live.tests.test_browser import PHONE, phone  # noqa: F401 - the fixture
 sync_api = pytest.importorskip("playwright.sync_api")
 expect = sync_api.expect
 
-pytestmark = [pytest.mark.browser, pytest.mark.django_db(transaction=True)]
+pytestmark = pytest.mark.django_db(transaction=True)
 
 # Stat strips whose last row is not full (an empty cell with the rule background shows).
 UNEVEN_STRIPS = """() => [...document.querySelectorAll('.stat-strip')].filter(strip => {

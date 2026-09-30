@@ -312,7 +312,7 @@ No email is configured for Let's Encrypt: it no longer sends expiry notices, and
 
 ## 5. Admin accounts
 
-The admin lives at `https://traktorist.duckdns.org/<ADMIN_URL>` (the value in `.env`). Login is by username and password. Two-factor login is built in but off; section 10 turns it on.
+The admin lives at `https://traktorist.duckdns.org/<ADMIN_URL>` (the value in `.env`). Login is by username and password. Two-factor login is built in and off by default; section 10 turns it on.
 
 Organizers can also log in on the public site at `https://traktorist.duckdns.org/prokhodnaya/` (the "Войти" link in the footer), so the admin address never has to be typed or shared. It is the same login: the same lockout, and the code field when two-factor login is on. Only superusers and **Organizer** group members get in.
 
@@ -606,6 +606,8 @@ Finally, open the site and compare a few standings with the spreadsheet.
 Other details:
 - **Pre-deploy dumps.** A deploy with pending migrations saves a dump to `/var/backups/traktorist/pre-deploy/` before migrating. The last 5 are kept.
 - **Image updates.** Each deploy pulls newer `python:3.13-slim`, `postgres:17` and `caddy:2-alpine` images. Unchanged images and code leave the running containers alone, so a repeated deploy restarts nothing.
+  - Base images only change on a deploy. The `image-scan` workflow (Trivy, weekly and on every push) shows when the base has a fixable HIGH/CRITICAL issue. Once Docker has rebuilt `python:3.13-slim` with the fix, run `deploy/deploy.sh` to rebuild the current `main` on it. A finding that the latest base does not fix yet waits for it: the image does not run `apt-get upgrade`.
+  - The runtime image has no pip. The app runs from `/opt/venv`, built by uv from `uv.lock`. Never `pip install` into a container: change the lockfile and deploy.
 - **Server edits.** Don't edit files in `/srv/traktorist` on the server (except `.env`): `deploy.sh` and CI deploys refuse to run while the checkout has local changes. `git -C /srv/traktorist status` shows them.
 - **Changing `.env`.** Run `dc up -d` afterwards. Compose recreates the containers whose settings changed.
 - **Rotating secrets.**
@@ -689,7 +691,7 @@ That leaves about 11 GB free. `deploy.sh` prints the free space after every depl
 ## 12. Automatic deploys from GitHub
 
 Every push to `main` deploys itself once the tests pass. The `deploy` job in `.github/workflows/ci.yml` does it in these steps:
-1. It waits for the `lint-and-test` and `docker-image` jobs.
+1. It waits for the required jobs: `lint`, `unit`, `browser`, `security` and `image`. The advisory ones (`image-scan`, `sonar`, CodeQL) never hold a deploy back.
 2. It connects over SSH with a **CI key** of its own and sends the tested commit's SHA (`github.sha`), nothing else.
 3. It runs the same smoke check as `deploy.sh`. A failed smoke check fails the job.
 
@@ -812,7 +814,7 @@ shred -u ~/.config/traktorist/ci_key
 ### 12.6 Turn it on
 
 Merge the pull request that adds the `deploy` job to `ci.yml`. Its own merge into `main` is the first automatic deploy. In the repository's **Actions** tab, that run shows:
-1. `lint-and-test` and `docker-image`.
+1. `lint`, `unit`, `browser`, `security`, `image` and `sonar` (`image-scan` and CodeQL run in their own workflows).
 2. Then `deploy`, in the `production` environment. Its log shows:
    - `==> At <sha> <subject>` for the commit the merge put on `main`
    - the build

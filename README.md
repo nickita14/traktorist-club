@@ -63,5 +63,5 @@ uv run pre-commit run --all-files
 ## Notes
 
 - No real club data is committed. `data/` is gitignored; tests and fixtures use invented players.
-- `CLAUDE.md` (project rules) and `PLAN.md` (roadmap) are kept locally and are not part of the repository.
+- `CLAUDE.md` (project rules) and `PLAN.md` (roadmap) are the working documents for contributors and Claude Code.
 - The public site has no external trackers, analytics, or CDNs.

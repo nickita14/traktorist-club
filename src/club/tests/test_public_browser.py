@@ -12,7 +12,7 @@ from conftest import COLLECT_CSP_VIOLATIONS
 sync_api = pytest.importorskip("playwright.sync_api")
 expect = sync_api.expect
 
-pytestmark = [pytest.mark.browser, pytest.mark.django_db(transaction=True)]
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.fixture

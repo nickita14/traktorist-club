@@ -16,7 +16,7 @@ from conftest import COLLECT_CSP_VIOLATIONS
 
 pytest.importorskip("playwright.sync_api")
 
-pytestmark = [pytest.mark.browser, pytest.mark.django_db(transaction=True)]
+pytestmark = pytest.mark.django_db(transaction=True)
 
 # WCAG AA for body text.
 MIN_CONTRAST = 4.5
