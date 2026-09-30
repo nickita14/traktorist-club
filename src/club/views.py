@@ -233,7 +233,8 @@ def honors(request):
                 else []
             ),
             "badge_columns": [
-                (code, title, rules[code]) for code, title in achievements.BADGES.items()
+                (code, title, rules[code], achievements.BADGE_HEADERS[code])
+                for code, title in achievements.BADGES.items()
             ],
             "ladders": awards.ladders,
             "year_links": _year_links(years, year, default_year, sort),

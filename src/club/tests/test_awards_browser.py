@@ -108,3 +108,47 @@ def test_mark_keeps_the_row_height(open_page, club, award_rules):
     mark = marked.locator(".award-mark").bounding_box()
     assert mark["x"] + mark["width"] <= PHONE
     assert page.evaluate("window.cspViolations") == []
+
+
+# Where the text of each header of the badge matrix ends (a Range: the text, not the box).
+HEADER_TEXT_BOTTOMS = """() => [...document.querySelectorAll(
+  '[aria-labelledby="badges-title"] thead th')].map(th => {
+  const range = document.createRange();
+  range.selectNodeContents(th.querySelector('.sort-lines') || th);
+  return Math.round(range.getBoundingClientRect().bottom);
+})"""
+
+# The height of each body row of the badge matrix.
+MATRIX_ROWS = """() => [...document.querySelectorAll(
+  '[aria-labelledby="badges-title"] tbody tr')].map(row => row.getBoundingClientRect().height)"""
+
+
+def test_badge_matrix_rows_are_one_line_on_desktop(open_page, club, award_rules):
+    # A longer invented name and nickname, as long as the club's longest. Longer ones still
+    # stay on one line; the table then scrolls inside its container.
+    alpha = club["players"]["A"]
+    type(alpha).objects.filter(pk=alpha.pk).update(name="Вениамин Кочетков", nickname="Веялка")
+    page = open_page(reverse("honors"), 1280)
+    scroller = page.locator('[aria-labelledby="badges-title"] .ledger-scroll')
+    assert scroller.evaluate("el => el.scrollWidth <= el.clientWidth")  # no sideways scroll
+    heights = page.evaluate(MATRIX_ROWS)
+    assert len(heights) == 3
+    assert all(height <= 45 for height in heights)  # the ledger's 44px row: one line
+    # Every header's text ends on the same line, two-line ones and the plain "№" alike.
+    bottoms = page.evaluate(HEADER_TEXT_BOTTOMS)
+    assert max(bottoms) - min(bottoms) <= 1  # "№" has a taller line box: a pixel of rounding
+    head = page.locator('[aria-labelledby="badges-title"] thead')
+    # And they keep sorting.
+    head.get_by_role("link", name="Ни одного прогула").click()
+    active = page.locator('[aria-labelledby="badges-title"] thead a[aria-current]')
+    expect(active).to_have_class("sort-link sort-link-lines sort-desc")
+    assert page.url.endswith("/honors/?sort=no_skip")
+    assert page.evaluate("window.cspViolations") == []
+
+
+def test_badge_matrix_scrolls_inside_on_phones(open_page, club, award_rules):
+    page = open_page(reverse("honors"), PHONE)
+    scroller = page.locator('[aria-labelledby="badges-title"] .ledger-scroll')
+    assert scroller.evaluate("el => el.scrollWidth > el.clientWidth")
+    assert page.evaluate("document.documentElement.scrollWidth") <= PHONE
+    assert page.evaluate("window.cspViolations") == []

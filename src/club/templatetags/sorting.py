@@ -1,7 +1,7 @@
 """Sortable table headers: `{% load sorting %}`. The context needs ``sort`` and ``request``."""
 
 from django import template
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 
 from club.sorting import MOBILE_LABELS, sort_url
@@ -9,10 +9,9 @@ from club.sorting import MOBILE_LABELS, sort_url
 register = template.Library()
 
 
-def _link(context, key: str, label, sr_label: str = ""):
+def _link(context, key: str, label, sr_label: str = "", css: str = "sort-link"):
     sort = context["sort"]
     active = sort.key == key
-    css = "sort-link"
     if active:
         css += " sort-desc" if sort.descending else " sort-asc"
     text = (
@@ -35,6 +34,21 @@ def _link(context, key: str, label, sr_label: str = ""):
 def sort_header(context, key: str, label: str, sr_label: str = ""):
     """A column header link: sorts by ``key``, or flips the direction if it is the active one."""
     return _link(context, key, label, sr_label)
+
+
+@register.simple_tag(takes_context=True)
+def sort_header_lines(context, key: str, lines, label: str):
+    """A header link whose text is broken onto ``lines`` (a narrow column under a long name, or
+    one string for a one-line header of the same row); screen readers get ``label`` in one
+    piece. The text and the arrow sit at the bottom, so every header of the row ends on the same
+    line."""
+    if isinstance(lines, str):
+        lines = (lines,)
+    text = format_html(
+        '<span class="sort-lines">{}</span>',
+        format_html_join(mark_safe("<br>"), "{}", ((line,) for line in lines)),
+    )
+    return _link(context, key, text, label, css="sort-link sort-link-lines")
 
 
 @register.simple_tag(takes_context=True)
