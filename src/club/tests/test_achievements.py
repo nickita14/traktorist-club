@@ -583,7 +583,8 @@ class TestViews:
         assert sorted((who([x])[0], x.code) for x in found.reached if x.kind == Kind.DIPLOMA) == [
             ("Альфа", "first_win")
         ]
-        assert {x.title for x in found.reached if x.kind == Kind.RANK} == {"Новичок"}
+        # "Новичок" is the first step: in the rank cells, not in the game's list.
+        assert {x.title for x in found.reached if x.kind == Kind.RANK} == set()
 
     def test_badges_on_the_player_card(self, tour25, players):
         a, b, *_ = players
@@ -766,7 +767,7 @@ class TestDisplay:
         # Newest first: spring 2025's title (31.05), then the ranks and diplomas of the games.
         assert [(x.kind, x.code) for x in card.record][:1] == [(Kind.TITLE, "udarnik")]
         assert Kind.BADGE not in {x.kind for x in card.record}
-        assert {x.title for x in card.record if x.kind == Kind.RANK} == {"Новичок", "Пайщик"}
+        assert {x.title for x in card.record if x.kind == Kind.RANK} == set()  # first steps only
         dates = [x.date for x in card.record]
         assert dates == sorted(dates, reverse=True)
 
@@ -885,3 +886,40 @@ class TestContests:
         cash(make_season(2026, SeasonKind.CASH), 7, 10, [(a, 50, 0, 1230)])
         assert title("udarnik", "Лето 2026").running_note == "лидирует"
         assert title("patron", "Кэш 2026").running_note == "лидирует"
+
+
+class TestFirstSteps:
+    """The lowest step of a ladder is not an event: rank table and cells only."""
+
+    @pytest.fixture
+    def games(self, tour25, players):
+        a, b, *_ = players
+        # Альфа: 100 lei a game, so Пайщик (100), Вкладчик (200) and Спонсор (250).
+        return [tour(tour25, 3, day, [(a, 1, 100), (b, 2)]) for day in (1, 8, 15)]
+
+    def test_marked(self, games, players):
+        mine = [x for x in awards(Kind.RANK) if x.player_id == players[0].pk]
+        assert {(x.title, x.is_first_step) for x in mine} == {
+            ("Новичок", True),
+            ("Мастер", False),
+            ("Пайщик", True),
+            ("Вкладчик", False),
+            ("Спонсор", False),
+        }
+        assert not any(x.is_first_step for x in awards(Kind.BADGE) + awards(Kind.DIPLOMA))
+
+    def test_kept_in_the_rank_progress(self, games, players):
+        veteran = achievements.load(TODAY).rank_progress(players[0].pk)[0]
+        assert [x.title for x in veteran.reached] == ["Новичок", "Мастер"]
+
+    def test_left_out_of_the_events(self, games, players):
+        loaded = achievements.load(TODAY)
+        first, _, third = games
+        assert not any(x.kind == Kind.RANK for x in loaded.game(first.pk).reached)
+        third_ranks = {x.title for x in loaded.game(third.pk).reached if x.kind == Kind.RANK}
+        assert third_ranks == {"Мастер", "Спонсор"}
+        record = loaded.player(players[0].pk).record
+        assert {x.title for x in record if x.kind == Kind.RANK} == {"Мастер", "Вкладчик", "Спонсор"}
+        recent = loaded.recent(100)
+        assert recent and not any(x.is_first_step for x in recent)
+        assert len(loaded.recent(3)) == 3  # the limit counts events only

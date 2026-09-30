@@ -330,6 +330,8 @@ class TestPlayerAwards:
         rows = record.split("<tr>")[2:]
         dates = [row.split("<time")[1].split(">")[1].split("<")[0] for row in rows]
         assert dates[0] == f"31.05.{PAST_YEAR}"  # spring's "Ударник", shared with Браво
+        # First steps of the ladders are no events: only the rank cells show them.
+        assert "Новобранец" not in record and "Пайщик" not in record
         assert [d[-4:] for d in dates] == sorted((d[-4:] for d in dates), reverse=True)
         assert "Первая победа" in record and "Серия: 5 вечеров подряд" in record
         assert "Старожил" in record and ">Звание<" in record

@@ -177,6 +177,8 @@ class Award:
     game: GameRef | None = None
     period: Period | None = None
     ladder: Ladder | None = None
+    # The rank step reached (rank awards only).
+    step: Step | None = None
     # Why it was given, in a few words: "50 игр", "подряд с 01.03.2025", "13 вечеров".
     basis: str = ""
     player: Player | None = field(default=None, compare=False, repr=False)
@@ -184,6 +186,12 @@ class Award:
     @property
     def kind_label(self) -> str:
         return KIND_LABELS[self.kind]
+
+    @property
+    def is_first_step(self) -> bool:
+        """The lowest step of a ladder: reached by almost everyone at once, so it is shown in the
+        rank table and cells but is not an event (recent awards, the record, a game's list)."""
+        return self.kind == Kind.RANK and self.step == self.ladder.steps[0]
 
     @property
     def document(self) -> str:
@@ -645,7 +653,9 @@ class ClubAwards:
                 for step in ladder.steps:
                     if before < step.threshold <= after:
                         basis = ladder.counter_text(step.threshold) + LADDER_COUNTERS[code][2]
-                        self._award(Kind.RANK, code, step.title, row, basis, ladder=ladder)
+                        self._award(
+                            Kind.RANK, code, step.title, row, basis, ladder=ladder, step=step
+                        )
                         self._reached[(row.player_id, code)].append(self.awards[-1])
 
     def _titles(self) -> list[TitleResult]:
@@ -844,7 +854,11 @@ class ClubAwards:
             titles=[award for award in mine if award.kind == Kind.TITLE],
             leading=leading,
             badge_slots=slots,
-            record=[award for award in reversed(mine) if award.kind != Kind.BADGE],
+            record=[
+                award
+                for award in reversed(mine)
+                if award.kind != Kind.BADGE and not award.is_first_step
+            ],
             lead_lines=[result.lead_text(player_id) for result in leading],
         )
 
@@ -856,7 +870,7 @@ class ClubAwards:
                 continue
             if award.kind == Kind.BADGE:
                 badges[award.player_id].append(award)
-            else:
+            elif not award.is_first_step:
                 reached.append(award)
         return GameAwards(dict(badges), reached)
 
@@ -922,8 +936,10 @@ class ClubAwards:
         )
 
     def recent(self, limit: int) -> list[Award]:
-        """The newest ``limit`` awards club-wide (titles once their period has ended)."""
-        return list(reversed(self.awards[-limit:])) if limit > 0 else []
+        """The newest ``limit`` awards club-wide (titles once their period has ended), first rank
+        steps left out."""
+        events = [award for award in reversed(self.awards) if not award.is_first_step]
+        return events[:limit] if limit > 0 else []
 
     def completeness(self) -> Completeness:
         tour = [row for row in self._rows if row.game.kind == SeasonKind.TOUR]

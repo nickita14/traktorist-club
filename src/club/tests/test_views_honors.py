@@ -250,3 +250,4 @@ class TestRecent:
         assert '<span class="award-kind">Титул</span>' in items[0]
         assert any(f'href="/games/{club["games"]["c2"].pk}/"' in item for item in items)
         assert '<span class="award-kind">Грамота</span>' in aside
+        assert "Новобранец" not in aside and "Пайщик" not in aside  # first steps

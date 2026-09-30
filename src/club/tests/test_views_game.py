@@ -343,6 +343,10 @@ class TestGameAwards:
         assert '<span class="award-kind">Грамота</span>' in reached
         assert '<span class="award-kind">Звание</span>' in reached
         assert "Знаки отмечены у имён в ведомости." in reached
+        # Дельта's first game made her a "Новобранец": a first step, not listed.
+        c2 = html_of(client, club["games"]["c2"])
+        c2_reached = c2[c2.index('id="reached-title"') :]
+        assert "Серия: 5 вечеров подряд" in c2_reached and "Новобранец" not in c2_reached
 
     def test_no_reached_section_without_ranks_and_diplomas(self, client, club, award_rules):
         RankLadder.objects.all().delete()
