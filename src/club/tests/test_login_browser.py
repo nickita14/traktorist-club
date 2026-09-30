@@ -15,7 +15,7 @@ from live.tests.test_browser import MIN_TARGET, PHONE, assert_clean, assert_touc
 sync_api = pytest.importorskip("playwright.sync_api")
 expect = sync_api.expect
 
-pytestmark = [pytest.mark.browser, pytest.mark.django_db(transaction=True)]
+pytestmark = pytest.mark.django_db(transaction=True)
 
 PASSWORD = "a-long-test-password-for-the-login"
 

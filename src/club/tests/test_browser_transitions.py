@@ -14,8 +14,6 @@ from live.tests.conftest import live_game, seat
 sync_api = pytest.importorskip("playwright.sync_api")
 expect = sync_api.expect
 
-pytestmark = pytest.mark.browser
-
 # Whether the page was revealed with a view transition (read on the new page).
 RECORD_REVEAL = """window.addEventListener('pagereveal', event => {
   window.revealedWithTransition = Boolean(event.viewTransition);

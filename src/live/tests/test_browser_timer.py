@@ -21,7 +21,7 @@ from live.tests.test_browser import assert_clean, assert_touch_targets, phone  #
 sync_api = pytest.importorskip("playwright.sync_api")
 expect = sync_api.expect
 
-pytestmark = [pytest.mark.browser, pytest.mark.django_db(transaction=True)]
+pytestmark = pytest.mark.django_db(transaction=True)
 
 LAPTOP = {"viewport": {"width": 1280, "height": 800}}
 PHONE_HEIGHT = 844
