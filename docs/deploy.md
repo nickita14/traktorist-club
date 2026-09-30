@@ -689,7 +689,7 @@ That leaves about 11 GB free. `deploy.sh` prints the free space after every depl
 ## 12. Automatic deploys from GitHub
 
 Every push to `main` deploys itself once the tests pass. The `deploy` job in `.github/workflows/ci.yml` does it in these steps:
-1. It waits for the `lint-and-test` and `docker-image` jobs.
+1. It waits for the required jobs: `lint`, `unit`, `browser`, `security` and `image`. The advisory ones (`image-scan`, `sonar`, CodeQL) never hold a deploy back.
 2. It connects over SSH with a **CI key** of its own and sends the tested commit's SHA (`github.sha`), nothing else.
 3. It runs the same smoke check as `deploy.sh`. A failed smoke check fails the job.
 
@@ -812,7 +812,7 @@ shred -u ~/.config/traktorist/ci_key
 ### 12.6 Turn it on
 
 Merge the pull request that adds the `deploy` job to `ci.yml`. Its own merge into `main` is the first automatic deploy. In the repository's **Actions** tab, that run shows:
-1. `lint-and-test` and `docker-image`.
+1. `lint`, `unit`, `browser`, `security`, `image`, `image-scan` and `sonar` (CodeQL runs in its own workflow).
 2. Then `deploy`, in the `production` environment. Its log shows:
    - `==> At <sha> <subject>` for the commit the merge put on `main`
    - the build
