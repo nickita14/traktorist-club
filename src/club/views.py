@@ -9,11 +9,12 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
-from club import charts, stats
+from club import achievements, charts, stats
 from club.models import Game, Player, Season, SeasonKind
-from club.sorting import CASH_STANDINGS, PLAYERS, TOUR_STANDINGS, parse_sort
+from club.sorting import BADGES, CASH_STANDINGS, PLAYERS, TOUR_STANDINGS, parse_sort
 
 RECENT_GAMES = 8
+RECENT_AWARDS = 10
 PLAYER_RECENT_GAMES = 10
 PLAYER_GAMES_PER_PAGE = 50
 # The cash note shows the chip rate for a round sum, like on the club's paper sheets.
@@ -77,6 +78,9 @@ def game_detail(request, pk: int):
     )
     chips_per_lei = game.season.chips_per_lei
     results = stats.game_results(game)
+    awards = achievements.load().game(game.pk)
+    for result in results:
+        result.badges = awards.badges.get(result.player_id, [])
     return render(
         request,
         "club/game_detail.html",
@@ -89,6 +93,8 @@ def game_detail(request, pk: int):
             # Chip and pot columns only when someone's final stack was written down.
             "show_chips": any(result.chips_out is not None for result in results),
             "rate_example": {"chips": RATE_EXAMPLE_LEI * chips_per_lei, "lei": RATE_EXAMPLE_LEI},
+            # Ranks and diplomas this game earned (badges are marked in the table).
+            "reached": awards.reached,
             "nav_section": NAV_SECTION[game.season.kind],
         },
     )
@@ -105,6 +111,7 @@ def player_detail(request, slug: str):
             "chart": charts.net_chart(timeline),
             "recent_results": stats.player_results(player)[:PLAYER_RECENT_GAMES],
             "has_more_games": player.games_played > PLAYER_RECENT_GAMES,
+            "awards": achievements.load().player(player.pk),
         }
     return render(request, "club/player_detail.html", context)
 
@@ -191,6 +198,65 @@ def _kind_links(current: str | None, sort) -> list[dict]:
                 "label": label,
                 "url": reverse("all_time") + (f"?{query}" if query else ""),
                 "current": ALL_TIME_KINDS[value] == current,
+            }
+        )
+    return links
+
+
+def honors(request):
+    """Доска почёта. Without ``?year=``: the latest year with games plus every running title;
+    a year the switcher does not offer is a 404."""
+    awards = achievements.load()
+    years = awards.honor_years()
+    default_year = awards.latest_game_year()
+    requested = request.GET.get("year")
+    if requested is None:
+        year = default_year
+    else:
+        try:
+            year = int(requested)
+        except ValueError:
+            raise Http404("Нет такого года.") from None
+        if year not in years:
+            raise Http404("Нет такого года.")
+    sort = parse_sort(request.GET, BADGES)
+    board = awards.honors(year, running=requested is None) if year is not None else None
+    rules = awards.badge_rules()
+    return render(
+        request,
+        "club/honors.html",
+        {
+            "board": board,
+            "badge_rows": (
+                achievements.sort_badge_rows(board.badge_rows, sort.key, sort.descending)
+                if board
+                else []
+            ),
+            "badge_columns": [
+                (code, title, rules[code]) for code, title in achievements.BADGES.items()
+            ],
+            "ladders": awards.ladders,
+            "year_links": _year_links(years, year, default_year, sort),
+            "sort": sort,
+            "recent_awards": awards.recent(RECENT_AWARDS),
+            "nav_section": "honors",
+        },
+    )
+
+
+def _year_links(years: list[int], current: int | None, default: int | None, sort) -> list[dict]:
+    """The year switcher of /honors/, oldest first like the season pages. The default year
+    links to the page without ``?year=`` (which also lists the running titles); the order of
+    the badge table is kept."""
+    links = []
+    for year in sorted(years):
+        params = ({} if year == default else {"year": year}) | sort.params
+        query = urlencode(params)
+        links.append(
+            {
+                "year": year,
+                "url": reverse("honors") + (f"?{query}" if query else ""),
+                "current": year == current,
             }
         )
     return links

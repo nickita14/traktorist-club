@@ -1,0 +1,182 @@
+{% extends "club/document.html" %}
+{% load awards ledger sorting %}
+
+{% block title %}Доска почёта{% endblock %}
+
+{% block form_label %}Форма № 6 · Доска почёта{% endblock %}
+{% block doc_title %}Доска почёта{% endblock %}
+{% block stamp %}<p class="stamp stamp-ink"><span class="block">Ими</span><span class="block">гордится</span><span class="block">клуб</span></p>{% endblock %}
+
+{% block meta %}
+  <p class="mt-3 text-muted italic">
+    {% if board %}
+      <span class="whitespace-nowrap"><span class="font-num num-run not-italic">{{ board.participants|money }}</span> {{ board.participants|plural:"участник,участника,участников" }}</span>
+      · <span class="whitespace-nowrap"><span class="font-num num-run not-italic">{{ board.badge_total|money }}</span> {{ board.badge_total|plural:"знак,знака,знаков" }}</span>
+      · <span class="whitespace-nowrap"><span class="font-num num-run not-italic">{{ board.diploma_title_total|money }}</span> {{ board.diploma_title_total|plural:"грамота или титул,грамоты и титула,грамот и титулов" }}</span>
+    {% else %}
+      Игр пока не было, наград тоже
+    {% endif %}
+  </p>
+{% endblock %}
+
+{% block body %}
+  <div class="page-grid mt-6">
+    {# min-w-0: a grid item grows to its widest table otherwise; the tables scroll inside. #}
+    <div class="min-w-0">
+      <section aria-labelledby="titles-title">
+        <div class="section-head">
+          <h2 id="titles-title">Титулы</h2>
+          {% if year_links|length > 1 %}
+            <nav aria-label="Титулы по годам">
+              <ul class="segmented">
+                {% for link in year_links %}
+                  <li><a href="{{ link.url }}"{% if link.current %} aria-current="page"{% endif %}>{{ link.year }}</a></li>
+                {% endfor %}
+              </ul>
+            </nav>
+          {% endif %}
+        </div>
+        <div class="ledger-scroll">
+          <table class="ledger honors-titles">
+            <thead>
+              <tr>
+                <th scope="col">Период</th>
+                <th scope="col">Титул</th>
+                <th scope="col">Обладатель</th>
+                <th scope="col" class="num">Показатель</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in board.title_rows %}
+                {% with result=row.result shared=row.result.shared_metric %}
+                  <tr>
+                    <td class="whitespace-nowrap">
+                      {{ result.period.label }}
+                      {% if result.running %}<span class="award-kind block">идёт</span>{% endif %}
+                    </td>
+                    <td>{{ result.title }}</td>
+                    <td>
+                      {% for player, metric in row.holders %}<a href="{{ player.get_absolute_url }}">{{ player.label }}</a>{% if not shared %}, <span class="font-num">{{ metric }}</span>{% endif %}{% if not forloop.last %}{% if shared %}, {% else %}; {% endif %}{% endif %}{% empty %}{% no_value %}{% endfor %}
+                      {% if not row.holders %}
+                        <span class="award-note">{% if result.no_data %}нет данных о фишках{% else %}претендентов нет{% endif %}</span>
+                      {% elif result.running %}
+                        <span class="award-note">лидирует</span>
+                      {% elif row.tie %}
+                        <span class="award-note">ничья</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-right font-num whitespace-nowrap">{% if shared %}{{ shared }}{% else %}{% no_value %}{% endif %}</td>
+                  </tr>
+                {% endwith %}
+              {% empty %}
+                <tr>
+                  <td colspan="4" class="text-muted italic">Титулов за этот год нет.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="mt-3 max-w-prose text-sm text-muted italic">Титул присуждается после окончания периода; пока период идёт, указан лидер. Зима считается через Новый год: декабрь, январь, февраль.</p>
+      </section>
+
+      <section class="mt-10" aria-labelledby="badges-title">
+        <div class="section-head">
+          <h2 id="badges-title">Знаки отличия</h2>
+          <p class="section-note">сколько раз получен, за всё время</p>
+        </div>
+        <div class="ledger-scroll">
+          <table class="ledger">
+            <thead>
+              <tr>
+                <th scope="col" class="col-rank num">№</th>
+                <th scope="col" class="col-player"{% aria_sort "name" %}>{% sort_header "name" "Участник" %}</th>
+                {% for code, title, rule in badge_columns %}
+                  <th scope="col" class="num"{% aria_sort code %}>{% sort_header code title %}</th>
+                {% endfor %}
+                <th scope="col" class="num"{% aria_sort "total" %}>{% sort_header "total" "Всего" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in badge_rows %}
+                <tr>
+                  <td class="col-rank num">{{ forloop.counter }}</td>
+                  <td class="col-player">{% include "club/includes/player_name.html" with player=row.player %}</td>
+                  {% for count in row.counts %}
+                    <td class="num">{% count_value count %}</td>
+                  {% endfor %}
+                  <td class="num">{{ row.total|money }}</td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="{{ badge_columns|length|add:3 }}" class="text-muted italic">Знаков пока никто не получил.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="mt-3 max-w-prose text-sm text-muted italic">{% for code, title, rule in badge_columns %}{{ title }}: {{ rule }}{% if not forloop.last %}; {% else %}.{% endif %}{% endfor %}</p>
+      </section>
+
+      {% if ladders %}
+        <section class="mt-10" aria-labelledby="ranks-title">
+          <div class="section-head">
+            <h2 id="ranks-title">Звания</h2>
+            <p class="section-note">ступень по накопленному за всё время</p>
+          </div>
+          <div class="ledger-scroll">
+            <table class="ledger">
+              <thead>
+                <tr>
+                  <th scope="col" class="col-rank num">№</th>
+                  <th scope="col" class="col-player">Участник</th>
+                  {% for ladder in ladders %}
+                    <th scope="col">{{ ladder.title }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for player, ranks in board.rank_table %}
+                  <tr>
+                    <td class="col-rank num">{{ forloop.counter }}</td>
+                    <td class="col-player">{% include "club/includes/player_name.html" %}</td>
+                    {% for rank in ranks %}
+                      <td class="whitespace-nowrap">{% if rank.step %}<span class="rank-roman">{{ rank.step_number|roman }}</span> {{ rank.step.title }}{% else %}{% no_value %}{% endif %}</td>
+                    {% endfor %}
+                  </tr>
+                {% empty %}
+                  <tr>
+                    <td colspan="{{ ladders|length|add:2 }}" class="text-muted italic">Игр пока не было.</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
+    </div>
+
+    <aside aria-labelledby="recent-awards-title">
+      <h2 id="recent-awards-title" class="font-head text-lg font-bold tracking-label uppercase">Последние награждения</h2>
+      {% if recent_awards %}
+        <ul class="award-feed mt-1">
+          {% for award in recent_awards %}
+            <li>
+              <a href="{% award_url award %}">
+                <span class="award-feed-line">
+                  <span>{{ award.player.label }}</span>
+                  <time class="font-num text-muted" datetime="{{ award.date|date:'Y-m-d' }}">{{ award.date|date:"d.m.Y" }}</time>
+                </span>
+                <span class="award-feed-line">
+                  <span class="award-kind">{{ award.kind_label }}</span>
+                  <span class="award-feed-title">{{ award.title }}</span>
+                </span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="mt-2 text-muted italic">Наград пока нет.</p>
+      {% endif %}
+    </aside>
+  </div>
+{% endblock %}

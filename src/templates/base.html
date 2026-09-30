@@ -20,7 +20,7 @@
       <a class="flex min-h-11 items-center py-1 font-display text-lg uppercase no-underline md:text-xl"
          href="{% url 'home' %}">Кочующий Клуб Тракториста</a>
       <nav class="site-nav" aria-label="Разделы">
-        <ul class="flex flex-wrap gap-x-6">
+        <ul class="flex flex-wrap gap-x-3 md:gap-x-6">
           <li>
             {% if latest_years.tour %}
               <a href="{% url 'season' latest_years.tour 'tour' %}"{% if nav_section == "tour" %} aria-current="true"{% endif %}>Турниры</a>
@@ -37,6 +37,7 @@
           </li>
           <li><a href="{% url 'all_time' %}"{% if nav_section == "all-time" %} aria-current="true"{% endif %}>За всё время</a></li>
           <li><a href="{% url 'player_list' %}"{% if nav_section == "players" %} aria-current="true"{% endif %}>Игроки</a></li>
+          <li><a href="{% url 'honors' %}"{% if nav_section == "honors" %} aria-current="true"{% endif %}><span class="nav-long">Доска почёта</span><span class="nav-short">Почёт</span></a></li>
           {% if organizer.is_organizer %}
             <li class="site-nav-staff"><a href="{% url 'live:index' %}">Живая игра</a></li>
             <li><a href="{% url 'admin:index' %}">Админка</a></li>

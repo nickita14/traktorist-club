@@ -1,7 +1,7 @@
 import pytest
 from django.utils import timezone
 
-from club.models import SeasonKind
+from club.models import AchievementSettings, RankLadder, RankStep, SeasonKind
 from club.tests.factories import make_game, make_player, make_result, make_season
 
 PAST_YEAR = timezone.localdate().year - 1
@@ -59,3 +59,21 @@ def club():
         "games": {"t0": t0, "t1": t1, "t2": t2, "t3": t3, "c1": c1, "c2": c2},
         "players": {"A": a, "B": b, "C": c, "D": d, "E": e},
     }
+
+
+@pytest.fixture
+def award_rules():
+    """Short rank ladders and default parameters. The migration seed cannot be relied on (the
+    migration test flushes it), so view tests that show awards create their own rules."""
+    RankLadder.objects.all().delete()
+    AchievementSettings.objects.all().delete()
+    ladders = {
+        "veteran": ("Ветеран", [(1, "Новобранец"), (3, "Бывалый"), (5, "Старожил")]),
+        "feeder": ("Кормилец клуба", [(100, "Пайщик"), (1000, "Меценат")]),
+        "addon": ("Мистер Аддон", [(1, "Первый аддон")]),
+    }
+    for code, (title, steps) in ladders.items():
+        ladder = RankLadder.objects.create(code=code, title=title)
+        for threshold, step in steps:
+            RankStep.objects.create(ladder=ladder, threshold=threshold, title=step)
+    return AchievementSettings.objects.create()

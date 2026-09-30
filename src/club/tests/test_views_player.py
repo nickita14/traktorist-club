@@ -1,7 +1,10 @@
+import datetime
+
 import pytest
 from django.urls import reverse
 
-from club import views
+from club import achievements, views
+from club.models import RankLadder
 from club.tests.conftest import PAST_YEAR
 
 pytestmark = pytest.mark.django_db
@@ -15,6 +18,7 @@ def get_card(client, player):
 
 class TestPlayerCard:
     def test_heading_stamp_and_meta(self, client, club):
+        RankLadder.objects.all().delete()  # no ranks: the stamp keeps the join year
         response = get_card(client, club["players"]["A"])
         html = response.content.decode()
 
@@ -178,8 +182,8 @@ class TestPlayerCard:
         assert client.get("/players/nobody/").status_code == 404
 
     def test_query_count(self, client, club, django_assert_num_queries):
-        # Card totals, seasons, timeline, recent history, nav years.
-        with django_assert_num_queries(5):
+        # Card totals, seasons, timeline, recent history, nav years, the awards.
+        with django_assert_num_queries(5 + achievements.QUERY_COUNT):
             get_card(client, club["players"]["A"])
 
     def test_query_count_without_games(self, client, club, django_assert_num_queries):
@@ -250,3 +254,116 @@ class TestPlayerList:
     def test_query_count(self, client, club, django_assert_num_queries):
         with django_assert_num_queries(2):
             client.get(reverse("player_list"))
+
+
+@pytest.fixture
+def card(client, club, award_rules):
+    """Альфа's card with the short ladders of ``award_rules`` (see its docstring for the games)."""
+    return get_card(client, club["players"]["A"]).content.decode()
+
+
+def section(html, title_id):
+    start = html.index(f'id="{title_id}"')
+    return html[start : html.index("</section>", start)]
+
+
+class TestPlayerAwards:
+    """Альфа: 6 games, 400 lei of buy-ins, no add-ons; 1st without rebuys in t0, t1, t3,
+    ITM in t0-t2 (a hat-trick), the best cash net of c2; every club evening from t0 on."""
+
+    def test_rank_stamp(self, card):
+        assert (
+            '<p class="stamp stamp-ink"><span class="block">Звание</span>'
+            '<span class="block">«Старожил»</span></p>'
+        ) in card
+        assert "В клубе с" not in card
+
+    def test_awards_sit_between_the_strip_and_the_chart(self, card):
+        order = [
+            card.index(marker)
+            for marker in (
+                'class="stat-strip',
+                'id="ranks-title"',
+                'id="badges-title"',
+                'id="record-title"',
+                'id="chart-title"',
+            )
+        ]
+        assert order == sorted(order)
+
+    def test_rank_cells(self, card):
+        ranks = section(card, "ranks-title")
+        assert "Ветеран · Игры" in ranks
+        # Top step: full bar, no way further.
+        assert '<span class="rank-title">Старожил</span>' in ranks
+        assert '<span class="rank-of">III из III</span>' in ranks
+        assert "высшая ступень" in ranks
+        # Middle step: progress from Пайщик (100) to Меценат (1000).
+        assert '<span class="rank-of">I из II</span>' in ranks
+        assert '<progress class="rank-progress" value="300" max="900"></progress>' in ranks
+        assert 'до «Меценат» ещё <span class="font-num num-run">600</span>' in ranks
+        assert '<span class="font-num num-run">400</span> лей' in ranks
+        # No step yet: a faint dot, an empty bar, the way to the first step.
+        assert 'value="0" max="1"' in ranks
+        assert "до «Первый аддон» ещё" in ranks
+        assert '<span class="font-num num-run">0</span> аддонов' in ranks
+        assert (
+            '<span class="rank-step-passed">Новобранец</span> · '
+            '<span class="rank-step-passed">Бывалый</span> · '
+            '<span class="rank-step-current">Старожил</span>'
+        ) in ranks
+        assert '<span class="rank-step-future">Меценат</span>' in ranks
+
+    def test_badge_grid(self, card):
+        badges = section(card, "badges-title")
+        assert 'получено <span class="font-num not-italic">5</span> знаков' in badges
+        assert badges.count('<div class="award-stamp" data-badge=') == 3
+        assert badges.count('<div class="award-stamp award-stamp-none" data-badge=') == 2
+        assert '<span class="award-stamp-count">×3</span>' in badges  # one_buyin
+        assert f">15.03.{PAST_YEAR}</time>" in badges  # the last one without rebuys
+        assert badges.count("ещё не получен") == 2
+        # The hat-trick rule, with the length from the settings.
+        assert "в деньгах в 3 своих турнирах подряд" in badges
+
+    def test_record(self, card, club):
+        record = section(card, "record-title")
+        rows = record.split("<tr>")[2:]
+        dates = [row.split("<time")[1].split(">")[1].split("<")[0] for row in rows]
+        assert dates[0] == f"31.05.{PAST_YEAR}"  # spring's "Ударник", shared with Браво
+        assert [d[-4:] for d in dates] == sorted((d[-4:] for d in dates), reverse=True)
+        assert "Первая победа" in record and "Серия: 5 вечеров подряд" in record
+        assert "Старожил" in record and ">Звание<" in record
+        t0 = club["games"]["t0"]
+        assert f'<a href="/games/{t0.pk}/">Первая победа</a>' in record
+        assert "Турнир №\u00a01</a>" in record
+        assert f'href="/honors/?year={PAST_YEAR}"' in record
+        assert "Знак" not in record.replace("Знаки", "")
+
+    def test_games_but_no_awards(self, client, club, award_rules):
+        RankLadder.objects.all().delete()
+        html = get_card(client, club["players"]["D"]).content.decode()  # one cash game, +10
+        badges = section(html, "badges-title")
+        assert 'получено <span class="font-num not-italic">0</span> знаков' in badges
+        assert badges.count("ещё не получен") == 5
+        assert 'id="ranks-title"' not in html  # no ladders
+        assert 'id="record-title"' not in html  # nothing to list
+        # Чарли took c1's best net.
+        html = get_card(client, club["players"]["C"]).content.decode()
+        assert 'получено <span class="font-num not-italic">1</span> знак<' in html
+
+    def test_leading_line(self, client, award_rules, monkeypatch):
+        from club.models import SeasonKind
+        from club.tests.factories import make_game, make_player, make_result, make_season
+
+        monkeypatch.setattr(
+            achievements.timezone, "localdate", lambda: datetime.date(PAST_YEAR, 10, 20)
+        )
+        season = make_season(PAST_YEAR, SeasonKind.TOUR)
+        leader = make_player("Лидер")
+        for day in (5, 12):
+            make_result(make_game(season, day=day, month=10), leader, buyin=50, payout=50, place=1)
+        html = get_card(client, leader).content.decode()
+        assert (
+            '<span class="award-kind">Идёт</span> <span class="text-muted italic">'
+            f"Лидирует в «Ударнике осени {PAST_YEAR}»: 2 вечера.</span>"
+        ) in html

@@ -93,7 +93,7 @@
             <tr>
               <td class="col-rank num">{% if season.kind == "tour" %}{% optional_count result.place %}{% else %}{{ forloop.counter }}{% endif %}</td>
               <td class="col-player">
-                {% include "club/includes/player_name.html" with player=result.player %}
+                {% include "club/includes/player_name.html" with player=result.player %}{% for badge in result.badges %}<span class="award-mark" data-badge="{{ badge.code }}"><span class="sr-only">знак </span>{{ badge.title }}</span>{% endfor %}
                 {% if season.kind == "tour" %}{% include "club/includes/rebuy_note.html" %}{% endif %}
                 <span class="block font-num text-xs text-muted md:hidden">{{ result.buyin|money }} → {{ result.payout|money }}{% if result.chips_out is not None %} · фишек {{ result.chips_out|money }} · в котёл {% pot_value result.pot %}{% endif %}</span>
               </td>
@@ -134,4 +134,31 @@
       </p>
     {% endif %}
   </section>
+
+  {% if reached %}
+    <section class="mt-8" aria-labelledby="reached-title">
+      <div class="section-head"><h2 id="reached-title">По итогам игры присвоено</h2></div>
+      <div class="ledger-scroll">
+        <table class="ledger">
+          <thead>
+            <tr>
+              <th scope="col">Вид</th>
+              <th scope="col">Участник и награда</th>
+              <th scope="col" class="num">Основание</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for award in reached %}
+              <tr>
+                <td><span class="award-kind">{{ award.kind_label }}</span></td>
+                <td><a href="{{ award.player.get_absolute_url }}">{{ award.player.label }}</a> · {{ award.title }}</td>
+                <td class="text-right text-sm text-muted">{{ award.basis }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-3 max-w-prose text-sm text-muted italic">Знаки отмечены у имён в ведомости. Звания и грамоты, заслуженные этой игрой, перечислены отдельно.</p>
+    </section>
+  {% endif %}
 {% endblock %}

@@ -61,6 +61,17 @@ PLAYERS = Table(
     mobile=("name", "nick", "games", "net"),
 )
 
+# The badge matrix of /honors/ (sorted by club.achievements.sort_badge_rows): every column stays
+# visible on phones, so there is no sort row above it.
+BADGES = Table(
+    {
+        key: key
+        for key in ("name", "bubble", "cashier", "one_buyin", "comeback", "hat_trick", "total")
+    },
+    "total",
+    ascending_first=frozenset({"name"}),
+)
+
 MOBILE_LABELS = {
     "net": "итог",
     "games": "игры",
