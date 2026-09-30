@@ -1,0 +1,46 @@
+name: Image scan
+
+# Advisory: known fixable HIGH/CRITICAL vulnerabilities in the production image. New ones land in
+# the Debian base image independently of our code, so this blocks neither merges nor deploys.
+# Weekly as well as on pushes, so a new base-image CVE shows up without a push. A red run: once
+# the fix is in a rebuilt python:3.13-slim, deploy/deploy.sh rebuilds the current main on it
+# (docs/deploy.md, "Image updates"). Rerun by hand from the Actions tab (workflow_dispatch).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-scan-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  image-scan:
+    # Builds the image itself instead of sharing one with CI's image job through an artifact:
+    # about the same time, and no dependency between the two.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the production image
+        # --pull: the scan sees the base image the next deploy would get.
+        run: docker build --pull -t traktorist-web:scan .
+
+      - name: Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.70.0
+          image-ref: traktorist-web:scan
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

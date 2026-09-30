@@ -606,6 +606,8 @@ Finally, open the site and compare a few standings with the spreadsheet.
 Other details:
 - **Pre-deploy dumps.** A deploy with pending migrations saves a dump to `/var/backups/traktorist/pre-deploy/` before migrating. The last 5 are kept.
 - **Image updates.** Each deploy pulls newer `python:3.13-slim`, `postgres:17` and `caddy:2-alpine` images. Unchanged images and code leave the running containers alone, so a repeated deploy restarts nothing.
+  - Base images only change on a deploy. The `image-scan` workflow (Trivy, weekly and on every push) shows when the base has a fixable HIGH/CRITICAL issue. Once Docker has rebuilt `python:3.13-slim` with the fix, run `deploy/deploy.sh` to rebuild the current `main` on it. A finding that the latest base does not fix yet waits for it: the image does not run `apt-get upgrade`.
+  - The runtime image has no pip. The app runs from `/opt/venv`, built by uv from `uv.lock`. Never `pip install` into a container: change the lockfile and deploy.
 - **Server edits.** Don't edit files in `/srv/traktorist` on the server (except `.env`): `deploy.sh` and CI deploys refuse to run while the checkout has local changes. `git -C /srv/traktorist status` shows them.
 - **Changing `.env`.** Run `dc up -d` afterwards. Compose recreates the containers whose settings changed.
 - **Rotating secrets.**
@@ -812,7 +814,7 @@ shred -u ~/.config/traktorist/ci_key
 ### 12.6 Turn it on
 
 Merge the pull request that adds the `deploy` job to `ci.yml`. Its own merge into `main` is the first automatic deploy. In the repository's **Actions** tab, that run shows:
-1. `lint`, `unit`, `browser`, `security`, `image`, `image-scan` and `sonar` (CodeQL runs in its own workflow).
+1. `lint`, `unit`, `browser`, `security`, `image` and `sonar` (`image-scan` and CodeQL run in their own workflows).
 2. Then `deploy`, in the `production` environment. Its log shows:
    - `==> At <sha> <subject>` for the commit the merge put on `main`
    - the build

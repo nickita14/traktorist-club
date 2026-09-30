@@ -1,7 +1,8 @@
 name: CI
 
 # Independent jobs, one kind of problem each. Required for merging and deploying: lint, unit,
-# browser, security, image. Advisory: image-scan and sonar (and CodeQL, in codeql.yml).
+# browser, security, image. Advisory: sonar here, image-scan (image-scan.yml) and CodeQL
+# (codeql.yml).
 
 on:
   push:
@@ -258,7 +259,9 @@ jobs:
 
   image:
     # The production image must build (Tailwind, compilemessages, collectstatic), refuse to run
-    # outside production mode, and pass Django's deployment checks with production settings.
+    # outside production mode, carry no pip, and pass Django's deployment checks with production
+    # settings. One-off commands bypass the entrypoint (--entrypoint python): it expects the
+    # production environment and does work before exec, which is not what they test.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -267,7 +270,8 @@ jobs:
           persist-credentials: false
 
       - name: Build the production image
-        run: docker build -t traktorist-web:ci .
+        # --pull: always the newest python:3.13-slim and uv images, as the server builds them.
+        run: docker build --pull -t traktorist-web:ci .
 
       - name: Refuses to start in development mode
         run: |
@@ -275,6 +279,14 @@ jobs:
             echo "The image started with ENVIRONMENT=development" >&2
             exit 1
           fi
+
+      - name: Runtime has no pip
+        # The Dockerfile removes the base image's pip; the app runs from /opt/venv without it.
+        # The base interpreter, not `python` (/opt/venv's, which never sees /usr/local's packages
+        # and would pass with pip still there).
+        run: |
+          docker run --rm --entrypoint /usr/local/bin/python traktorist-web:ci -c \
+            "import importlib.util, sys; sys.exit(importlib.util.find_spec('pip') is not None)"
 
       - name: Django deployment check
         # Inside the image, so it checks the settings and packages that ship. check without
@@ -288,32 +300,8 @@ jobs:
           ADMIN_URL: hq-7f3k/
         run: |
           docker run --rm -e DEBUG -e ENVIRONMENT -e SECRET_KEY -e ALLOWED_HOSTS -e DATABASE_URL \
-            -e ADMIN_URL traktorist-web:ci python manage.py check --deploy --fail-level WARNING
-
-  image-scan:
-    # Advisory: known fixable HIGH/CRITICAL vulnerabilities in the production image. New ones land
-    # in the Debian base image independently of our code, so this job blocks neither merges nor
-    # deploys; a red run means rebuilding on a fixed base or bumping a package soon.
-    # It builds the image itself instead of sharing one with the image job through an artifact:
-    # about the same time, and no dependency between the two.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Build the production image
-        run: docker build -t traktorist-web:ci .
-
-      - name: Trivy
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          version: v0.70.0
-          image-ref: traktorist-web:ci
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
+            -e ADMIN_URL --entrypoint python traktorist-web:ci \
+            manage.py check --deploy --fail-level WARNING
 
   sonar:
     # Advisory: SonarQube Cloud analysis with the unit job's coverage. Skipped (green, with a
@@ -358,7 +346,7 @@ jobs:
     # forks' included) never get here, and a fork's own main skips it. It deploys the tested commit
     # (github.sha) through the CI key, whose forced command on the server (deploy/ci-deploy.sh)
     # accepts a commit SHA of main and nothing else. Setup: docs/deploy.md, section 12.
-    # image-scan, sonar and CodeQL are advisory and not waited for.
+    # sonar, image-scan and CodeQL are advisory and not waited for.
     needs: [lint, unit, browser, security, image]
     if: >-
       github.event_name == 'push'
