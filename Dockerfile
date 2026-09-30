@@ -3,7 +3,7 @@
 # build) and the compiled locale are produced here, so the server needs no Node, no Tailwind
 # binary and no gettext. See docs/deploy.md.
 
-FROM ghcr.io/astral-sh/uv:0.12.19 AS uv
+FROM ghcr.io/astral-sh/uv:0.12.21 AS uv
 
 # Dependencies only, into /opt/venv (outside /app, so compilemessages never walks into it).
 FROM python:3.13-slim AS builder
