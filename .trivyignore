@@ -1,0 +1,4 @@
+# OpenSSL in the python:3.13-slim base, fixed in 3.5.7-1~deb13u3, waiting for Docker to rebuild the base.
+# QUIC and DTLS are not used by the app. Remove once the base ships the fix.
+CVE-2026-75804 exp:2026-10-14
+CVE-2026-84782 exp:2026-10-14
