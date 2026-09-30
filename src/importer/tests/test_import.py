@@ -79,6 +79,20 @@ class TestFirstImport:
         assert sorted(g.leftover for g in cash) == [5, 60]
         assert not Result.objects.filter(game__season__kind=SeasonKind.CASH, place__isnull=False)
 
+    def test_live_only_fields_stay_unknown(self, run_import):
+        # Rebuys, add-ons and the elimination order are not in the sheet: unknown, never 0.
+        run_import()
+        assert not Result.objects.filter(rebuys__isnull=False).exists()
+        assert not Result.objects.filter(addon__isnull=False).exists()
+        assert not Result.objects.filter(out_order__isnull=False).exists()
+
+    def test_only_paid_places_are_known(self, run_import):
+        run_import()
+        tour = Result.objects.filter(game__season__kind=SeasonKind.TOUR)
+        assert not tour.filter(place__gt=3).exists()
+        assert not tour.filter(payout=0, place__isnull=False).exists()
+        assert not tour.filter(payout__gt=0, place__isnull=True).exists()
+
     def test_output(self, run_import):
         out = run_import()
         assert "ТУР2026_new!K1: 01.02.2025 -> 01.02.2026 (wrong year)" in out
@@ -129,6 +143,31 @@ class TestRerun:
                 "chips_out", flat=True
             )
         ) == {5000}
+
+    def test_backfilled_fields_survive(self, run_import):
+        run_import()
+        oleg = Result.objects.get(
+            game__date=datetime.date(2026, 3, 14), player__name="Олег Пробный"
+        )
+        oleg.place, oleg.rebuys, oleg.addon = 4, 1, True
+        oleg.save()
+
+        out = run_import()
+
+        oleg.refresh_from_db()
+        assert (oleg.place, oleg.rebuys, oleg.addon) == (4, 1, True)
+        assert "Олег Пробный" not in out[out.index("Changes in") : out.index("Verification")]
+
+    def test_sheet_wins_over_a_backfilled_paid_place(self, run_import):
+        # A zero payout cannot hold a paid place: the sheet clears it.
+        run_import()
+        Result.objects.filter(
+            game__date=datetime.date(2026, 3, 14), player__name="Олег Пробный"
+        ).update(place=3)
+
+        run_import()
+
+        assert places(datetime.date(2026, 3, 14))["Олег Пробный"] is None
 
     def test_game_only_in_database_is_kept(self, run_import):
         run_import()
