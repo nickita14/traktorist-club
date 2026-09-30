@@ -4,7 +4,8 @@ from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, User
 from django.core.exceptions import ValidationError
-from django.db.models import Case, Count, F, IntegerField, Q, Sum, When, Window
+from django.db.models import Case, Count, F, IntegerField, Min, Q, Sum, When, Window
+from django.shortcuts import redirect
 from django.utils.html import format_html
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from unfold.admin import ModelAdmin, TabularInline
@@ -26,10 +27,13 @@ from club import stats
 from club.formatting import format_money, format_net
 from club.models import (
     ADDON_ON_LEVEL,
+    AchievementSettings,
     BlindLevel,
     BlindStructure,
     Game,
     Player,
+    RankLadder,
+    RankStep,
     Result,
     Season,
     SeasonKind,
@@ -469,9 +473,9 @@ class GameAdmin(ModelAdmin):
         game = stats.annotate_leftover_check(Game.objects.select_related("season")).get(
             pk=form.instance.pk
         )
-        warning = stats.leftover_warning(game)
-        if warning:
-            self.message_user(request, warning, messages.WARNING)
+        for warning in (stats.leftover_warning(game), stats.buyin_warning(game)):
+            if warning:
+                self.message_user(request, warning, messages.WARNING)
 
     @action(description="Проставить места по выплатам", permissions=["change"])
     def fill_places(self, request, queryset):
@@ -482,3 +486,68 @@ class GameAdmin(ModelAdmin):
         if skipped:
             message += f" Кэш-игры пропущены (в них нет мест): {skipped}."
         self.message_user(request, message)
+
+
+class RankStepInline(TabularInline):
+    model = RankStep
+    fields = ["threshold", "title"]
+    ordering = ["threshold"]
+    extra = 0
+    show_count = True
+
+
+@admin.register(RankLadder)
+class RankLadderAdmin(ModelAdmin):
+    """The three ladders are fixed by their codes (club.achievements reads them by code): titles
+    and steps are edited here, ladders are never added or deleted."""
+
+    list_display = ["title", "code", "steps_count", "first_threshold"]
+    search_fields = ["title", "steps__title"]
+    search_help_text = "Лестница или звание"
+    fields = ["title", "code"]
+    readonly_fields = ["code"]
+    inlines = [RankStepInline]
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(steps_count=Count("steps"), first_threshold=Min("steps__threshold"))
+        )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @display(description="ступеней", ordering="steps_count", **number)
+    def steps_count(self, obj):
+        return number_cell(obj.steps_count)
+
+    @display(description="первый порог", ordering="first_threshold", **number)
+    def first_threshold(self, obj):
+        return number_cell(obj.first_threshold)
+
+
+@admin.register(AchievementSettings)
+class AchievementSettingsAdmin(ModelAdmin):
+    """One row of parameters: the list goes straight to it."""
+
+    fieldsets = [
+        ("Титулы", {"fields": ["no_skip_min_evenings", "always_itm_min_tournaments"]}),
+        ("Знаки отличия", {"fields": ["hat_trick_length", "comeback_min_rebuys"]}),
+        ("Грамоты", {"fields": ["itm_series_steps", "evening_series_steps"]}),
+    ]
+
+    def has_add_permission(self, request):
+        return super().has_add_permission(request) and not AchievementSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        row = AchievementSettings.objects.first()
+        if row is not None:
+            return redirect("admin:club_achievementsettings_change", row.pk)
+        return super().changelist_view(request, extra_context)

@@ -5,7 +5,17 @@ from django.contrib.auth.models import Group, User
 from django.urls import reverse
 from django.utils import timezone
 
-from club.models import BlindStructure, Game, Player, Result, Season, SeasonKind
+from club import stats
+from club.models import (
+    AchievementSettings,
+    BlindStructure,
+    Game,
+    Player,
+    RankLadder,
+    Result,
+    Season,
+    SeasonKind,
+)
 from club.tests.factories import (
     make_game,
     make_player,
@@ -55,6 +65,8 @@ def inline_data(game, row_overrides=None):
             "payout": result.payout,
             "place": result.place or "",
             "chips_out": "" if result.chips_out is None else result.chips_out,
+            "rebuys": "" if result.rebuys is None else result.rebuys,
+            "addon": {None: "unknown", True: "true", False: "false"}[result.addon],
         } | (row_overrides or {}).get(i, {})
         data |= {f"results-{i}-{key}": value for key, value in row.items()}
     return data
@@ -423,6 +435,156 @@ class TestLeftoverWarning:
         assert [g.pk for g in only_ok.result_list] == [cash_game.pk]
 
 
+class TestBackfill:
+    """Organizers fill in rebuys, add-ons and places of finished (imported) tournaments."""
+
+    def save(self, client, game, overrides):
+        url = reverse("admin:club_game_change", args=[game.pk])
+        return client.post(url, inline_data(game, overrides), follow=True)
+
+    def warnings(self, response):
+        return [str(m) for m in response.context["messages"] if m.level_tag == "warning"]
+
+    @pytest.fixture
+    def imported(self):
+        game = make_game(make_season(2025, SeasonKind.TOUR))
+        make_result(game, make_player("Альфа"), buyin=150, payout=250, place=1)
+        make_result(game, make_player("Браво"), buyin=100, payout=0)
+        make_result(game, make_player("Чарли"), buyin=50, payout=50, place=2)
+        make_result(game, make_player("Дельта"), buyin=50, payout=0)
+        return game
+
+    def test_places_beyond_the_paid_ones_and_live_fields(self, organizer_client, imported):
+        response = self.save(
+            organizer_client,
+            imported,
+            {
+                0: {"rebuys": 1, "addon": "true"},
+                1: {"place": 4, "rebuys": 0, "addon": "true"},
+                3: {"place": 5},
+            },
+        )
+        assert response.status_code == 200
+        rows = {
+            r.player.name: (r.place, r.rebuys, r.addon)
+            for r in imported.results.select_related("player")
+        }
+        assert rows == {
+            "Альфа": (1, 1, True),
+            "Браво": (4, 0, True),
+            "Чарли": (2, None, None),  # left unknown
+            "Дельта": (5, None, None),
+        }
+
+    def test_buyin_that_does_not_add_up_warns(self, organizer_client, imported):
+        # Альфа 150 = 50 + 1 rebuy + add-on: fine. Браво 100 with no rebuys and no add-on: 50.
+        response = self.save(
+            organizer_client,
+            imported,
+            {0: {"rebuys": 1, "addon": "true"}, 1: {"rebuys": 0, "addon": "false"}},
+        )
+        warnings = [w for w in self.warnings(response) if "Закупка не сходится" in w]
+        assert len(warnings) == 1
+        assert "Браво 100 вместо 50" in warnings[0] and "Альфа" not in warnings[0]
+        assert imported.results.get(player__name="Браво").rebuys == 0  # saved anyway
+
+    def test_unknown_fields_are_not_checked(self, organizer_client, imported):
+        response = self.save(organizer_client, imported, {1: {"rebuys": 0}})  # add-on unknown
+        assert not any("Закупка" in w for w in self.warnings(response))
+
+    def test_buyin_warning_follows_season_prices(self):
+        season = make_season(2025, SeasonKind.TOUR, entry_price=40, rebuy_price=30, addon_price=20)
+        game = make_game(season)
+        make_result(game, make_player(), buyin=90, rebuys=1, addon=True)
+        make_result(game, make_player(), buyin=40, rebuys=0, addon=False)
+        game = Game.objects.select_related("season").get(pk=game.pk)
+        assert stats.buyin_warning(game) is None
+        assert stats.expected_buyin(season, 2, False) == 100
+        assert stats.expected_buyin(season, None, True) is None
+
+    def test_cash_and_live_games_are_not_checked(self, cash_game):
+        assert (
+            stats.buyin_warning(Game.objects.select_related("season").get(pk=cash_game.pk)) is None
+        )
+        game = make_game(
+            make_season(2025, SeasonKind.TOUR), live_stage="rebuys", started_at=timezone.now()
+        )
+        make_result(game, make_player(), buyin=10, rebuys=0, addon=False)
+        assert stats.buyin_warning(Game.objects.select_related("season").get(pk=game.pk)) is None
+
+
+class TestAchievementRules:
+    def test_ladders_list_and_steps(self, organizer_client):
+        response = organizer_client.get(reverse("admin:club_rankladder_changelist"))
+        assert response.status_code == 200
+        assert "Мистер Аддон" in response.text
+        ladder = RankLadder.objects.get(code="veteran")
+        response = organizer_client.get(reverse("admin:club_rankladder_change", args=[ladder.pk]))
+        assert response.status_code == 200
+        assert "Почётный тракторист" in response.text
+
+    def test_ladders_cannot_be_added_or_deleted(self, admin_client):
+        ladder = RankLadder.objects.get(code="veteran")
+        assert admin_client.get(reverse("admin:club_rankladder_add")).status_code == 403
+        url = reverse("admin:club_rankladder_delete", args=[ladder.pk])
+        assert admin_client.get(url).status_code == 403
+
+    def test_organizer_edits_a_step(self, organizer_client):
+        ladder = RankLadder.objects.get(code="addon")
+        steps = list(ladder.steps.order_by("threshold"))
+        data = {
+            "title": ladder.title,
+            "steps-TOTAL_FORMS": len(steps),
+            "steps-INITIAL_FORMS": len(steps),
+            "steps-MIN_NUM_FORMS": 0,
+            "steps-MAX_NUM_FORMS": 1000,
+        }
+        for i, step in enumerate(steps):
+            data |= {
+                f"steps-{i}-id": step.pk,
+                f"steps-{i}-ladder": ladder.pk,
+                f"steps-{i}-threshold": 3 if i == 1 else step.threshold,
+                f"steps-{i}-title": step.title,
+            }
+        url = reverse("admin:club_rankladder_change", args=[ladder.pk])
+        response = organizer_client.post(url, data)
+        assert response.status_code == 302
+        assert ladder.steps.get(title="Любитель").threshold == 3
+
+    def test_settings_list_opens_the_single_row(self, organizer_client):
+        response = organizer_client.get(reverse("admin:club_achievementsettings_changelist"))
+        assert response.status_code == 302
+        assert response.url == reverse("admin:club_achievementsettings_change", args=[1])
+        page = organizer_client.get(response.url)
+        assert page.status_code == 200
+        assert "Хет-трик: призовых подряд" in page.text
+
+    def test_settings_cannot_be_added_twice_or_deleted(self, admin_client):
+        assert admin_client.get(reverse("admin:club_achievementsettings_add")).status_code == 403
+        url = reverse("admin:club_achievementsettings_delete", args=[1])
+        assert admin_client.get(url).status_code == 403
+
+    def test_series_steps_are_normalized_and_checked(self, admin_client):
+        url = reverse("admin:club_achievementsettings_change", args=[1])
+        data = {
+            "no_skip_min_evenings": 2,
+            "always_itm_min_tournaments": 5,
+            "hat_trick_length": 3,
+            "comeback_min_rebuys": 2,
+            "itm_series_steps": "4, 8",
+            "evening_series_steps": "3,5,10",
+        }
+        assert admin_client.post(url, data).status_code == 302
+        assert AchievementSettings.objects.get().itm_series == [4, 8]
+
+        response = admin_client.post(url, data | {"evening_series_steps": "5,3"})
+        assert response.status_code == 200
+        assert "Числа по возрастанию" in response.text
+        response = admin_client.post(url, data | {"hat_trick_length": 1})
+        assert response.status_code == 200
+        assert AchievementSettings.objects.get().hat_trick_length == 3
+
+
 class TestTheme:
     def test_admin_loads_tokens_palette_and_light_mode_script(self, admin_client):
         html = admin_client.get(reverse("admin:index")).content.decode()
@@ -485,6 +647,7 @@ class TestSearchPlaceholder:
             ("player", "Имя, ник или slug"),
             ("game", "Место или игрок"),
             ("blindstructure", "Название структуры"),
+            ("rankladder", "Лестница или звание"),
         ],
     )
     def test_placeholder_is_russian(self, admin_client, model, placeholder):
