@@ -312,7 +312,7 @@ No email is configured for Let's Encrypt: it no longer sends expiry notices, and
 
 ## 5. Admin accounts
 
-The admin lives at `https://traktorist.duckdns.org/<ADMIN_URL>` (the value in `.env`). Login is by username and password. Two-factor login is built in but off; section 10 turns it on.
+The admin lives at `https://traktorist.duckdns.org/<ADMIN_URL>` (the value in `.env`). Login is by username and password. Two-factor login is built in and off by default; section 10 turns it on.
 
 Organizers can also log in on the public site at `https://traktorist.duckdns.org/prokhodnaya/` (the "Войти" link in the footer), so the admin address never has to be typed or shared. It is the same login: the same lockout, and the code field when two-factor login is on. Only superusers and **Organizer** group members get in.
 
