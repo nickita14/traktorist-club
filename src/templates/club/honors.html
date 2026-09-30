@@ -60,7 +60,7 @@
                       {% if not row.holders %}
                         <span class="award-note">{% if result.no_data %}нет данных о фишках{% else %}претендентов нет{% endif %}</span>
                       {% elif result.running %}
-                        <span class="award-note">лидирует</span>
+                        <span class="award-note">{{ result.running_note }}</span>
                       {% elif row.tie %}
                         <span class="award-note">ничья</span>
                       {% endif %}

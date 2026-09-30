@@ -286,6 +286,17 @@ class TitleResult:
             return _lei(value)
         return f"{format_money(int(value))} из {format_money(int(value))}"
 
+    @property
+    def contest(self) -> bool:
+        """A title with one winner by definition (most evenings, largest pot): several holders
+        are a tie. The others are a bar several players can clear, so no tie."""
+        return self.code in ("udarnik", "patron")
+
+    @property
+    def running_note(self) -> str:
+        """The honors board's note after the holders of a running period."""
+        return "лидирует" if self.contest else "пока без промахов"
+
     def holder_metric(self, player_id: int) -> str:
         return self.metric_of(self.holder_values[self.holders.index(player_id)])
 
@@ -350,7 +361,7 @@ class HonorTitle:
 
     @property
     def tie(self) -> bool:
-        return not self.result.running and len(self.holders) > 1
+        return self.result.contest and not self.result.running and len(self.holders) > 1
 
 
 @dataclass(frozen=True)
@@ -711,7 +722,8 @@ class ClubAwards:
         return seasons
 
     def _always_itm(self) -> list[TitleResult]:
-        """ITM in every tournament played; the minimum applies once the season has ended."""
+        """ITM in every tournament played, at least the minimum of them (while the season runs
+        too: a contender needs as many tournaments as a holder)."""
         results = []
         for year, rows in self._by_season(SeasonKind.TOUR).items():
             period = _year_period("always_itm", year, SeasonKind.TOUR)
@@ -720,7 +732,7 @@ class ClubAwards:
             for row in rows:
                 played[row.player_id] += 1
                 itm[row.player_id] += row.itm
-            minimum = 1 if running else self.settings.always_itm_min_tournaments
+            minimum = self.settings.always_itm_min_tournaments
             holders = sorted(
                 pk for pk, count in played.items() if itm[pk] == count and count >= minimum
             )

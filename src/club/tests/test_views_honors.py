@@ -99,6 +99,7 @@ class TestTitles:
         assert '<span class="award-note">ничья</span>' in spring
         assert ">4 вечера</td>" in spring
         assert ">4 из 4</td>" in march
+        assert "ничья" not in march  # several players at every evening: not a contest
 
     def test_switcher(self, client, club, award_rules):
         html = html_of(client, sort="cashier")
@@ -140,6 +141,28 @@ class TestTitles:
             f'<a href="{b.get_absolute_url()}">Сеялка</a>, <span class="font-num">1 из 1</span>'
         ) in row
         assert row.count('<span class="val-zero">') == 1  # ПОКАЗАТЕЛЬ
+
+    def test_running_always_itm(self, client, award_rules, monkeypatch):
+        pin_today(monkeypatch, datetime.date(Y, 6, 1))
+        award_rules.always_itm_min_tournaments = 2
+        award_rules.save()
+        season = make_season(Y, SeasonKind.TOUR)
+        a, b = make_player("Точнов"), make_player("Второв")
+
+        def always():
+            titles = rows(section(html_of(client), "titles-title"))
+            return next(r for r in titles if "Всегда" in r)
+
+        first = make_game(season, day=5, month=3)
+        make_result(first, a, place=1)
+        make_result(first, b, place=2)
+        assert "претендентов нет" in always()  # one tournament is below the minimum
+        second = make_game(season, day=12, month=3)
+        make_result(second, a, place=1)
+        make_result(second, b, place=2)
+        row = always()
+        assert '<span class="award-note">пока без промахов</span>' in row
+        assert "лидирует" not in row and "ничья" not in row
 
     def test_running_winter_in_december(self, client, award_rules, monkeypatch):
         pin_today(monkeypatch, datetime.date(Y, 12, 25))

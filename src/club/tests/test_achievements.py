@@ -366,8 +366,9 @@ class TestUdarnik:
         running = title("udarnik", "Лето 2026")
         assert (running.running, names(running.holders)) == (True, ["Альфа"])
         loaded = achievements.load(TODAY)
-        # By period start: the tour season since January, summer since June, July.
-        assert [r.code for r in loaded.player(a.pk).leading] == ["always_itm", "udarnik", "no_skip"]
+        # By period start: summer since June, July. Two tournaments are below the "always ITM"
+        # minimum, even while the season runs.
+        assert [r.code for r in loaded.player(a.pk).leading] == ["udarnik", "no_skip"]
         assert not any(x.kind == Kind.TITLE and x.code == "udarnik" for x in loaded.awards)
 
         ended = title("udarnik", "Лето 2026", today=datetime.date(2026, 9, 1))
@@ -428,12 +429,17 @@ class TestAlwaysItm:
         rules.save()
         assert names(title("always_itm", "Турниры 2025").holders) == ["Альфа"]
 
-    def test_running_contenders(self, players):
+    def test_running_contenders_need_the_minimum(self, rules, players):
+        rules.always_itm_min_tournaments = 2
+        rules.save()
         a, b, *_ = players
         season = make_season(2026, SeasonKind.TOUR)
         tour(season, 3, 1, [(a, 1), (b, 4)])
+        assert title("always_itm", "Турниры 2026").holders == ()  # one tournament: nobody yet
+        tour(season, 3, 8, [(a, 2), (b, 4)])
         result = title("always_itm", "Турниры 2026")
         assert (result.running, names(result.holders)) == (True, ["Альфа"])
+        assert result.running_note == "пока без промахов"
 
     def test_running_without_contenders(self, players):
         a, b, *_ = players
@@ -675,9 +681,11 @@ class TestDisplay:
         board = achievements.load(TODAY).honors(2025)
         row = next(r for r in board.title_rows if r.result.code == "always_itm")
         assert [(p.name, m) for p, m in row.holders] == [("Альфа", "2 из 2"), ("Браво", "1 из 1")]
-        assert row.tie
+        assert not row.tie  # several players clearing the bar is not a tie
 
-    def test_lead_lines(self, players):
+    def test_lead_lines(self, rules, players):
+        rules.always_itm_min_tournaments = 2
+        rules.save()
         a, b, *_ = players
         season = make_season(2026, SeasonKind.TOUR)
         tour(season, 6, 5, [(a, 1), (b, 2)])
@@ -827,3 +835,27 @@ class TestSortBadgeRows:
     def test_by_name(self, rows):
         assert self.sort(rows, "name", False) == ["Альфа", "Браво", "Дельта", "Чарли"]
         assert self.sort(rows, "name", True) == ["Чарли", "Дельта", "Браво", "Альфа"]
+
+
+class TestContests:
+    def test_only_single_winner_titles_tie(self, rules, tour25, cash25, players):
+        rules.always_itm_min_tournaments = 1
+        rules.save()
+        a, b, *_ = players
+        tour(tour25, 3, 1, [(a, 1), (b, 2)])
+        tour(tour25, 3, 8, [(a, 1), (b, 2)])
+        cash(cash25, 3, 15, [(a, 50, 40, 5000), (b, 50, 40, 5000)])
+        rows = {r.result.code: r for r in achievements.load(TODAY).honors(2025).title_rows}
+        assert {code: (r.result.contest, r.tie) for code, r in rows.items()} == {
+            "udarnik": (True, True),
+            "patron": (True, True),
+            "always_itm": (False, False),
+            "no_skip": (False, False),
+        }
+
+    def test_running_notes(self, players):
+        a, *_ = players
+        tour(make_season(2026, SeasonKind.TOUR), 7, 3, [(a, 1)])
+        cash(make_season(2026, SeasonKind.CASH), 7, 10, [(a, 50, 0, 1230)])
+        assert title("udarnik", "Лето 2026").running_note == "лидирует"
+        assert title("patron", "Кэш 2026").running_note == "лидирует"
