@@ -1,4 +1,5 @@
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import F, Q
 from django.urls import reverse
@@ -520,3 +521,164 @@ class Result(models.Model):
             errors["addon"] = "Аддон бывает только в турнирах."
         if errors:
             raise ValidationError(errors)
+
+
+class LadderCode(models.TextChoices):
+    """The lifetime counters a rank ladder can climb; the code picks the counter."""
+
+    VETERAN = "veteran", "Сыграно игр"
+    FEEDER = "feeder", "Сумма закупок, лей"
+    ADDON = "addon", "Аддонов"
+
+
+class RankLadder(models.Model):
+    Code = LadderCode
+
+    code = models.CharField("счётчик", max_length=10, choices=LadderCode, unique=True)
+    title = models.CharField("название", max_length=60)
+
+    class Meta:
+        verbose_name = "лестница званий"
+        verbose_name_plural = "лестницы званий"
+        ordering = ["pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(code__in=LadderCode.values), name="rankladder_code_valid"
+            ),
+            models.CheckConstraint(condition=~Q(title=""), name="rankladder_title_not_empty"),
+        ]
+
+    def __str__(self) -> str:
+        return self.title
+
+
+class RankStep(models.Model):
+    ladder = models.ForeignKey(
+        RankLadder, on_delete=models.CASCADE, related_name="steps", verbose_name="лестница"
+    )
+    threshold = models.PositiveIntegerField(
+        "порог", help_text="Звание даётся, когда счётчик игрока достигает порога."
+    )
+    title = models.CharField("звание", max_length=60)
+
+    class Meta:
+        verbose_name = "ступень"
+        verbose_name_plural = "ступени"
+        ordering = ["ladder", "threshold"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["ladder", "threshold"],
+                name="rankstep_ladder_threshold_unique",
+                violation_error_message="На лестнице уже есть ступень с таким порогом.",
+            ),
+            models.UniqueConstraint(
+                fields=["ladder", "title"],
+                name="rankstep_ladder_title_unique",
+                violation_error_message="На этой лестнице уже есть такое звание.",
+            ),
+            models.CheckConstraint(
+                condition=Q(threshold__gte=1), name="rankstep_threshold_positive"
+            ),
+            models.CheckConstraint(condition=~Q(title=""), name="rankstep_title_not_empty"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.threshold})"
+
+
+STEPS_FORMAT = r"^[1-9][0-9]*(,[1-9][0-9]*)*$"
+
+
+def _clean_steps(value: str, field: str) -> str:
+    """Normalize "5, 10" to "5,10": positive integers, increasing."""
+    parts = [part.strip() for part in value.split(",")]
+    if not all(part.isdigit() and int(part) > 0 for part in parts):
+        raise ValidationError({field: "Целые числа больше нуля через запятую, например 5,10."})
+    numbers = [int(part) for part in parts]
+    if numbers != sorted(set(numbers)):
+        raise ValidationError({field: "Числа по возрастанию, без повторов."})
+    return ",".join(str(number) for number in numbers)
+
+
+class AchievementSettings(models.Model):
+    """The achievement parameters: one row (pk 1), created by a migration.
+
+    club.achievements uses the field defaults when the row is missing.
+    """
+
+    no_skip_min_evenings = models.PositiveSmallIntegerField(
+        "«Ни одного прогула»: минимум вечеров в месяце",
+        default=2,
+        validators=[MinValueValidator(1)],
+        help_text="Месяц с меньшим числом клубных вечеров не считается.",
+    )
+    always_itm_min_tournaments = models.PositiveSmallIntegerField(
+        "«Всегда в деньгах»: минимум турниров за сезон",
+        default=5,
+        validators=[MinValueValidator(1)],
+    )
+    hat_trick_length = models.PositiveSmallIntegerField(
+        "хет-трик: призовых подряд",
+        default=3,
+        validators=[MinValueValidator(2)],
+        help_text="Пропущенные турниры серию не прерывают.",
+    )
+    comeback_min_rebuys = models.PositiveSmallIntegerField(
+        "камбэк: минимум ребаев",
+        default=2,
+        validators=[MinValueValidator(1)],
+        help_text="Считается по закупке: вход плюс столько ребаев или больше.",
+    )
+    itm_series_steps = models.CharField(
+        "грамоты за призовые подряд",
+        max_length=60,
+        default="5,10",
+        help_text="Через запятую: 5,10 даёт грамоты за 5 и за 10 призовых подряд.",
+    )
+    evening_series_steps = models.CharField(
+        "грамоты за вечера подряд",
+        max_length=60,
+        default="3,5,10",
+        help_text="Через запятую; пропущенный клубный вечер прерывает серию.",
+    )
+
+    class Meta:
+        verbose_name = "параметры наград"
+        verbose_name_plural = "параметры наград"
+        constraints = [
+            models.CheckConstraint(condition=Q(pk=1), name="achievementsettings_single_row"),
+            models.CheckConstraint(
+                condition=Q(
+                    no_skip_min_evenings__gte=1,
+                    always_itm_min_tournaments__gte=1,
+                    hat_trick_length__gte=2,
+                    comeback_min_rebuys__gte=1,
+                ),
+                name="achievementsettings_positive",
+            ),
+            models.CheckConstraint(
+                condition=Q(itm_series_steps__regex=STEPS_FORMAT)
+                & Q(evening_series_steps__regex=STEPS_FORMAT),
+                name="achievementsettings_steps_format",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return "Параметры наград"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        self.itm_series_steps = _clean_steps(self.itm_series_steps, "itm_series_steps")
+        self.evening_series_steps = _clean_steps(self.evening_series_steps, "evening_series_steps")
+
+    @property
+    def itm_series(self) -> list[int]:
+        return [int(step) for step in self.itm_series_steps.split(",")]
+
+    @property
+    def evening_series(self) -> list[int]:
+        return [int(step) for step in self.evening_series_steps.split(",")]

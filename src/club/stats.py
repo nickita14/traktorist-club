@@ -270,6 +270,42 @@ def leftover_warning(game: Game) -> str | None:
     )
 
 
+def expected_buyin(season: Season, rebuys: int | None, addon: bool | None) -> int | None:
+    """What a tournament buy-in should be at ``season``'s prices: entry, rebuys and the add-on.
+
+    None when rebuys or the add-on is unknown (an imported game): nothing to compare with.
+    """
+    if rebuys is None or addon is None:
+        return None
+    return season.entry_price + rebuys * season.rebuy_price + (season.addon_price if addon else 0)
+
+
+def buyin_warning(game: Game) -> str | None:
+    """Warning text when a finished tournament's buy-ins differ from expected_buyin, else None.
+
+    Only a warning: historical prices may differ from the season's current ones. One query
+    (``game.season`` must be loaded).
+    """
+    season = game.season
+    if season.kind != SeasonKind.TOUR or game.is_live:
+        return None
+    mismatches = []
+    rows = game.results.order_by("player__name", "player__nickname").values_list(
+        "player__name", "player__nickname", "buyin", "rebuys", "addon"
+    )
+    for name, nickname, buyin, rebuys, addon in rows:
+        expected = expected_buyin(season, rebuys, addon)
+        if expected is not None and buyin != expected:
+            mismatches.append(f"{nickname or name} {buyin} вместо {expected}")
+    if not mismatches:
+        return None
+    return (
+        f"Закупка не сходится с ребаями и аддоном по ценам сезона (вход {season.entry_price}, "
+        f"ребай {season.rebuy_price}, аддон {season.addon_price}): {', '.join(mismatches)}. "
+        "Если цены тогда были другими, всё в порядке."
+    )
+
+
 def annotate_season_totals(seasons: QuerySet[Season]) -> QuerySet[Season]:
     """Add games_count, players_count, buyin_total, payout_total, leftover and last_game_date.
 

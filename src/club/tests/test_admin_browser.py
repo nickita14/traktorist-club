@@ -169,6 +169,10 @@ def test_primary_is_ink_and_danger_is_stamp_red(admin_page, game):
         pytest.param(lambda game: reverse("admin:club_season_changelist"), id="changelist"),
         pytest.param(lambda game: reverse("admin:club_game_change", args=[game.pk]), id="form"),
         pytest.param(lambda game: reverse("game_detail", args=[game.pk]), id="public"),
+        pytest.param(lambda game: reverse("admin:club_rankladder_changelist"), id="ladders"),
+        pytest.param(
+            lambda game: reverse("admin:club_achievementsettings_changelist"), id="settings"
+        ),
     ],
 )
 def test_pages_run_without_csp_violations(admin_page, game, path):

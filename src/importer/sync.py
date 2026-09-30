@@ -2,8 +2,9 @@
 
 Natural keys: Season (year, kind), Player (name, nickname), Game (season, date),
 Result (game, player). Buy-in and payout come from the sheet, tour places are recomputed from
-payouts, and results missing from the sheet are deleted. Game.location and Result.chips_out are
-never touched; games that exist only in the database are kept and reported.
+payouts (a place beyond the paid ones, backfilled in the admin, is kept while the sheet pays that
+player nothing), and results missing from the sheet are deleted. Game.location, Result.chips_out,
+rebuys and addon are never touched; games that exist only in the database are kept and reported.
 """
 
 from collections import Counter, defaultdict
@@ -167,6 +168,8 @@ def _sync_results(game: Game, season: Season, entries: dict, changes: SheetChang
     for player, entry in entries.items():
         wanted = {"buyin": entry.buyin, "payout": entry.payout, "place": places[player.pk]}
         result = existing.pop(player.pk, None)
+        if result is not None and _backfilled_place(result, wanted["place"], season):
+            del wanted["place"]
         if result is None:
             result = Result(game=game, player=player, **wanted)
             result.full_clean()
@@ -195,3 +198,13 @@ def _sync_results(game: Game, season: Season, entries: dict, changes: SheetChang
         changes.details.append(f"{where} {result.player}: deleted (not in the sheet)")
         result.delete()
         changes.counts["results deleted"] += 1
+
+
+def _backfilled_place(result: Result, suggested: int | None, season: Season) -> bool:
+    """A place beyond the paid ones that the sheet cannot know (it only has payouts)."""
+    return (
+        season.kind == SeasonKind.TOUR
+        and suggested is None
+        and result.place is not None
+        and result.place > season.paid_places
+    )
