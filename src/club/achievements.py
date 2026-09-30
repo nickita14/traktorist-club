@@ -13,15 +13,15 @@ place is not ITM (and not a bubble), a NULL chips_out leaves the result out of t
 import calendar
 import datetime
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from fractions import Fraction
 
 from django.utils import timezone
 
-from club.formatting import ru_plural
+from club.formatting import format_amount, format_money, format_net, ru_plural
 from club.models import AchievementSettings, LadderCode, Player, RankStep, Result, SeasonKind
-from club.stats import chips_value
+from club.stats import chips_value, game_number
 
 # settings row, ladder steps, finished results, players.
 QUERY_COUNT = 4
@@ -32,6 +32,22 @@ class Kind(StrEnum):
     BADGE = "badge"
     DIPLOMA = "diploma"
     TITLE = "title"
+
+
+KIND_LABELS = {
+    Kind.RANK: "Звание",
+    Kind.BADGE: "Знак",
+    Kind.DIPLOMA: "Грамота",
+    Kind.TITLE: "Титул",
+}
+
+# Per ladder code: the counter's name, its unit (one, few, many) and what a rank's basis adds
+# after the threshold ("5 000 лей закупок").
+LADDER_COUNTERS = {
+    LadderCode.VETERAN: ("Игры", ("игра", "игры", "игр"), ""),
+    LadderCode.FEEDER: ("Закупки", ("лей", "лея", "лей"), " закупок"),
+    LadderCode.ADDON: ("Аддоны", ("аддон", "аддона", "аддонов"), ""),
+}
 
 
 # Repeatable, each with the game that earned it. The order is the display order.
@@ -77,11 +93,34 @@ def evening_series_title(length: int) -> str:
     return f"Серия: {length} {ru_plural(length, ('вечер', 'вечера', 'вечеров'))} подряд"
 
 
+def _count(value: int, forms: tuple[str, str, str]) -> str:
+    return f"{format_money(value)} {ru_plural(value, forms)}"
+
+
+def _lei(value: int | Fraction) -> str:
+    """'10 лей', '2 лея', '12,30 лея' (a fractional amount takes the genitive singular)."""
+    if isinstance(value, Fraction) and value.denominator != 1:
+        return f"{format_amount(value)} лея"
+    return _count(int(value), ("лей", "лея", "лей"))
+
+
+def _since(date: datetime.date) -> str:
+    return f"подряд с {date:%d.%m.%Y}"
+
+
 @dataclass(frozen=True)
 class GameRef:
     pk: int
     date: datetime.date
     kind: str
+    # The game's number in its season, as on the rest of the site (stats.game_number).
+    number: int = 0
+
+    @property
+    def document(self) -> str:
+        """How award lists name the game: "Турнир № 34", "Вечер № 12"."""
+        noun = "Турнир" if self.kind == SeasonKind.TOUR else "Вечер"
+        return f"{noun} №\u00a0{self.number}"
 
 
 @dataclass(frozen=True)
@@ -96,6 +135,19 @@ class Ladder:
     title: str
     steps: tuple[Step, ...]
 
+    @property
+    def counter_label(self) -> str:
+        return LADDER_COUNTERS[self.code][0]
+
+    @property
+    def unit_forms(self) -> str:
+        """For the ``plural`` template filter: "игра,игры,игр"."""
+        return ",".join(LADDER_COUNTERS[self.code][1])
+
+    def counter_text(self, value: int) -> str:
+        """'86 игр', '7 400 лей', '11 аддонов'."""
+        return _count(value, LADDER_COUNTERS[self.code][1])
+
 
 @dataclass(frozen=True)
 class Period:
@@ -108,6 +160,8 @@ class Period:
     start: datetime.date
     end: datetime.date
     season_kind: str | None = None
+    # A meteorological season in the genitive, for the running-title line: "осени 2026".
+    genitive: str = ""
 
 
 @dataclass(frozen=True)
@@ -123,6 +177,20 @@ class Award:
     game: GameRef | None = None
     period: Period | None = None
     ladder: Ladder | None = None
+    # Why it was given, in a few words: "50 игр", "подряд с 01.03.2025", "13 вечеров".
+    basis: str = ""
+    player: Player | None = field(default=None, compare=False, repr=False)
+
+    @property
+    def kind_label(self) -> str:
+        return KIND_LABELS[self.kind]
+
+    @property
+    def document(self) -> str:
+        """The game that earned it, or the title's period."""
+        if self.game is not None:
+            return self.game.document
+        return self.period.label if self.period else ""
 
 
 @dataclass(frozen=True)
@@ -151,13 +219,42 @@ class RankProgress:
         base = self.step.threshold if self.step else 0
         return (self.next_step.threshold if self.next_step else self.value) - base
 
+    @property
+    def step_number(self) -> int:
+        """1 for the first step, 0 below it."""
+        return self.ladder.steps.index(self.step) + 1 if self.step else 0
+
+    @property
+    def step_count(self) -> int:
+        return len(self.ladder.steps)
+
+    @property
+    def step_states(self) -> list[tuple[Step, str]]:
+        """Every step of the ladder: "passed", "current" or "future"."""
+        return [
+            (
+                step,
+                "current"
+                if step == self.step
+                else "passed"
+                if index < self.step_number
+                else "future",
+            )
+            for index, step in enumerate(self.ladder.steps, start=1)
+        ]
+
+    @property
+    def value_text(self) -> str:
+        return self.ladder.counter_text(self.value)
+
 
 @dataclass(frozen=True)
 class BadgeCount:
     code: str
     title: str
     count: int
-    last: Award
+    last: Award | None
+    rule: str = ""
 
 
 @dataclass(frozen=True)
@@ -167,7 +264,9 @@ class TitleResult:
     ``holders``: the winners once the period has ended, the current leaders while it runs
     (``running``); ties share it. Empty holders mean "претендентов нет", unless ``no_data``:
     nothing in the period can decide it (a cash season without a single known chip stack).
-    ``value`` is the winning figure (evenings, tournaments, pot in lei as a Fraction).
+    ``value`` is the winning figure (evenings, tournaments, pot in lei as a Fraction);
+    ``holder_values`` is each holder's own figure, in the order of ``holders`` (they differ only
+    for "Всегда в деньгах", where holders may have played a different number of tournaments).
     """
 
     code: str
@@ -177,6 +276,38 @@ class TitleResult:
     holders: tuple[int, ...] = ()
     value: int | Fraction | None = None
     no_data: bool = False
+    holder_values: tuple[int | Fraction, ...] = ()
+
+    def metric_of(self, value: int | Fraction) -> str:
+        """The figure as the honors board prints it: "13 вечеров", "4 из 4", "12,30 лея"."""
+        if self.code == "udarnik":
+            return _count(int(value), ("вечер", "вечера", "вечеров"))
+        if self.code == "patron":
+            return _lei(value)
+        return f"{format_money(int(value))} из {format_money(int(value))}"
+
+    def holder_metric(self, player_id: int) -> str:
+        return self.metric_of(self.holder_values[self.holders.index(player_id)])
+
+    @property
+    def shared_metric(self) -> str | None:
+        """The figure when every holder has the same one; None without holders or when they
+        differ (each holder's own figure is shown instead)."""
+        if not self.holder_values or len(set(self.holder_values)) > 1:
+            return None
+        return self.metric_of(self.holder_values[0])
+
+    def lead_text(self, player_id: int) -> str:
+        """The player card's line for a running title the player leads."""
+        metric = self.holder_metric(player_id)
+        label = self.period.label
+        if self.code == "udarnik":
+            return f"Лидирует в «Ударнике {self.period.genitive}»: {metric}."
+        if self.code == "no_skip":
+            return f"Ни одного прогула за {label[0].lower()}{label[1:]}: пока {metric}."
+        if self.code == "always_itm":
+            return f"Всегда в деньгах в турнирах {self.period.year}: пока {metric}."
+        return f"Лидирует в «Меценате» кэша {self.period.year}: {metric}."
 
 
 @dataclass(frozen=True)
@@ -186,6 +317,21 @@ class PlayerAwards:
     diplomas: list[Award]
     titles: list[Award]
     leading: list[TitleResult]
+    # Every badge in display order, earned or not (count 0, last None), with its rule.
+    badge_slots: list[BadgeCount] = field(default_factory=list)
+    # Diplomas, ended titles and every rank step reached, newest first.
+    record: list[Award] = field(default_factory=list)
+    # One line per running title the player leads (TitleResult.lead_text).
+    lead_lines: list[str] = field(default_factory=list)
+
+    @property
+    def badge_total(self) -> int:
+        return sum(badge.count for badge in self.badges)
+
+    @property
+    def veteran(self) -> RankProgress | None:
+        """The current step on the veteran ladder, for the card's stamp; None below it."""
+        return next((r for r in self.ranks if r.ladder.code == LadderCode.VETERAN and r.step), None)
 
 
 @dataclass(frozen=True)
@@ -195,14 +341,45 @@ class GameAwards:
 
 
 @dataclass(frozen=True)
+class HonorTitle:
+    """A row of the honors board's title table: the result with its holders as players, each
+    with their own figure."""
+
+    result: TitleResult
+    holders: list[tuple[Player, str]]
+
+    @property
+    def tie(self) -> bool:
+        return not self.result.running and len(self.holders) > 1
+
+
+@dataclass(frozen=True)
+class BadgeRow:
+    """A row of the badge matrix: counts in the order of BADGES."""
+
+    player: Player
+    counts: list[int]
+
+    @property
+    def total(self) -> int:
+        return sum(self.counts)
+
+
+@dataclass(frozen=True)
 class HonorsBoard:
-    """Titles filed under one year; the badge matrix and the rank table are all-time."""
+    """Titles filed under one year (plus every running title on the default page); the badge
+    matrix and the rank table are all-time, and so are the totals."""
 
     year: int
     titles: list[TitleResult]
     badge_codes: list[str]
     badge_matrix: list[tuple[Player, dict[str, int]]]
     rank_table: list[tuple[Player, list[RankProgress]]]
+    title_rows: list[HonorTitle] = field(default_factory=list)
+    badge_rows: list[BadgeRow] = field(default_factory=list)
+    participants: int = 0
+    badge_total: int = 0
+    diploma_title_total: int = 0
 
 
 @dataclass(frozen=True)
@@ -243,20 +420,22 @@ def _season_period(date: datetime.date) -> Period:
     """The meteorological season of ``date``; winter is filed under the year it ends."""
     year, month = date.year, date.month
     if month in (3, 4, 5):
-        start, end, label = (year, 3), (year, 5), f"Весна {year}"
+        start, end, label, genitive = (year, 3), (year, 5), f"Весна {year}", f"весны {year}"
     elif month in (6, 7, 8):
-        start, end, label = (year, 6), (year, 8), f"Лето {year}"
+        start, end, label, genitive = (year, 6), (year, 8), f"Лето {year}", f"лета {year}"
     elif month in (9, 10, 11):
-        start, end, label = (year, 9), (year, 11), f"Осень {year}"
+        start, end, label, genitive = (year, 9), (year, 11), f"Осень {year}", f"осени {year}"
     else:
         ends = year + 1 if month == 12 else year
-        start, end, label = (ends - 1, 12), (ends, 2), f"Зима {ends - 1}/{ends % 100:02d}"
+        years = f"{ends - 1}/{ends % 100:02d}"
+        start, end, label, genitive = (ends - 1, 12), (ends, 2), f"Зима {years}", f"зимы {years}"
     return Period(
         code="udarnik",
         label=label,
         year=end[0],
         start=datetime.date(*start, 1),
         end=_month_end(*end),
+        genitive=genitive,
     )
 
 
@@ -335,6 +514,8 @@ class ClubAwards:
                         result.period.end,
                         None,
                         result.period,
+                        basis=result.holder_metric(pk),
+                        player=self.players.get(pk),
                     )
                     for pk in result.holders
                 ]
@@ -353,9 +534,19 @@ class ClubAwards:
             games.setdefault(row.game.pk, (row.game, []))[1].append(row)
         return list(games.values())
 
-    def _award(self, kind: Kind, code: str, title: str, row: _Row, **extra) -> None:
+    def _award(self, kind: Kind, code: str, title: str, row: _Row, basis: str, **extra) -> None:
         self.awards.append(
-            Award(kind, code, title, row.player_id, row.game.date, row.game, **extra)
+            Award(
+                kind,
+                code,
+                title,
+                row.player_id,
+                row.game.date,
+                row.game,
+                basis=basis,
+                player=self.players.get(row.player_id),
+                **extra,
+            )
         )
 
     def _badges(self) -> None:
@@ -364,15 +555,20 @@ class ClubAwards:
             if game.kind == SeasonKind.TOUR:
                 for row in rows:
                     if row.place == row.paid_places + 1:
-                        self._award(Kind.BADGE, "bubble", BADGES["bubble"], row)
+                        paid = ru_plural(row.paid_places, ("призовом", "призовых", "призовых"))
+                        basis = f"{row.place} место при {row.paid_places} {paid}"
+                        self._award(Kind.BADGE, "bubble", BADGES["bubble"], row, basis)
                     if row.place == 1 and row.buyin == row.entry_price:
-                        self._award(Kind.BADGE, "one_buyin", BADGES["one_buyin"], row)
+                        basis = "1 место без докупок"
+                        self._award(Kind.BADGE, "one_buyin", BADGES["one_buyin"], row, basis)
                     if row.itm and row.buyin >= row.entry_price + extra_buys * row.rebuy_price:
-                        self._award(Kind.BADGE, "comeback", BADGES["comeback"], row)
+                        basis = f"{row.place} место, закупка {_lei(row.buyin)}"
+                        self._award(Kind.BADGE, "comeback", BADGES["comeback"], row, basis)
             else:
                 winners, _ = _leaders({row: row.net for row in rows})
                 for row in winners:
-                    self._award(Kind.BADGE, "cashier", BADGES["cashier"], row)
+                    basis = f"лучший итог вечера, {format_net(row.net)}"
+                    self._award(Kind.BADGE, "cashier", BADGES["cashier"], row, basis)
 
     def _streaks(self) -> None:
         """Hat-tricks, ITM series and the first win, over each player's own tournaments: a
@@ -384,17 +580,21 @@ class ClubAwards:
             if row.game.kind == SeasonKind.TOUR:
                 by_player[row.player_id].append(row)
         for rows in by_player.values():
-            streak, won, done = 0, False, set()
+            streak, won, done, start = 0, False, set(), None
             for row in rows:
                 if row.place == 1 and not won:
                     won = True
-                    self._award(Kind.DIPLOMA, FIRST_WIN, FIRST_WIN_TITLE, row)
+                    self._award(Kind.DIPLOMA, FIRST_WIN, FIRST_WIN_TITLE, row, "1 место в турнире")
                 streak = streak + 1 if row.itm else 0
+                if streak == 1:
+                    start = row.game.date
                 if streak == length:
-                    self._award(Kind.BADGE, "hat_trick", BADGES["hat_trick"], row)
+                    basis = f"в деньгах {_since(start)}"
+                    self._award(Kind.BADGE, "hat_trick", BADGES["hat_trick"], row, basis)
                 if streak in series and streak not in done:
                     done.add(streak)
-                    self._award(Kind.DIPLOMA, f"itm_series_{streak}", itm_series_title(streak), row)
+                    code, title = f"itm_series_{streak}", itm_series_title(streak)
+                    self._award(Kind.DIPLOMA, code, title, row, f"в деньгах {_since(start)}")
 
     def _evenings(self) -> None:
         """Evening series: club evenings in a row; a missed one breaks it. The earning game is
@@ -404,17 +604,19 @@ class ClubAwards:
         for row in self._rows:
             first_game.setdefault((row.player_id, row.game.date), row)
         for player_id in {row.player_id for row in self._rows}:
-            streak, done = 0, set()
+            streak, done, start = 0, set(), None
             for date in self.evenings:
                 row = first_game.get((player_id, date))
                 if row is None:
                     streak = 0
                     continue
                 streak += 1
+                if streak == 1:
+                    start = date
                 if streak in series and streak not in done:
                     done.add(streak)
-                    title = evening_series_title(streak)
-                    self._award(Kind.DIPLOMA, f"evening_series_{streak}", title, row)
+                    code, title = f"evening_series_{streak}", evening_series_title(streak)
+                    self._award(Kind.DIPLOMA, code, title, row, f"на вечерах {_since(start)}")
 
     def _ranks(self) -> None:
         increments = {
@@ -433,7 +635,8 @@ class ClubAwards:
                     continue
                 for step in ladder.steps:
                     if before < step.threshold <= after:
-                        self._award(Kind.RANK, code, step.title, row, ladder=ladder)
+                        basis = ladder.counter_text(step.threshold) + LADDER_COUNTERS[code][2]
+                        self._award(Kind.RANK, code, step.title, row, basis, ladder=ladder)
                         self._reached[(row.player_id, code)].append(self.awards[-1])
 
     def _titles(self) -> list[TitleResult]:
@@ -469,6 +672,7 @@ class ClubAwards:
                     self._running(period),
                     tuple(sorted(holders)),
                     best,
+                    holder_values=(best,) * len(holders),
                 )
             )
         return results
@@ -494,6 +698,7 @@ class ClubAwards:
                     running,
                     tuple(sorted(holders)),
                     len(dates),
+                    holder_values=(len(dates),) * len(holders),
                 )
             )
         return results
@@ -516,7 +721,9 @@ class ClubAwards:
                 played[row.player_id] += 1
                 itm[row.player_id] += row.itm
             minimum = 1 if running else self.settings.always_itm_min_tournaments
-            holders = [pk for pk, count in played.items() if itm[pk] == count and count >= minimum]
+            holders = sorted(
+                pk for pk, count in played.items() if itm[pk] == count and count >= minimum
+            )
             value = max((played[pk] for pk in holders), default=None)
             results.append(
                 TitleResult(
@@ -524,8 +731,9 @@ class ClubAwards:
                     TITLES["always_itm"],
                     period,
                     running,
-                    tuple(sorted(holders)),
+                    tuple(holders),
                     value,
+                    holder_values=tuple(played[pk] for pk in holders),
                 )
             )
         return results
@@ -552,6 +760,7 @@ class ClubAwards:
                     tuple(sorted(holders)),
                     best,
                     no_data=not pots,
+                    holder_values=(best,) * len(holders),
                 )
             )
         return results
@@ -579,19 +788,44 @@ class ClubAwards:
             )
         return progress
 
+    def badge_rules(self) -> dict[str, str]:
+        """One short rule per badge, with the numbers of the current settings."""
+        extra_buys = self.settings.comeback_min_rebuys
+        length = self.settings.hat_trick_length
+        return {
+            "bubble": "первое место сразу за призовыми",
+            "cashier": "лучший итог кэш-вечера, в плюсе",
+            "one_buyin": "победа в турнире без докупок",
+            "comeback": (
+                f"в деньгах после {extra_buys} "
+                f"{ru_plural(extra_buys, ('докупки', 'докупок', 'докупок'))} и более"
+            ),
+            # Over the player's own tournaments: one they skipped does not break the streak.
+            "hat_trick": (
+                f"в деньгах в {length} "
+                f"{ru_plural(length, ('своём турнире', 'своих турнирах', 'своих турнирах'))} подряд"
+            ),
+        }
+
     def player(self, player_id: int) -> PlayerAwards:
         mine = [award for award in self.awards if award.player_id == player_id]
-        badges = []
+        rules = self.badge_rules()
+        slots = []
         for code, title in BADGES.items():
             earned = [award for award in mine if award.kind == Kind.BADGE and award.code == code]
-            if earned:
-                badges.append(BadgeCount(code, title, len(earned), earned[-1]))
+            slots.append(
+                BadgeCount(code, title, len(earned), earned[-1] if earned else None, rules[code])
+            )
+        leading = [r for r in self.titles if r.running and player_id in r.holders]
         return PlayerAwards(
             ranks=self.rank_progress(player_id),
-            badges=badges,
+            badges=[slot for slot in slots if slot.count],
             diplomas=[award for award in mine if award.kind == Kind.DIPLOMA],
             titles=[award for award in mine if award.kind == Kind.TITLE],
-            leading=[r for r in self.titles if r.running and player_id in r.holders],
+            leading=leading,
+            badge_slots=slots,
+            record=[award for award in reversed(mine) if award.kind != Kind.BADGE],
+            lead_lines=[result.lead_text(player_id) for result in leading],
         )
 
     def game(self, game_pk: int) -> GameAwards:
@@ -607,10 +841,23 @@ class ClubAwards:
         return GameAwards(dict(badges), reached)
 
     def title_years(self) -> list[int]:
-        """Years with titles, newest first (the honors board's year switcher)."""
+        """Years with titles, newest first."""
         return sorted({result.period.year for result in self.titles}, reverse=True)
 
-    def honors(self, year: int) -> HonorsBoard:
+    def honor_years(self) -> list[int]:
+        """The honors board's year switcher, newest first: years with finished games or ended
+        titles. A year with running titles only (a winter that began in December) is left out:
+        the default page shows every running title anyway."""
+        years = {date.year for date in self.evenings}
+        years |= {result.period.year for result in self.titles if not result.running}
+        return sorted(years, reverse=True)
+
+    def latest_game_year(self) -> int | None:
+        return self.evenings[-1].year if self.evenings else None
+
+    def honors(self, year: int, *, running: bool = False) -> HonorsBoard:
+        """The board for ``year``; with ``running`` (the default page) every running title is
+        listed too, whatever year it is filed under."""
         counts: dict[int, Counter] = defaultdict(Counter)
         for award in self.awards:
             if award.kind == Kind.BADGE:
@@ -624,12 +871,34 @@ class ClubAwards:
             (pk for pk in self.players if veteran.get(pk)),
             key=lambda pk: (-veteran[pk], self.players[pk].name, self.players[pk].nickname),
         )
+        titles = [
+            result
+            for result in self.titles
+            if result.period.year == year or (running and result.running)
+        ]
+        # Running periods first, then the newest.
+        ordered = sorted(
+            titles,
+            key=lambda r: (not r.running, -r.period.end.toordinal(), list(TITLES).index(r.code)),
+        )
+        kinds = Counter(award.kind for award in self.awards)
         return HonorsBoard(
             year=year,
-            titles=[result for result in self.titles if result.period.year == year],
+            titles=titles,
             badge_codes=list(BADGES),
             badge_matrix=matrix,
             rank_table=[(self.players[pk], self.rank_progress(pk)) for pk in ranked],
+            title_rows=[
+                HonorTitle(r, [(self.players[pk], r.holder_metric(pk)) for pk in r.holders])
+                for r in ordered
+            ],
+            badge_rows=[
+                BadgeRow(player, [count.get(code, 0) for code in BADGES])
+                for player, count in matrix
+            ],
+            participants=len({row.player_id for row in self._rows}),
+            badge_total=kinds[Kind.BADGE],
+            diploma_title_total=kinds[Kind.DIPLOMA] + kinds[Kind.TITLE],
         )
 
     def recent(self, limit: int) -> list[Award]:
@@ -648,6 +917,17 @@ class ClubAwards:
             rebuys_known=sum(row.rebuys is not None for row in tour),
             addon_known=sum(row.addon is not None for row in tour),
         )
+
+
+def sort_badge_rows(rows: list[BadgeRow], key: str, descending: bool) -> list[BadgeRow]:
+    """The badge matrix by ``key``: "name", "total" or a badge code. Ties stay by name."""
+    by_name = sorted(rows, key=lambda row: (row.player.name, row.player.nickname))
+    if key == "name":
+        return by_name[::-1] if descending else by_name
+    if key == "total":
+        return sorted(by_name, key=lambda row: row.total, reverse=descending)
+    index = list(BADGES).index(key)
+    return sorted(by_name, key=lambda row: row.counts[index], reverse=descending)
 
 
 def _load_ladders() -> list[Ladder]:
@@ -683,13 +963,14 @@ def _load_rows() -> list[_Row]:
     )
     values = (
         Result.objects.filter(game__live_stage="")
+        .annotate(game_number=game_number("game__season", "game__date"))
         .order_by("game__date", "-game__season__kind", "game_id", "player_id")
-        .values_list(*fields)
+        .values_list(*fields, "game_number")
     )
     games: dict[int, GameRef] = {}
     rows = []
-    for player_id, game_id, date, kind, *rest in values:
-        game = games.setdefault(game_id, GameRef(game_id, date, kind))
+    for player_id, game_id, date, kind, *rest, number in values:
+        game = games.setdefault(game_id, GameRef(game_id, date, kind, number))
         rows.append(_Row(player_id, game, *rest))
     return rows
 

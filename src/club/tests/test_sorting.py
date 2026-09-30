@@ -7,7 +7,15 @@ from django.utils.http import urlencode
 
 from club import stats
 from club.models import SeasonKind
-from club.sorting import CASH_STANDINGS, PLAYERS, TOUR_STANDINGS, Sort, parse_sort, sort_url
+from club.sorting import (
+    BADGES,
+    CASH_STANDINGS,
+    PLAYERS,
+    TOUR_STANDINGS,
+    Sort,
+    parse_sort,
+    sort_url,
+)
 from club.tests.conftest import PAST_YEAR
 from club.tests.factories import make_game, make_player, make_result
 
@@ -264,6 +272,18 @@ class TestQueryCounts:
             make_result(game, make_player(f"Лишний {i}"), buyin=50)
         with django_assert_num_queries(6):
             season_page(client, sort="itm")
+
+
+class TestBadgesParse:
+    def test_default_is_the_total_highest_first(self):
+        assert parse_sort({}, BADGES) == Sort("total", True, BADGES)
+
+    def test_badge_columns_start_highest_first_and_name_from_a(self):
+        assert parse_sort({"sort": "hat_trick"}, BADGES).descending
+        assert not parse_sort({"sort": "name"}, BADGES).descending
+
+    def test_unknown_column_falls_back(self):
+        assert parse_sort({"sort": "net"}, BADGES) == BADGES.default_sort
 
 
 class TestPlayersParse:

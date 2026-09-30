@@ -3,7 +3,7 @@ from fractions import Fraction
 import pytest
 from django.template import Context, Template
 
-from club.formatting import format_amount, format_money, format_net, ru_plural
+from club.formatting import format_amount, format_money, format_net, format_roman, ru_plural
 
 NBSP = "\u00a0"
 MINUS = "−"
@@ -69,6 +69,15 @@ class TestFormatNet:
         assert format_net(value) == expected
 
 
+class TestFormatRoman:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [(0, ""), (1, "I"), (3, "III"), (4, "IV"), (5, "V"), (6, "VI"), (9, "IX"), (14, "XIV")],
+    )
+    def test_format(self, value, expected):
+        assert format_roman(value) == expected
+
+
 class TestRuPlural:
     @pytest.mark.parametrize(
         ("value", "expected"),
@@ -111,6 +120,9 @@ class TestTemplateTags:
     def test_amount_filter(self):
         assert render("{{ v|amount }}", v=Fraction(11230, 100)) == "112,30"
         assert render("{{ v|amount }}", v=Fraction(1000, 100)) == "10"
+
+    def test_roman_filter(self):
+        assert render("{{ n|roman }} из {{ m|roman }}", n=5, m=6) == "V из VI"
 
     def test_plural_filter(self):
         assert render('{{ n }} {{ n|plural:"игра,игры,игр" }}', n=23) == "23 игры"

@@ -3,6 +3,8 @@ from fractions import Fraction
 import pytest
 from django.urls import reverse
 
+from club import achievements
+from club.models import RankLadder
 from club.tests.conftest import PAST_YEAR
 from club.tests.factories import make_game, make_result
 
@@ -169,8 +171,8 @@ class TestTourGame:
         assert "ребай" not in html and "ребая" not in html and "аддон" not in html
 
     def test_query_count(self, client, club, django_assert_num_queries):
-        # Game with totals, season positions, same evening, results, nav years.
-        with django_assert_num_queries(5):
+        # Game with totals, season positions, same evening, results, nav years, the awards.
+        with django_assert_num_queries(5 + achievements.QUERY_COUNT):
             get_game(client, club["games"]["t1"])
 
 
@@ -296,9 +298,49 @@ class TestCashGame:
         assert 'aria-current="true">Кэш</a>' in html_of(client, club["games"]["c1"])
 
     def test_query_count(self, client, club, django_assert_num_queries):
-        with django_assert_num_queries(5):
+        with django_assert_num_queries(5 + achievements.QUERY_COUNT):
             get_game(client, club["games"]["c1"])
 
 
 def test_unknown_game_is_404(client, club):
     assert client.get("/games/999999/").status_code == 404
+
+
+class TestGameAwards:
+    """Badges marked at the names, ranks and diplomas listed under the table (award_rules)."""
+
+    def test_badge_marks_at_the_names(self, client, club, award_rules):
+        html = html_of(client, club["games"]["t2"])
+        row = html[html.index("Альфа") : html.index("</tr>", html.index("Альфа"))]
+        assert (
+            '<span class="award-mark" data-badge="hat_trick"><span class="sr-only">знак </span>'
+            "Хет-трик</span>"
+        ) in row
+        bravo = html[html.index(">Браво<") : html.index("</tr>", html.index(">Браво<"))]
+        assert "award-mark" not in bravo
+        cash = html_of(client, club["games"]["c1"])
+        charlie = cash[cash.index(">Чарли<") : cash.index("</tr>", cash.index(">Чарли<"))]
+        assert 'data-badge="cashier"' in charlie
+        assert cash.count('class="award-mark"') == 1
+
+    def test_reached_section(self, client, club, award_rules):
+        html = html_of(client, club["games"]["t2"])
+        start = html.index('id="reached-title"')
+        reached = html[start : html.index("</section>", start)]
+        assert "По итогам игры присвоено" in reached
+        alpha = club["players"]["A"]
+        assert (
+            f'<a href="{alpha.get_absolute_url()}">Трактор</a> · Бывалый</td>\n'
+            '                <td class="text-right text-sm text-muted">3 игры</td>'
+        ) in reached
+        assert reached.count("Серия: 3 вечера подряд") == 2  # Альфа and Браво
+        assert '<span class="award-kind">Грамота</span>' in reached
+        assert '<span class="award-kind">Звание</span>' in reached
+        assert "Знаки отмечены у имён в ведомости." in reached
+
+    def test_no_reached_section_without_ranks_and_diplomas(self, client, club, award_rules):
+        RankLadder.objects.all().delete()
+        html = html_of(client, club["games"]["t3"])
+        assert "reached-title" not in html
+        assert "Знаки отмечены" not in html
+        assert 'data-badge="one_buyin"' in html  # the marks stay

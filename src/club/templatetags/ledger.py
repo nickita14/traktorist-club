@@ -7,7 +7,7 @@ negative (``val-neg``) or zero (``val-zero``) values, defined in frontend/source
 from django import template
 from django.utils.html import format_html
 
-from club.formatting import format_amount, format_money, format_net, ru_plural
+from club.formatting import format_amount, format_money, format_net, format_roman, ru_plural
 
 register = template.Library()
 
@@ -37,6 +37,12 @@ def amount(value) -> str:
 @register.filter
 def net(value: int) -> str:
     return format_net(value)
+
+
+@register.filter
+def roman(value: int) -> str:
+    """A rank step number in roman numerals: 'V'."""
+    return format_roman(value)
 
 
 @register.filter
