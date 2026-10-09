@@ -587,6 +587,35 @@ ls -la ~                    # no import directory
 
 Finally, open the site and compare a few standings with the spreadsheet.
 
+### 8.1 Later updates: sheet sync from the admin
+
+While the club's Google Sheet is still the main record, a superuser pulls it from the admin instead of copying files to the server. The sheet must be shared as "Anyone with the link: Viewer"; the app downloads it as `.xlsx` over HTTPS (no Google account, no API key).
+
+**Server**, once: put the sheet ID into `.env` and restart the app. The ID is the part of the sheet's URL between `/d/` and `/edit`. It is the access link itself: keep it in `.env` and the password manager only, never in the repository, an issue or a chat.
+
+```bash
+nano /srv/traktorist/.env      # GOOGLE_SHEET_ID=<the ID>
+dc up -d web
+```
+
+**Server**, once: load the existing `aliases.yaml` into the database (aliases now live there and are edited on each player's admin page, "Имена в таблице"). Copy the file as in section 8, then:
+
+```bash
+dc run --rm --user "$(id -u):$(id -g)" -v ~/import:/import:ro web \
+    python manage.py import_sheet --from-google --aliases /import/aliases.yaml --dry-run
+dc run --rm --user "$(id -u):$(id -g)" -v ~/import:/import:ro web \
+    python manage.py import_sheet --from-google --aliases /import/aliases.yaml
+shred -u ~/import/* && rmdir ~/import
+```
+
+**Admin** (superusers only), every time: open "Импорт" > "Таблица клуба", press "Подтянуть из таблицы", read the report (per sheet: new, changed and deleted results, place changes, fixed dates, verification against the sheet's totals), untick sheets if needed and press "Пересчитать", then "Применить". The apply imports the file that was previewed, not a new download, and only if the import still makes exactly the previewed changes; the admin log records who applied what. A preview expires after an hour.
+
+Guards, in the importer itself (the command obeys them too), with no override:
+- A season is imported only while "Ведётся в таблице" is on. Seasons that existed before this feature, and seasons the import creates, have it on; seasons created in the admin or on the live screens have it off.
+- In such a season, a date whose game was recorded on the live screens, or is still in progress, is left as is and listed in the report. To let the sheet overwrite it, delete that game in the admin first.
+
+Empty `GOOGLE_SHEET_ID` turns the feature off; the page then says so and offers nothing.
+
 ## 9. Routine operations
 
 | Task | Where | Command |
