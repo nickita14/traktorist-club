@@ -6,7 +6,7 @@ from django.core.management import CommandError
 from club.models import Game, Player, Result, Season, SeasonKind
 from club.stats import annotate_game_totals
 from club.tests.factories import make_game
-from importer import sync
+from importer import service, sync
 from importer.tests.sheet_builder import (
     build_workbook,
     fixture_aliases,
@@ -124,9 +124,26 @@ class TestRerun:
         out = run_import(edited)
 
         assert places(datetime.date(2026, 1, 18)) == {"Пётр Примеров": 1, "Иван Тестов": 2}
-        assert "18.01.2026 Пётр Примеров (Сеялка): payout 100 -> 250, place 2 -> 1" in out
-        assert "18.01.2026 Иван Тестов (Трактор): place 1 -> 2" in out
+        assert "    18.01.2026 Пётр Примеров (Сеялка): payout 100 -> 250\n" in out
+        assert "place changes:\n" in out
+        assert "      18.01.2026 Пётр Примеров (Сеялка): place 2 -> 1" in out
+        assert "      18.01.2026 Иван Тестов (Трактор): place 1 -> 2" in out
         assert "18.01.2026 Мария Образцова (Комбайн): deleted (not in the sheet)" in out
+
+    def test_manual_place_fix_shows_as_a_place_change(self, run_import, workbook_path):
+        # A place fixed in the admin that the sheet's payouts contradict: visible before applying.
+        run_import()
+        Result.objects.filter(
+            game__date=datetime.date(2026, 1, 18), player__name="Пётр Примеров"
+        ).update(place=3)
+
+        report = service.run_import(workbook_path, dry_run=True)
+
+        tour = next(sheet for sheet in report.sheets if sheet.title == "ТУР2026_new")
+        assert [(c.player, c.old, c.new) for c in tour.place_changes] == [
+            ("Пётр Примеров (Сеялка)", 3, 2)
+        ]
+        assert tour.changes == []  # buy-ins and payouts are untouched
 
     def test_location_and_chips_out_survive(self, run_import):
         run_import()

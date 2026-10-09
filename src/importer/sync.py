@@ -13,7 +13,7 @@ managed season a game recorded on the live screens (it has LiveAction rows) or s
 
 import dataclasses
 import datetime
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 from django.db.models import Exists, OuterRef
@@ -21,37 +21,34 @@ from django.db.models import Exists, OuterRef
 from club.models import Game, Player, Result, Season, SeasonKind
 from club.stats import suggest_places
 from importer.aliases import AmbiguousName, CanonicalPlayer, DbAliasMap
+from importer.report import (
+    CREATED,
+    DELETED,
+    LIVE_IN_PROGRESS,
+    LIVE_RECORDED,
+    UPDATED,
+    NameProblems,
+    PlaceChange,
+    ResultChange,
+    SheetReport,
+)
 from importer.workbook import ParsedSheet, ParsedWorkbook, clean_name
 from live.models import LiveAction
 
 RowKey = tuple[str, int]  # (sheet title, name row)
 ADD_ALIAS = "add an alias on the player's admin page or in aliases.yaml"
 
-# Why a sheet date was left alone (SheetChanges.skipped_games).
-LIVE_RECORDED = "live recorded"
-LIVE_IN_PROGRESS = "live in progress"
-
 
 class ImportProblem(Exception):
-    def __init__(self, errors: list[str]):
-        self.errors = errors
-        super().__init__("\n".join(errors))
-
-
-@dataclass
-class SheetChanges:
-    title: str
-    counts: Counter = field(default_factory=Counter)
-    details: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    # The season exists and is not kept in the sheet: nothing of this sheet was imported.
-    refused: bool = False
-    skipped_games: dict[datetime.date, str] = field(default_factory=dict)  # date -> LIVE_*
+    def __init__(self, problems: NameProblems):
+        self.problems = problems
+        self.errors = problems.lines
+        super().__init__("\n".join(problems.lines))
 
 
 @dataclass
 class ImportResult:
-    sheets: list[SheetChanges]
+    sheets: list[SheetReport]
     players_created: list[str]
     player_by_row: dict[RowKey, Player]
     season_by_sheet: dict[str, Season]
@@ -131,17 +128,23 @@ def resolve_names(
                 canonical = CanonicalPlayer(name=clean_name(row.raw_name))
             if canonical is not None:
                 resolved[(sheet.title, row.row)] = canonical
-    lines = []
+    problems = NameProblems(
+        unknown={title: sorted(names) for title, names in unknown.items()},
+        ambiguous={
+            title: [messages[name] for name in sorted(messages)]
+            for title, messages in ambiguous.items()
+        },
+    )
     if ambiguous:
-        lines.append(f"Ambiguous player names ({ADD_ALIAS}):")
-        for title, messages in ambiguous.items():
-            lines += [f"  {title}: {messages[name]}" for name in sorted(messages)]
+        problems.lines.append(f"Ambiguous player names ({ADD_ALIAS}):")
+        for title, messages in problems.ambiguous.items():
+            problems.lines += [f"  {title}: {message}" for message in messages]
     if unknown:
-        lines.append(f"Unknown player names ({ADD_ALIAS}, or pass --create-missing):")
-        for title, names in unknown.items():
-            lines += [f"  {title}: {name}" for name in sorted(names)]
-    if lines:
-        raise ImportProblem(lines)
+        problems.lines.append(f"Unknown player names ({ADD_ALIAS}, or pass --create-missing):")
+        for title, names in problems.unknown.items():
+            problems.lines += [f"  {title}: {name}" for name in names]
+    if problems.lines:
+        raise ImportProblem(problems)
 
     # Two raw names for one player in the same game would break result_game_player_unique.
     errors = []
@@ -157,7 +160,7 @@ def resolve_names(
                     f"and played on {date:%d.%m.%Y}"
                 )
     if errors:
-        raise ImportProblem(errors)
+        raise ImportProblem(NameProblems(duplicates=errors, lines=errors))
     return resolved
 
 
@@ -190,7 +193,7 @@ def import_workbook(parsed: ParsedWorkbook, *, create_missing: bool = False) -> 
     )
     for plan in plans.values():
         if plan.refused:
-            result.sheets.append(SheetChanges(plan.sheet.title, refused=True))
+            result.sheets.append(dataclasses.replace(SheetReport.of(plan.sheet), refused=True))
             continue
         changes, season = _sync_sheet(plan, result.player_by_row)
         result.sheets.append(changes)
@@ -201,7 +204,8 @@ def import_workbook(parsed: ParsedWorkbook, *, create_missing: bool = False) -> 
 
 def _sync_sheet(plan: SheetPlan, player_by_row: dict[RowKey, Player]):
     sheet, season = plan.sheet, plan.season
-    changes = SheetChanges(sheet.title, skipped_games=plan.skipped)
+    changes = SheetReport.of(sheet)
+    changes.skipped_games = plan.skipped
     if season is None:
         season = Season(year=sheet.year, kind=sheet.kind, sheet_managed=True)
         season.full_clean()
@@ -225,18 +229,17 @@ def _sync_sheet(plan: SheetPlan, player_by_row: dict[RowKey, Player]):
         _sync_results(game, season, entries_by_date[column.date], changes)
 
     sheet_dates = [column.date for column in sheet.games] + list(plan.skipped)
-    for game in Game.objects.filter(season=season).exclude(date__in=sheet_dates):
-        changes.warnings.append(f"game {game} exists only in the database; left as is")
+    db_only = Game.objects.filter(season=season).exclude(date__in=sheet_dates).order_by("date")
+    changes.db_only_games = list(db_only.values_list("date", flat=True))
     return changes, season
 
 
-def _sync_results(game: Game, season: Season, entries: dict, changes: SheetChanges) -> None:
+def _sync_results(game: Game, season: Season, entries: dict, changes: SheetReport) -> None:
     if season.kind == SeasonKind.TOUR:
         places = suggest_places({p.pk: e.payout for p, e in entries.items()}, season.paid_places)
     else:
         places = dict.fromkeys((p.pk for p in entries), None)
     existing = {r.player_id: r for r in game.results.select_related("player")}
-    where = f"{game.date:%d.%m.%Y}"
 
     for player, entry in entries.items():
         wanted = {"buyin": entry.buyin, "payout": entry.payout, "place": places[player.pk]}
@@ -248,6 +251,7 @@ def _sync_results(game: Game, season: Season, entries: dict, changes: SheetChang
             result.full_clean()
             result.save()
             changes.counts["results created"] += 1
+            changes.changes.append(ResultChange(game.date, str(player), CREATED))
             continue
         diff = {
             name: (getattr(result, name), value)
@@ -262,13 +266,14 @@ def _sync_results(game: Game, season: Season, entries: dict, changes: SheetChang
         result.full_clean()
         result.save()
         changes.counts["results updated"] += 1
-        changes.details.append(
-            f"{where} {player}: "
-            + ", ".join(f"{name} {old} -> {new}" for name, (old, new) in diff.items())
-        )
+        if "place" in diff:
+            old, new = diff.pop("place")
+            changes.place_changes.append(PlaceChange(game.date, str(player), old, new))
+        if diff:
+            changes.changes.append(ResultChange(game.date, str(player), UPDATED, diff))
 
     for result in existing.values():
-        changes.details.append(f"{where} {result.player}: deleted (not in the sheet)")
+        changes.changes.append(ResultChange(game.date, str(result.player), DELETED))
         result.delete()
         changes.counts["results deleted"] += 1
 
