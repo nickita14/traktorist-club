@@ -1,6 +1,6 @@
 import pytest
 
-from importer.aliases import build_alias_map
+from importer.aliases import build_alias_map, upsert_aliases
 from importer.sync import import_workbook
 from importer.tests.sheet_builder import (
     build_workbook,
@@ -16,7 +16,8 @@ pytestmark = pytest.mark.django_db
 
 def run_verify(path):
     parsed = parse_workbook(path)
-    result = import_workbook(parsed, build_alias_map(fixture_aliases()))
+    upsert_aliases(build_alias_map(fixture_aliases()))
+    result = import_workbook(parsed)
     return {report.title: report for report in verify(parsed, result)}
 
 

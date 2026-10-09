@@ -8,12 +8,15 @@ Layout (the same on every import sheet):
 """
 
 import datetime
+import io
 import re
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import openpyxl
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.worksheet.worksheet import Worksheet
 
 from club.models import SeasonKind
@@ -108,10 +111,13 @@ def clean_name(value: str) -> str:
     return " ".join(value.split())
 
 
-def parse_workbook(path: str | Path, only: list[str] | None = None) -> ParsedWorkbook:
-    """Parse every import sheet (or only the named ones); raise SheetError listing all problems."""
-    formulas = openpyxl.load_workbook(path)
-    cached = openpyxl.load_workbook(path, data_only=True)
+def parse_workbook(source: str | Path | bytes, only: list[str] | None = None) -> ParsedWorkbook:
+    """Parse every import sheet (or only the named ones); raise SheetError listing all problems.
+
+    ``source`` is a path or the file's bytes (the sheet sync keeps fetched bytes, never a file).
+    """
+    formulas = _load(source)
+    cached = _load(source, data_only=True)
     errors: list[str] = []
 
     if only is not None:
@@ -143,6 +149,20 @@ def parse_workbook(path: str | Path, only: list[str] | None = None) -> ParsedWor
     if errors:
         raise SheetError(errors)
     return ParsedWorkbook(sheets=sheets, skipped=skipped)
+
+
+def import_sheet_titles(source: str | Path | bytes) -> list[str]:
+    """The import sheets of a workbook, in order (old versions and other sheets left out)."""
+    return [title for title in _load(source, read_only=True).sheetnames if season_of(title)]
+
+
+def _load(source: str | Path | bytes, **options) -> openpyxl.Workbook:
+    try:
+        return openpyxl.load_workbook(
+            io.BytesIO(source) if isinstance(source, bytes) else source, **options
+        )
+    except (zipfile.BadZipFile, InvalidFileException, KeyError) as exc:
+        raise SheetError([f"not a readable .xlsx workbook ({type(exc).__name__})"]) from exc
 
 
 def _parse_sheet(ws: Worksheet, cached_ws: Worksheet, year: int, kind: str) -> ParsedSheet:

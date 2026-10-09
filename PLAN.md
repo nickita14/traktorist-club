@@ -48,6 +48,14 @@ Behavior:
   - The report also lists games that break the leftover rule (`club.stats.LEFTOVER_MISMATCH`: tour leftover != 0, cash leftover < 0).
 - [x] Tests use a small generated `.xlsx` fixture with fake players that mimics the structure, including a bad date and a name alias
 
+## Stage 3b. Sheet sync (branch `sheet-sync`)
+
+- [x] Aliases in the database (`PlayerAlias`, Player admin inline); `import_sheet --aliases` upserts the file
+- [x] Fetch the link-shared Google Sheet as xlsx (`GOOGLE_SHEET_ID`, standard library, safety limits); `import_sheet --from-google`
+- [x] One structured import report for the command and the admin
+- [x] Guards: `Season.sheet_managed`, live-recorded and in-progress games skipped
+- [x] Admin page for superusers: fetch, dry-run report, apply the stored snapshot; logged
+
 ## Stage 4. Design system
 
 - [x] Tailwind theme and CSS variables: palette (paper, ink, muted ink, rule lines, stamp red), fonts (self-hosted, Cyrillic support), type scale, spacing
