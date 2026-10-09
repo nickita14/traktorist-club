@@ -2,9 +2,15 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from importer.aliases import AliasError, AliasMap, load_aliases
-from importer.sync import ImportProblem, import_workbook
+from importer.sync import LIVE_IN_PROGRESS, LIVE_RECORDED, ImportProblem, import_workbook
 from importer.verify import LABELS, verify
 from importer.workbook import SheetError, parse_workbook
+
+REFUSED = "refused: the season is not kept in the sheet (Season.sheet_managed is off)"
+SKIPPED = {
+    LIVE_RECORDED: "recorded on the live screens, left as is",
+    LIVE_IN_PROGRESS: "live game in progress, left as is",
+}
 
 
 def sheet_list(value: str | None) -> list[str] | None:
@@ -88,10 +94,17 @@ class Command(BaseCommand):
     def _write_changes(self, result) -> None:
         self._section("Players created", result.players_created)
         for changes in result.sheets:
+            if changes.refused:
+                self._section(f"Changes in {changes.title}", [REFUSED])
+                continue
             counts = ", ".join(f"{name} {n}" for name, n in sorted(changes.counts.items()))
             self._section(f"Changes in {changes.title}", [counts or "nothing"])
             for line in changes.details:
                 self.stdout.write(f"    {line}")
+            for date, reason in sorted(changes.skipped_games.items()):
+                self.stdout.write(
+                    self.style.WARNING(f"    skipped: {date:%d.%m.%Y} {SKIPPED[reason]}")
+                )
             for line in changes.warnings:
                 self.stdout.write(self.style.WARNING(f"    warning: {line}"))
 

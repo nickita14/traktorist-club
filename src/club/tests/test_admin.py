@@ -269,6 +269,22 @@ class TestPlayerAddForm:
         assert Player.objects.get().slug == "custom"
 
 
+class TestSheetManaged:
+    """Whether the importer may write to a season is the superusers' call."""
+
+    def test_superuser_can_change_it(self, admin_client):
+        season = make_season()
+        response = admin_client.get(reverse("admin:club_season_change", args=[season.pk]))
+        assert 'name="sheet_managed"' in response.text
+
+    def test_organizer_only_sees_it(self, organizer_client):
+        season = make_season()
+        response = organizer_client.get(reverse("admin:club_season_change", args=[season.pk]))
+        assert response.status_code == 200
+        assert 'name="sheet_managed"' not in response.text
+        assert "ведётся в таблице" in response.text.lower()
+
+
 def inline_form_fields(response):
     formset = response.context["inline_admin_formsets"][0].formset
     return set(formset.empty_form.fields)

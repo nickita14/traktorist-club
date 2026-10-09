@@ -133,6 +133,7 @@ class SeasonAdmin(ModelAdmin):
         "chips_per_lei_number",
         "games_count",
         "players_count",
+        "sheet_managed",
     ]
     list_filter = [("kind", ChoicesDropdownFilter), year_filter("year")]
     list_filter_submit = True
@@ -149,6 +150,7 @@ class SeasonAdmin(ModelAdmin):
         "payout_round",
         "default_blinds",
         "cash_step",
+        "sheet_managed",
     ]
     # Prices of the live game screens: only the ones of the chosen kind (Alpine expressions).
     conditional_fields = {
@@ -164,6 +166,12 @@ class SeasonAdmin(ModelAdmin):
 
     def get_queryset(self, request):
         return stats.annotate_season_totals(super().get_queryset(request))
+
+    def get_readonly_fields(self, request, obj=None):
+        # Whether the importer may write to a season is the superusers' call (the sheet sync is
+        # theirs too), not the organizers'.
+        readonly = super().get_readonly_fields(request, obj)
+        return readonly if request.user.is_superuser else [*readonly, "sheet_managed"]
 
     @display(description="год", ordering="year", **number)
     def year_number(self, obj):

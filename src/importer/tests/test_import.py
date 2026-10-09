@@ -232,10 +232,10 @@ class TestFailures:
     def test_error_mid_import_rolls_back(self, run_import, monkeypatch):
         original = sync._sync_sheet
 
-        def fail_on_cash(sheet, player_by_row):
-            if sheet.kind == SeasonKind.CASH:
+        def fail_on_cash(plan, player_by_row):
+            if plan.sheet.kind == SeasonKind.CASH:
                 raise RuntimeError("boom")
-            return original(sheet, player_by_row)
+            return original(plan, player_by_row)
 
         monkeypatch.setattr(sync, "_sync_sheet", fail_on_cash)
         with pytest.raises(RuntimeError):
