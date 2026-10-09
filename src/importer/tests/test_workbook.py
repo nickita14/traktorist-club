@@ -4,7 +4,7 @@ import pytest
 
 from importer.tests.conftest import edit_cells
 from importer.tests.sheet_builder import FakeSheet, build_workbook, fixture_sheets, sheet_named
-from importer.workbook import Entry, SheetError, parse_workbook
+from importer.workbook import Entry, SheetError, import_sheet_titles, parse_workbook
 
 
 def by_title(parsed):
@@ -163,3 +163,21 @@ class TestErrors:
         with pytest.raises(SheetError) as exc:
             parse_workbook(build_workbook(tmp_path / "x.xlsx", sheets))
         assert exc.value.errors == ["КЭШ2026!G1: date 18.01.2026 repeats КЭШ2026!E1"]
+
+
+class TestBytes:
+    """The sheet sync parses the fetched bytes; no file is ever written."""
+
+    def test_same_as_from_the_file(self, workbook_path):
+        from_file = parse_workbook(workbook_path)
+        from_bytes = parse_workbook(workbook_path.read_bytes())
+        assert from_bytes == from_file
+
+    @pytest.mark.parametrize("content", [b"PK\x03\x04 not really a zip", b"<html></html>"])
+    def test_not_a_workbook(self, content):
+        with pytest.raises(SheetError, match="not a readable .xlsx workbook"):
+            parse_workbook(content)
+
+
+def test_import_sheet_titles(workbook_path):
+    assert import_sheet_titles(workbook_path.read_bytes()) == ["ТУР2026_new", "ТУР2025", "КЭШ2026"]

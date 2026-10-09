@@ -115,3 +115,27 @@ def test_achievement_rules_migration_forward_and_backward():
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_existing_seasons_become_sheet_managed():
+    before = ("club", "0011_seed_achievement_rules")
+    after = ("club", "0012_season_sheet_managed")
+
+    def migrate(target):
+        executor = MigrationExecutor(connection)
+        executor.migrate([target])
+        executor.loader.build_graph()
+        return executor.loader.project_state([target]).apps
+
+    try:
+        apps = migrate(before)
+        apps.get_model("club", "Season").objects.create(year=2025, kind="tour")
+
+        apps = migrate(after)
+        assert list(apps.get_model("club", "Season").objects.values_list("sheet_managed")) == [
+            (True,)
+        ]
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())

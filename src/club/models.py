@@ -156,6 +156,14 @@ class Season(models.Model):
         verbose_name="структура блайндов",
         help_text="Предлагается при старте турнира; у игры своя копия.",
     )
+    # The club spreadsheet still keeps this season: only then may the importer write to it.
+    sheet_managed = models.BooleanField(
+        "ведётся в таблице",
+        default=False,
+        help_text=(
+            "Импорт из таблицы обновляет игры этого сезона. Игры с живого экрана он не трогает."
+        ),
+    )
 
     class Meta:
         verbose_name = "сезон"

@@ -66,7 +66,16 @@ class SeasonReport:
 
 
 def verify(parsed: ParsedWorkbook, result: ImportResult) -> list[SeasonReport]:
-    return [_verify_sheet(sheet, result) for sheet in parsed.sheets]
+    """One report per imported sheet; refused sheets have none.
+
+    Dates skipped by the guards are left out of the parsed side (``result.synced_sheets``), while
+    the sheet's cached totals still count them, so such a season may show differences here.
+    """
+    return [
+        _verify_sheet(result.synced_sheets[sheet.title], result)
+        for sheet in parsed.sheets
+        if sheet.title in result.synced_sheets
+    ]
 
 
 def _verify_sheet(sheet: ParsedSheet, result: ImportResult) -> SeasonReport:

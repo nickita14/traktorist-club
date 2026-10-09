@@ -76,6 +76,7 @@ env = environ.Env(
     SECURE_HSTS_INCLUDE_SUBDOMAINS=(bool, False),
     SITE_INDEXING=(bool, False),
     ADMIN_REQUIRE_2FA=(bool, False),
+    GOOGLE_SHEET_ID=(str, ""),
 )
 
 environ.Env.read_env(BASE_DIR / ".env")
@@ -104,6 +105,9 @@ ALLOWED_HOSTS = config["ALLOWED_HOSTS"]
 ADMIN_URL = normalize_admin_url(config["ADMIN_URL"])
 # Public pages ask search engines to stay away (noindex meta, robots.txt) unless this is on.
 SITE_INDEXING = env("SITE_INDEXING")
+# The club spreadsheet, shared as "anyone with the link can view" (importer.sources). Empty turns
+# the sheet sync off. The ID is the access link itself: keep it out of the repository and logs.
+GOOGLE_SHEET_ID = env("GOOGLE_SHEET_ID")
 
 INSTALLED_APPS = [
     # Unfold must come before django.contrib.admin. This config installs the project's admin site

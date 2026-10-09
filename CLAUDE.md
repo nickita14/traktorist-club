@@ -99,6 +99,15 @@ Organizer phone screens at `/<ADMIN_URL>live/` (`live` app, templates in `src/te
 - Stage 1 without a blind timer shows elapsed time ("идёт 1:17"); `Season.rebuy_minutes` is only a hint ("обычно в это время закрывают ребаи", muted, never accent). The organizer always changes the stage.
 - Live components in `frontend/source.css`: `live-bar`, `phase-strip`, `live-row`, `btn` (44px minimum; `btn-accent`, `btn-on`, `btn-primary`, `btn-link`), `bottom-bar`, `sheet-panel`, `toast`, `conn-error`, `timer-controls`, `blinds-row`, `tablo-*`. `src/live/tests/test_browser.py` checks touch targets, CSP and the flows in Chromium.
 
+## Sheet sync
+
+While the club's Google Sheet is the main record, superusers pull it into the app from the admin ("Импорт" > "Таблица клуба", `importer.admin.SheetSyncView`); the runbook is `docs/deploy.md` section 8.1.
+- One import for everything: `importer.service.run_import(source, ...)` (a path or the workbook's bytes) parses, upserts an aliases file, applies the guards, syncs and verifies in one transaction and returns an `importer.report.ImportReport`. `import_sheet` prints it in English, the admin page renders it in Russian (`importer.admin.present`, labels there); neither formats anything the report lacks. Place changes are listed apart from buy-in and payout changes.
+- Aliases live in `importer.PlayerAlias` (an inline on the Player admin, superusers only); `importer.aliases.DbAliasMap` resolves names (explicit alias, else a unique `Player.name` match; ambiguity is never guessed). `import_sheet --aliases <file>` upserts a YAML file first (players by slug, then name and nickname; the file wins, nothing is deleted).
+- Guards in `importer.sync.plan_sheet`, no override: a season with `Season.sheet_managed` off is refused as a whole (seasons from the import get it on, from the admin and the live screens off, organizers cannot change it); inside a managed season a date whose game has `LiveAction` rows or a non-empty `live_stage` is skipped and reported.
+- Fetch: `importer.sources.fetch_sheet()` (the one swap point for an authenticated Drive call later): the xlsx export of `GOOGLE_SHEET_ID` (empty: the feature is off), standard library, HTTPS, redirects only to `docs.google.com` and `*.googleusercontent.com`, 15 s for the whole fetch, 10 MB read limit, zip signature check, Russian messages. The ID is the access link: never in the repository, a message, a log or an error report. Tests fake `http.client.HTTPSConnection`; nothing touches the network.
+- Snapshot: a fetch stores the bytes in `importer.SheetSnapshot` (one at a time, `TTL` one hour, purged on every request to the page); "Применить" imports those bytes with the selection that was previewed and the report digest the page sent, rolls back when the import would differ (`service.ReportChanged`), logs a `LogEntry` and deletes the snapshot.
+
 ## Organizer login
 
 - `/prokhodnaya/` ("Проходная", `club.auth`, template `club/login.html`): the public-site login, beside the admin one (which stays). `OrganizerLoginForm` subclasses the admin `LoginForm`, so it runs the same backends (django-axes counts failures and lockouts across both pages), the TOTP code with `ADMIN_REQUIRE_2FA`, and CSRF. It drops the admin's `is_staff` check for an organizer check.
@@ -161,7 +170,7 @@ Rules:
 
 ## Code conventions
 
-- Apps: `club` (players, seasons, games, results, stats), `importer` (spreadsheet import), `live` (live game screens and their action log), later `fund`.
+- Apps: `club` (players, seasons, games, results, stats), `importer` (spreadsheet import and the sheet sync), `live` (live game screens and their action log), later `fund`.
 - Layout: the Django code (`traktorist_club`, the apps, `templates/`, `locale/`) lives in `src/`; `manage.py`, `conftest.py`, `assets/`, `frontend/`, `deploy/` and `docs/` stay at the root. Packages keep their top-level names: `src/` is put on the path by `manage.py`, pytest (`pythonpath`), ruff (`src`) and the image (`PYTHONPATH=/app/src`), never by renaming imports. `BASE_DIR` is the repository root, `SRC_DIR` is `src/`.
 - Put stats logic in one module (e.g. `src/club/stats.py`) as queryset helpers; views and admin call it, never duplicate aggregation.
 - Every aggregate (total, ITM, places, leftover) has tests with small hand-made fixtures.
@@ -219,6 +228,7 @@ uv run ruff check . && uv run ruff format --check .
 uv run pre-commit run --all-files
 uv run python manage.py list_sheet_names data/<file>.xlsx          # raw names, for data/aliases.yaml
 uv run python manage.py import_sheet data/<file>.xlsx --aliases data/aliases.yaml --dry-run
+uv run python manage.py import_sheet --from-google --dry-run         # the sheet of GOOGLE_SHEET_ID
 uv run python manage.py totp_enroll <username>   # admin 2FA device (QR code in the terminal)
 uv run python manage.py achievement_stats        # rank counters and data completeness (stdout only)
 uv run python manage.py render_icons             # home screen icons and favicons (assets/icons/) from the tokens; needs Chromium

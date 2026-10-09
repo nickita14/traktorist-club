@@ -74,3 +74,156 @@ td.field-kind select {
   border: 1px solid var(--rule);
   color: var(--ink);
 }
+
+/* The sheet sync page (templates/importer/sync.html): a report in ruled sections, no cards. */
+.sheet-sync {
+  max-width: 60rem;
+}
+
+.sheet-sync h1.sync-title {
+  font-size: 1.75rem;
+  margin-bottom: 1rem;
+}
+
+.sheet-sync h2 {
+  border-bottom: 3px double var(--rule);
+  font-family: var(--font-stack-head);
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.75rem;
+  padding-bottom: 0.25rem;
+}
+
+.sheet-sync h3 {
+  font-family: var(--font-stack-head);
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 1rem 0 0.25rem;
+}
+
+.sheet-sync p {
+  margin: 0.25rem 0;
+}
+
+.sync-note,
+.sync-meta {
+  color: var(--muted);
+}
+
+.sync-warning {
+  color: var(--accent);
+}
+
+.sync-list {
+  list-style: disc;
+  margin: 0.25rem 0 0.5rem 1.25rem;
+}
+
+.sync-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.sync-apply {
+  border-top: 3px double var(--rule);
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+}
+
+.sync-button {
+  background: var(--surface);
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 700;
+  min-height: 2.5rem;
+  padding: 0.5rem 1rem;
+}
+
+.sync-button-primary {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.sync-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.sync-sheets {
+  margin: 0.75rem 0;
+}
+
+.sync-sheets fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.sync-sheets legend {
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+.sync-check {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.sync-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 0.5rem 0;
+}
+
+.sync-counts > div {
+  border-left: 1px solid var(--rule);
+  padding: 0.25rem 0.75rem;
+}
+
+.sync-counts > div:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.sync-counts dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.sync-counts dd {
+  font-size: 1.1rem;
+}
+
+.sync-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.sync-table {
+  border-collapse: collapse;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.sync-table th,
+.sync-table td {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.25rem 0.75rem 0.25rem 0;
+  text-align: left;
+}
+
+.sync-table .num {
+  text-align: right;
+}
+
+.sync-details summary {
+  cursor: pointer;
+  margin: 0.75rem 0 0.25rem;
+}

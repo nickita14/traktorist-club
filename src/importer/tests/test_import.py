@@ -6,7 +6,9 @@ from django.core.management import CommandError
 from club.models import Game, Player, Result, Season, SeasonKind
 from club.stats import annotate_game_totals
 from club.tests.factories import make_game
-from importer import sync
+from importer import service, sync
+from importer.management.commands import import_sheet
+from importer.sources import SheetFetchError
 from importer.tests.sheet_builder import (
     build_workbook,
     fixture_aliases,
@@ -124,9 +126,26 @@ class TestRerun:
         out = run_import(edited)
 
         assert places(datetime.date(2026, 1, 18)) == {"Пётр Примеров": 1, "Иван Тестов": 2}
-        assert "18.01.2026 Пётр Примеров (Сеялка): payout 100 -> 250, place 2 -> 1" in out
-        assert "18.01.2026 Иван Тестов (Трактор): place 1 -> 2" in out
+        assert "    18.01.2026 Пётр Примеров (Сеялка): payout 100 -> 250\n" in out
+        assert "place changes:\n" in out
+        assert "      18.01.2026 Пётр Примеров (Сеялка): place 2 -> 1" in out
+        assert "      18.01.2026 Иван Тестов (Трактор): place 1 -> 2" in out
         assert "18.01.2026 Мария Образцова (Комбайн): deleted (not in the sheet)" in out
+
+    def test_manual_place_fix_shows_as_a_place_change(self, run_import, workbook_path):
+        # A place fixed in the admin that the sheet's payouts contradict: visible before applying.
+        run_import()
+        Result.objects.filter(
+            game__date=datetime.date(2026, 1, 18), player__name="Пётр Примеров"
+        ).update(place=3)
+
+        report = service.run_import(workbook_path, dry_run=True)
+
+        tour = next(sheet for sheet in report.sheets if sheet.title == "ТУР2026_new")
+        assert [(c.player, c.old, c.new) for c in tour.place_changes] == [
+            ("Пётр Примеров (Сеялка)", 3, 2)
+        ]
+        assert tour.changes == []  # buy-ins and payouts are untouched
 
     def test_location_and_chips_out_survive(self, run_import):
         run_import()
@@ -195,15 +214,55 @@ class TestOptions:
             (2026, "cash"),
         ]
 
-    def test_aliases_required_unless_create_missing(self, run_command, workbook_path):
-        with pytest.raises(CommandError, match="--aliases is required"):
+    def test_aliases_come_from_the_database(self, run_import, run_command, workbook_path):
+        run_import()  # loads the aliases file once
+        before = db_counts()
+
+        out = run_command("import_sheet", workbook_path)
+
+        assert db_counts() == before
+        assert "Aliases file" not in out
+
+    def test_without_any_aliases_names_are_unknown(self, run_command, workbook_path):
+        with pytest.raises(CommandError, match="Unknown player names"):
             run_command("import_sheet", workbook_path)
+
+    def test_aliases_file_summary(self, run_import):
+        out = run_import()
+        assert "aliases created 7, re-pointed 0" in out
+        assert "player created: Олег Пробный [oleg]" in out
 
     def test_create_missing(self, run_command, workbook_path):
         run_command("import_sheet", workbook_path, create_missing=True)
         # 4 ТУР2026 names with games, 3 "Имя (ник)" names from ТУР2025; КЭШ2026 reuses ТУР2026's
         assert Player.objects.count() == 7
         assert Player.objects.filter(name="Олег (Плуг)").exists()
+
+
+class TestFromGoogle:
+    def test_imports_the_fetched_bytes(self, run_command, workbook_path, aliases_path, monkeypatch):
+        fetched = workbook_path.read_bytes()
+        monkeypatch.setattr(import_sheet, "fetch_sheet", lambda: fetched)
+
+        out = run_command("import_sheet", from_google=True, aliases=str(aliases_path))
+
+        assert db_counts() == (4, 3, 8, 22)
+        assert "games created 3, results created 10, seasons created 1" in out
+
+    def test_fetch_error_imports_nothing(self, run_command, monkeypatch):
+        def fail():
+            raise SheetFetchError("Таблица недоступна по ссылке (Google вернул не xlsx).")
+
+        monkeypatch.setattr(import_sheet, "fetch_sheet", fail)
+        with pytest.raises(CommandError, match="Google вернул не xlsx"):
+            run_command("import_sheet", from_google=True)
+        assert db_counts() == (0, 0, 0, 0)
+
+    @pytest.mark.parametrize("both", [True, False])
+    def test_exactly_one_source(self, run_command, workbook_path, both):
+        args = [workbook_path] if both else []
+        with pytest.raises(CommandError, match="either a path or --from-google"):
+            run_command("import_sheet", *args, from_google=both)
 
 
 class TestFailures:
@@ -232,10 +291,10 @@ class TestFailures:
     def test_error_mid_import_rolls_back(self, run_import, monkeypatch):
         original = sync._sync_sheet
 
-        def fail_on_cash(sheet, player_by_row):
-            if sheet.kind == SeasonKind.CASH:
+        def fail_on_cash(plan, player_by_row):
+            if plan.sheet.kind == SeasonKind.CASH:
                 raise RuntimeError("boom")
-            return original(sheet, player_by_row)
+            return original(plan, player_by_row)
 
         monkeypatch.setattr(sync, "_sync_sheet", fail_on_cash)
         with pytest.raises(RuntimeError):
@@ -291,4 +350,5 @@ class TestSharedNames:
         results = Result.objects.filter(player__name="Дима")
         assert set(results.values_list("player__nickname", flat=True)) == {"Рыжий"}
         assert results.count() == 2  # the two ТУР2026 games of the renamed row
-        assert not Player.objects.filter(name="Дима", nickname="Большой").exists()
+        # The file's other Димы are loaded as players, without games.
+        assert not Result.objects.filter(player__nickname="Большой").exists()

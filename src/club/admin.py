@@ -38,6 +38,7 @@ from club.models import (
     Season,
     SeasonKind,
 )
+from importer.models import PlayerAlias
 from live.models import LiveAction
 
 # Unfold 0.108 ships no translations, so its default search placeholder ("Type to search") stays
@@ -104,12 +105,22 @@ def year_filter(field_path: str) -> type[DropdownFilter]:
     return YearFilter
 
 
+class PlayerAliasInline(TabularInline):
+    """Raw names from the club spreadsheet (importer.aliases). Organizers have no permissions on
+    PlayerAlias, so only superusers see it, like the sheet sync itself."""
+
+    model = PlayerAlias
+    fields = ["raw_name"]
+    extra = 0
+
+
 @admin.register(Player)
 class PlayerAdmin(ModelAdmin):
     list_display = ["name", "nickname", "slug", "games_played", "net"]
-    search_fields = ["name", "nickname", "slug"]
-    search_help_text = "Имя, ник или slug"
+    search_fields = ["name", "nickname", "slug", "aliases__raw_name"]
+    search_help_text = "Имя, ник, slug или имя в таблице"
     fields = ["name", "nickname", "slug"]
+    inlines = [PlayerAliasInline]
 
     def get_queryset(self, request):
         return stats.annotate_player_totals(super().get_queryset(request))
@@ -133,6 +144,7 @@ class SeasonAdmin(ModelAdmin):
         "chips_per_lei_number",
         "games_count",
         "players_count",
+        "sheet_managed",
     ]
     list_filter = [("kind", ChoicesDropdownFilter), year_filter("year")]
     list_filter_submit = True
@@ -149,6 +161,7 @@ class SeasonAdmin(ModelAdmin):
         "payout_round",
         "default_blinds",
         "cash_step",
+        "sheet_managed",
     ]
     # Prices of the live game screens: only the ones of the chosen kind (Alpine expressions).
     conditional_fields = {
@@ -164,6 +177,12 @@ class SeasonAdmin(ModelAdmin):
 
     def get_queryset(self, request):
         return stats.annotate_season_totals(super().get_queryset(request))
+
+    def get_readonly_fields(self, request, obj=None):
+        # Whether the importer may write to a season is the superusers' call (the sheet sync is
+        # theirs too), not the organizers'.
+        readonly = super().get_readonly_fields(request, obj)
+        return readonly if request.user.is_superuser else [*readonly, "sheet_managed"]
 
     @display(description="год", ordering="year", **number)
     def year_number(self, obj):

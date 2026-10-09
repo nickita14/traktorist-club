@@ -1,0 +1,219 @@
+{% extends "admin/base.html" %}
+{% comment %}
+  The sheet sync page (importer.admin.SheetSyncView). Everything shown is prepared by
+  importer.admin.present(); this template only lays it out. No scripts, no inline styles.
+{% endcomment %}
+
+{% block title %}{{ title }} | {{ site_title|default:"" }}{% endblock %}
+
+{% block content %}
+<div class="sheet-sync">
+  <h1 class="sync-title">{{ title }}</h1>
+
+  {% if not configured %}
+    <p class="sync-note">Синхронизация выключена: не задан GOOGLE_SHEET_ID.</p>
+  {% else %}
+    <section class="sync-step">
+      <p class="sync-note">
+        Таблица клуба скачивается по ссылке. Сначала отчёт: что изменится в базе.
+        «Применить» записывает ровно то, что показано в отчёте, из того же скачанного файла.
+        Снимок живёт час.
+      </p>
+      <form method="post" class="sync-actions">
+        {% csrf_token %}
+        <button type="submit" name="action" value="fetch" class="sync-button sync-button-primary">Подтянуть из таблицы</button>
+      </form>
+    </section>
+
+    {% if sheet_errors %}
+      <section class="sync-step">
+        <h2>Файл не читается</h2>
+        <ul class="sync-list sync-warning">
+          {% for error in sheet_errors %}<li>{{ error }}</li>{% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    {% if report %}
+      <section class="sync-step">
+        <h2>{% if applied %}Применено{% else %}Отчёт{% if report.dry_run %}: ничего ещё не записано{% endif %}{% endif %}</h2>
+        {% if snapshot %}
+          <p class="sync-meta">
+            Скачано <span class="admin-num">{{ snapshot.fetched_at|date:"d.m.Y H:i" }}</span>{% if snapshot.fetched_by %}, {{ snapshot.fetched_by.get_username }}{% endif %}.
+            SHA-256 <span class="admin-num">{{ snapshot.sha256|truncatechars:13 }}</span>
+          </p>
+        {% endif %}
+
+        {% if titles and not applied %}
+          <form method="post" class="sync-sheets">
+            {% csrf_token %}
+            <input type="hidden" name="snapshot" value="{{ snapshot.pk }}">
+            <fieldset>
+              <legend>Листы</legend>
+              {% for title, checked in titles %}
+                <label class="sync-check"><input type="checkbox" name="sheets" value="{{ title }}"{% if checked %} checked{% endif %}> {{ title }}</label>
+              {% endfor %}
+            </fieldset>
+            <button type="submit" name="action" value="recount" class="sync-button">Пересчитать</button>
+          </form>
+        {% endif %}
+
+        {% if report.problems %}
+          <div class="sync-problems">
+            <h3 class="sync-warning">Ничего нельзя применить: не все имена известны</h3>
+            <p class="sync-note">Добавьте имя из таблицы игроку (страница игрока, «Имена в таблице») и подтяните таблицу заново.</p>
+            {% for sheet, names in report.problems.unknown.items %}
+              <p><strong>{{ sheet }}</strong>, неизвестные имена:</p>
+              <ul class="sync-list">{% for name in names %}<li>{{ name }}</li>{% endfor %}</ul>
+            {% endfor %}
+            {% for sheet, names in report.problems.ambiguous.items %}
+              <p><strong>{{ sheet }}</strong>, имя подходит нескольким игрокам:</p>
+              <ul class="sync-list">
+                {% for name, players in names.items %}<li>{{ name }}: {{ players|join:", " }}</li>{% endfor %}
+              </ul>
+            {% endfor %}
+            {% if report.problems.duplicates %}
+              <p>Один игрок в двух строках одной игры:</p>
+              <ul class="sync-list">
+                {% for dup in report.problems.duplicates %}
+                  <li>{{ dup.sheet }}: {{ dup.cells|join:", " }}: это {{ dup.player }}, игра <span class="admin-num">{{ dup.date|date:"d.m.Y" }}</span></li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+        {% else %}
+          {% if totals %}
+            <dl class="sync-counts">
+              {% for label, value in totals %}<div><dt>{{ label }}</dt><dd class="admin-num">{{ value }}</dd></div>{% endfor %}
+            </dl>
+          {% endif %}
+          {% if report.upsert and report.upsert.players_created %}
+            <p class="sync-warning">Будут созданы игроки: {{ report.upsert.players_created|join:", " }}</p>
+          {% endif %}
+          {% if report.players_created %}
+            <p class="sync-warning">Будут созданы игроки: {{ report.players_created|join:", " }}</p>
+          {% endif %}
+        {% endif %}
+      </section>
+
+      {% for item in sheets %}
+        {% with sheet=item.sheet %}
+        <section class="sync-sheet">
+          <h2>{{ sheet.title }}</h2>
+          {% if sheet.refused %}
+            <p class="sync-warning">Сезон не ведётся в таблице: лист не импортируется. Чтобы импортировать его, включите «Ведётся в таблице» у сезона.</p>
+          {% elif not report.problems %}
+            {% if item.counts %}
+              <dl class="sync-counts">
+                {% for label, value in item.counts %}<div><dt>{{ label }}</dt><dd class="admin-num">{{ value }}</dd></div>{% endfor %}
+              </dl>
+            {% else %}
+              <p class="sync-note">Без изменений.</p>
+            {% endif %}
+
+            {% if item.skipped %}
+              <h3>Игры с живого экрана</h3>
+              <ul class="sync-list">
+                {% for date, label in item.skipped %}<li><span class="admin-num">{{ date|date:"d.m.Y" }}</span>: {{ label }}</li>{% endfor %}
+              </ul>
+            {% endif %}
+
+            {% if item.updated %}
+              <h3>Закупки и выплаты</h3>
+              <div class="sync-scroll">
+                <table class="sync-table">
+                  <thead><tr><th>Дата</th><th>Игрок</th><th>Поле</th><th class="num">Было</th><th class="num">Станет</th></tr></thead>
+                  <tbody>
+                    {% for change, fields in item.updated %}
+                      {% for label, old, new in fields %}
+                        <tr><td class="admin-num">{{ change.date|date:"d.m.Y" }}</td><td>{{ change.player }}</td><td>{{ label }}</td><td class="num admin-num">{{ old }}</td><td class="num admin-num">{{ new }}</td></tr>
+                      {% endfor %}
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% endif %}
+
+            {% if sheet.place_changes %}
+              <h3>Места</h3>
+              <p class="sync-note">Места считаются по выплатам из таблицы. Исправленное вручную место будет заменено.</p>
+              <div class="sync-scroll">
+                <table class="sync-table">
+                  <thead><tr><th>Дата</th><th>Игрок</th><th class="num">Было</th><th class="num">Станет</th></tr></thead>
+                  <tbody>
+                    {% for change in sheet.place_changes %}
+                      <tr><td class="admin-num">{{ change.date|date:"d.m.Y" }}</td><td>{{ change.player }}</td><td class="num admin-num">{{ change.old|default_if_none:"·" }}</td><td class="num admin-num">{{ change.new|default_if_none:"·" }}</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% endif %}
+
+            {% if item.deleted %}
+              <h3 class="sync-warning">Результаты будут удалены (их нет в таблице)</h3>
+              <ul class="sync-list">
+                {% for change in item.deleted %}<li><span class="admin-num">{{ change.date|date:"d.m.Y" }}</span> {{ change.player }}</li>{% endfor %}
+              </ul>
+            {% endif %}
+
+            {% if item.created %}
+              <details class="sync-details">
+                <summary>Новые результаты: <span class="admin-num">{{ item.created|length }}</span></summary>
+                <ul class="sync-list">
+                  {% for change in item.created %}<li><span class="admin-num">{{ change.date|date:"d.m.Y" }}</span> {{ change.player }}</li>{% endfor %}
+                </ul>
+              </details>
+            {% endif %}
+
+            {% if sheet.db_only_games %}
+              <h3>Игры только в базе (остаются как есть)</h3>
+              <ul class="sync-list">
+                {% for date in sheet.db_only_games %}<li class="admin-num">{{ date|date:"d.m.Y" }}</li>{% endfor %}
+              </ul>
+            {% endif %}
+
+            {% if sheet.verification %}
+              <h3>Сверка с итогами таблицы</h3>
+              <p class="sync-note">
+                Игроков проверено <span class="admin-num">{{ sheet.verification.checked }}</span>,
+                совпало <span class="admin-num">{{ sheet.verification.ok }}</span>.
+              </p>
+              {% for label, alert, findings in item.findings %}
+                <p{% if alert %} class="sync-warning"{% endif %}>{{ label }}:</p>
+                <ul class="sync-list">
+                  {% for f in findings %}<li>{{ f.player }}, {{ f.header }}: у нас <span class="admin-num">{{ f.ours }}</span>, в таблице <span class="admin-num">{{ f.sheet }}</span></li>{% endfor %}
+                </ul>
+              {% endfor %}
+              {% if sheet.verification.leftover_games %}
+                <p class="sync-warning">Остаток не сходится:</p>
+                <ul class="sync-list">{% for line in sheet.verification.leftover_games %}<li>{{ line }}</li>{% endfor %}</ul>
+              {% endif %}
+            {% endif %}
+          {% endif %}
+
+          {% if item.date_fixes %}
+            <h3>Исправленные даты</h3>
+            <ul class="sync-list">
+              {% for fix, reason in item.date_fixes %}<li>{{ fix.cell }}: {{ fix.raw }} → <span class="admin-num">{{ fix.fixed|date:"d.m.Y" }}</span> ({{ reason }})</li>{% endfor %}
+            </ul>
+          {% endif %}
+          {% if sheet.empty_columns %}
+            <p class="sync-note">Столбцы дат без результатов (игра не создаётся): {{ sheet.empty_columns|join:", " }}</p>
+          {% endif %}
+        </section>
+        {% endwith %}
+      {% endfor %}
+
+      {% if not applied and snapshot %}
+        <form method="post" class="sync-actions sync-apply">
+          {% csrf_token %}
+          <input type="hidden" name="snapshot" value="{{ snapshot.pk }}">
+          <input type="hidden" name="digest" value="{{ digest }}">
+          <button type="submit" name="action" value="apply" class="sync-button sync-button-primary"{% if not can_apply %} disabled{% endif %}>Применить</button>
+          {% if not can_apply %}<span class="sync-note">Применять нечего или есть ошибки.</span>{% endif %}
+        </form>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

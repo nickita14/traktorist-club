@@ -63,6 +63,7 @@ services:
       DATABASE_URL: postgresql://traktorist:${POSTGRES_PASSWORD}@db:5432/traktorist_club
       SITE_INDEXING: ${SITE_INDEXING:-False}
       ADMIN_REQUIRE_2FA: ${ADMIN_REQUIRE_2FA:-False}
+      GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID:-}
     depends_on:
       db:
         condition: service_healthy
