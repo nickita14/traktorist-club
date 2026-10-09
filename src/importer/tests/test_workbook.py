@@ -4,7 +4,7 @@ import pytest
 
 from importer.tests.conftest import edit_cells
 from importer.tests.sheet_builder import FakeSheet, build_workbook, fixture_sheets, sheet_named
-from importer.workbook import Entry, SheetError, parse_workbook
+from importer.workbook import Entry, SheetError, import_sheet_titles, parse_workbook
 
 
 def by_title(parsed):
@@ -177,3 +177,7 @@ class TestBytes:
     def test_not_a_workbook(self, content):
         with pytest.raises(SheetError, match="not a readable .xlsx workbook"):
             parse_workbook(content)
+
+
+def test_import_sheet_titles(workbook_path):
+    assert import_sheet_titles(workbook_path.read_bytes()) == ["ТУР2026_new", "ТУР2025", "КЭШ2026"]

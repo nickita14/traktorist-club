@@ -77,13 +77,24 @@ class SheetReport:
 
 
 @dataclass
+class Duplicate:
+    """Several rows of a sheet resolve to one player who played the same game."""
+
+    sheet: str
+    cells: list[str]
+    player: str
+    date: datetime.date
+
+
+@dataclass
 class NameProblems:
     """Names the import cannot place; with any of them nothing is imported."""
 
     unknown: dict[str, list[str]] = field(default_factory=dict)  # sheet -> raw names
-    ambiguous: dict[str, list[str]] = field(default_factory=dict)  # sheet -> messages
-    duplicates: list[str] = field(default_factory=list)  # two rows, one player, one game
-    lines: list[str] = field(default_factory=list)  # the same, as the command prints it
+    # sheet -> raw name -> the players it may mean
+    ambiguous: dict[str, dict[str, list[str]]] = field(default_factory=dict)
+    duplicates: list[Duplicate] = field(default_factory=list)
+    lines: list[str] = field(default_factory=list)  # all of it, as the command prints it
 
 
 @dataclass

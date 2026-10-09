@@ -27,6 +27,7 @@ from importer.report import (
     LIVE_IN_PROGRESS,
     LIVE_RECORDED,
     UPDATED,
+    Duplicate,
     NameProblems,
     PlaceChange,
     ResultChange,
@@ -112,14 +113,14 @@ def resolve_names(
     """
     resolved: dict[RowKey, Player | CanonicalPlayer] = {}
     unknown: dict[str, set[str]] = defaultdict(set)
-    ambiguous: dict[str, dict[str, str]] = defaultdict(dict)
+    ambiguous: dict[str, dict[str, AmbiguousName]] = defaultdict(dict)
     for sheet in sheets:
         for row in sheet.players:
             try:
                 canonical = alias_map.resolve(row.raw_name)
             except AmbiguousName as exc:
                 if row.entries:
-                    ambiguous[sheet.title][row.raw_name] = str(exc)
+                    ambiguous[sheet.title][row.raw_name] = exc
                 continue
             if canonical is None and row.entries:
                 if not create_missing:
@@ -131,14 +132,14 @@ def resolve_names(
     problems = NameProblems(
         unknown={title: sorted(names) for title, names in unknown.items()},
         ambiguous={
-            title: [messages[name] for name in sorted(messages)]
-            for title, messages in ambiguous.items()
+            title: {name: [str(p) for p in found[name].candidates] for name in sorted(found)}
+            for title, found in ambiguous.items()
         },
     )
     if ambiguous:
         problems.lines.append(f"Ambiguous player names ({ADD_ALIAS}):")
-        for title, messages in problems.ambiguous.items():
-            problems.lines += [f"  {title}: {message}" for message in messages]
+        for title, found in ambiguous.items():
+            problems.lines += [f"  {title}: {found[name]}" for name in sorted(found)]
     if unknown:
         problems.lines.append(f"Unknown player names ({ADD_ALIAS}, or pass --create-missing):")
         for title, names in problems.unknown.items():
@@ -147,7 +148,7 @@ def resolve_names(
         raise ImportProblem(problems)
 
     # Two raw names for one player in the same game would break result_game_player_unique.
-    errors = []
+    problems = NameProblems()
     for sheet in sheets:
         rows_by_game: dict[tuple, list[int]] = defaultdict(list)
         for row in sheet.players:
@@ -155,12 +156,14 @@ def resolve_names(
                 rows_by_game[(resolved[(sheet.title, row.row)], date)].append(row.row)
         for (player, date), rows in sorted(rows_by_game.items(), key=lambda item: item[0][1]):
             if len(rows) > 1:
-                errors.append(
-                    f"{sheet.title}: rows {', '.join(f'B{r}' for r in rows)} are all {player} "
+                cells = [f"B{r}" for r in rows]
+                problems.duplicates.append(Duplicate(sheet.title, cells, str(player), date))
+                problems.lines.append(
+                    f"{sheet.title}: rows {', '.join(cells)} are all {player} "
                     f"and played on {date:%d.%m.%Y}"
                 )
-    if errors:
-        raise ImportProblem(NameProblems(duplicates=errors, lines=errors))
+    if problems.lines:
+        raise ImportProblem(problems)
     return resolved
 
 

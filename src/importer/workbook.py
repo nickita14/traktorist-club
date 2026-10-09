@@ -151,6 +151,11 @@ def parse_workbook(source: str | Path | bytes, only: list[str] | None = None) ->
     return ParsedWorkbook(sheets=sheets, skipped=skipped)
 
 
+def import_sheet_titles(source: str | Path | bytes) -> list[str]:
+    """The import sheets of a workbook, in order (old versions and other sheets left out)."""
+    return [title for title in _load(source, read_only=True).sheetnames if season_of(title)]
+
+
 def _load(source: str | Path | bytes, **options) -> openpyxl.Workbook:
     try:
         return openpyxl.load_workbook(

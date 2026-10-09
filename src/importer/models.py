@@ -1,6 +1,10 @@
+from datetime import timedelta
+
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.functions import Lower
+from django.utils import timezone
 
 
 class PlayerAlias(models.Model):
@@ -43,3 +47,39 @@ class PlayerAlias(models.Model):
             raise ValidationError(
                 {"raw_name": f"Это имя уже записано за игроком {clash.player}: «{clash}»."}
             )
+
+
+class SheetSnapshot(models.Model):
+    """The club spreadsheet as fetched for one preview, so that "Применить" imports exactly the
+    previewed bytes, never a new fetch. Short-lived: deleted on apply, on the next fetch, and once
+    older than TTL (importer.admin)."""
+
+    TTL = timedelta(hours=1)
+
+    content = models.BinaryField("файл")
+    sha256 = models.CharField("SHA-256", max_length=64)
+    fetched_at = models.DateTimeField("загружено", default=timezone.now)
+    fetched_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="кто загрузил",
+    )
+    sheets = models.JSONField("листы", default=list)  # the previewed selection
+
+    class Meta:
+        verbose_name = "таблица клуба"
+        verbose_name_plural = "таблица клуба"
+
+    def __str__(self) -> str:
+        return f"Таблица от {timezone.localtime(self.fetched_at):%d.%m.%Y %H:%M}"
+
+    @property
+    def expired(self) -> bool:
+        return timezone.now() - self.fetched_at > self.TTL
+
+    @classmethod
+    def purge_expired(cls) -> None:
+        cls.objects.filter(fetched_at__lt=timezone.now() - cls.TTL).delete()
