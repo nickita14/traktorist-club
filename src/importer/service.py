@@ -23,7 +23,7 @@ class ReportChanged(Exception):
 
 
 def run_import(
-    source: str | Path,
+    source: str | Path | bytes,
     *,
     sheets: list[str] | None = None,
     dry_run: bool = False,
@@ -31,7 +31,7 @@ def run_import(
     alias_map: AliasMap | None = None,
     expected_digest: str | None = None,
 ) -> ImportReport:
-    """Import the workbook at ``source``; a dry run rolls everything back.
+    """Import ``source`` (a path or the workbook's bytes); a dry run rolls everything back.
 
     Unreadable workbooks raise SheetError. Unplaceable names leave ``report.problems`` set and
     nothing imported. With ``expected_digest``, an import whose changes differ from it is rolled

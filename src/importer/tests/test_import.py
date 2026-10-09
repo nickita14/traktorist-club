@@ -7,6 +7,8 @@ from club.models import Game, Player, Result, Season, SeasonKind
 from club.stats import annotate_game_totals
 from club.tests.factories import make_game
 from importer import service, sync
+from importer.management.commands import import_sheet
+from importer.sources import SheetFetchError
 from importer.tests.sheet_builder import (
     build_workbook,
     fixture_aliases,
@@ -235,6 +237,32 @@ class TestOptions:
         # 4 ТУР2026 names with games, 3 "Имя (ник)" names from ТУР2025; КЭШ2026 reuses ТУР2026's
         assert Player.objects.count() == 7
         assert Player.objects.filter(name="Олег (Плуг)").exists()
+
+
+class TestFromGoogle:
+    def test_imports_the_fetched_bytes(self, run_command, workbook_path, aliases_path, monkeypatch):
+        fetched = workbook_path.read_bytes()
+        monkeypatch.setattr(import_sheet, "fetch_sheet", lambda: fetched)
+
+        out = run_command("import_sheet", from_google=True, aliases=str(aliases_path))
+
+        assert db_counts() == (4, 3, 8, 22)
+        assert "games created 3, results created 10, seasons created 1" in out
+
+    def test_fetch_error_imports_nothing(self, run_command, monkeypatch):
+        def fail():
+            raise SheetFetchError("Таблица недоступна по ссылке (Google вернул не xlsx).")
+
+        monkeypatch.setattr(import_sheet, "fetch_sheet", fail)
+        with pytest.raises(CommandError, match="Google вернул не xlsx"):
+            run_command("import_sheet", from_google=True)
+        assert db_counts() == (0, 0, 0, 0)
+
+    @pytest.mark.parametrize("both", [True, False])
+    def test_exactly_one_source(self, run_command, workbook_path, both):
+        args = [workbook_path] if both else []
+        with pytest.raises(CommandError, match="either a path or --from-google"):
+            run_command("import_sheet", *args, from_google=both)
 
 
 class TestFailures:

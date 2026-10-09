@@ -4,6 +4,7 @@ from club.models import SeasonKind
 from importer.aliases import AliasError, load_aliases
 from importer.report import DELETED, LIVE_IN_PROGRESS, LIVE_RECORDED, UPDATED, ImportReport
 from importer.service import run_import
+from importer.sources import SheetFetchError, fetch_sheet
 from importer.verify import LABELS
 from importer.workbook import SheetError
 
@@ -28,7 +29,12 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        parser.add_argument("path", help="the .xlsx file (keep it in data/)")
+        parser.add_argument("path", nargs="?", help="the .xlsx file (keep it in data/)")
+        parser.add_argument(
+            "--from-google",
+            action="store_true",
+            help="fetch the sheet from Google (GOOGLE_SHEET_ID) instead of reading a file",
+        )
         parser.add_argument(
             "--aliases",
             help="aliases.yaml to load into the database first (players and their raw names)",
@@ -46,12 +52,15 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        if bool(options["path"]) == options["from_google"]:
+            raise CommandError("give either a path or --from-google")
         try:
             alias_map = load_aliases(options["aliases"]) if options["aliases"] else None
+            source = fetch_sheet() if options["from_google"] else options["path"]
             if options["dry_run"]:
                 self.stdout.write(self.style.WARNING("DRY RUN: nothing was saved"))
             report = run_import(
-                options["path"],
+                source,
                 sheets=sheet_list(options["sheets"]),
                 dry_run=options["dry_run"],
                 create_missing=options["create_missing"],
@@ -59,6 +68,8 @@ class Command(BaseCommand):
             )
         except FileNotFoundError as exc:
             raise CommandError(str(exc)) from exc
+        except SheetFetchError as exc:
+            raise CommandError(str(exc)) from None
         except (SheetError, AliasError) as exc:
             raise CommandError("\n".join(["Nothing imported:", *exc.errors])) from exc
 
