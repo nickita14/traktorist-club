@@ -20,11 +20,12 @@ from django.db.models import Exists, OuterRef
 
 from club.models import Game, Player, Result, Season, SeasonKind
 from club.stats import suggest_places
-from importer.aliases import AliasMap, AmbiguousName, CanonicalPlayer
+from importer.aliases import AmbiguousName, CanonicalPlayer, DbAliasMap
 from importer.workbook import ParsedSheet, ParsedWorkbook, clean_name
 from live.models import LiveAction
 
 RowKey = tuple[str, int]  # (sheet title, name row)
+ADD_ALIAS = "add an alias on the player's admin page or in aliases.yaml"
 
 # Why a sheet date was left alone (SheetChanges.skipped_games).
 LIVE_RECORDED = "live recorded"
@@ -104,14 +105,15 @@ def _without_dates(sheet: ParsedSheet, dates: set[datetime.date]) -> ParsedSheet
 
 
 def resolve_names(
-    sheets: list[ParsedSheet], alias_map: AliasMap, *, create_missing: bool
-) -> dict[RowKey, CanonicalPlayer]:
-    """Canonical player per sheet row. Rows without games may stay unresolved.
+    sheets: list[ParsedSheet], alias_map: DbAliasMap, *, create_missing: bool
+) -> dict[RowKey, Player | CanonicalPlayer]:
+    """Player per sheet row (a CanonicalPlayer: to be created). Rows without games may stay
+    unresolved.
 
     Ambiguous names (several players share the name, no explicit alias) are always an error,
     also with ``create_missing``: creating yet another player would be a guess too.
     """
-    resolved: dict[RowKey, CanonicalPlayer] = {}
+    resolved: dict[RowKey, Player | CanonicalPlayer] = {}
     unknown: dict[str, set[str]] = defaultdict(set)
     ambiguous: dict[str, dict[str, str]] = defaultdict(dict)
     for sheet in sheets:
@@ -131,11 +133,11 @@ def resolve_names(
                 resolved[(sheet.title, row.row)] = canonical
     lines = []
     if ambiguous:
-        lines.append("Ambiguous player names (add an explicit alias in aliases.yaml):")
+        lines.append(f"Ambiguous player names ({ADD_ALIAS}):")
         for title, messages in ambiguous.items():
             lines += [f"  {title}: {messages[name]}" for name in sorted(messages)]
     if unknown:
-        lines.append("Unknown player names (add them to aliases.yaml or pass --create-missing):")
+        lines.append(f"Unknown player names ({ADD_ALIAS}, or pass --create-missing):")
         for title, names in unknown.items():
             lines += [f"  {title}: {name}" for name in sorted(names)]
     if lines:
@@ -159,24 +161,26 @@ def resolve_names(
     return resolved
 
 
-def import_workbook(
-    parsed: ParsedWorkbook, alias_map: AliasMap, *, create_missing: bool = False
-) -> ImportResult:
-    """Sync every parsed sheet the guards allow; call inside a transaction (the command does)."""
+def import_workbook(parsed: ParsedWorkbook, *, create_missing: bool = False) -> ImportResult:
+    """Sync every parsed sheet the guards allow; call inside a transaction (the command does).
+
+    Names resolve through the aliases in the database (importer.aliases.DbAliasMap).
+    """
     plans = {sheet.title: plan_sheet(sheet) for sheet in parsed.sheets}
     synced = [plan.sheet for plan in plans.values() if not plan.refused]
-    resolved = resolve_names(synced, alias_map, create_missing=create_missing)
+    resolved = resolve_names(synced, DbAliasMap(), create_missing=create_missing)
 
-    players: dict[CanonicalPlayer, Player] = {}
+    players: dict[Player | CanonicalPlayer, Player] = {}
     created_players = []
-    for canonical in dict.fromkeys(resolved.values()):
-        player = Player.objects.filter(name=canonical.name, nickname=canonical.nickname).first()
-        if player is None:
-            player = Player(name=canonical.name, nickname=canonical.nickname, slug=canonical.slug)
-            player.full_clean()  # generates the slug when the YAML has none
-            player.save()
-            created_players.append(f"{player} [{player.slug}]")
-        players[canonical] = player
+    for found in dict.fromkeys(resolved.values()):
+        if isinstance(found, Player):
+            players[found] = found
+            continue
+        player = Player(name=found.name)  # --create-missing: a raw name nobody knows
+        player.full_clean()  # generates the slug
+        player.save()
+        created_players.append(f"{player} [{player.slug}]")
+        players[found] = player
 
     result = ImportResult(
         sheets=[],

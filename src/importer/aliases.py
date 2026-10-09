@@ -1,14 +1,22 @@
-"""Map raw spreadsheet names to canonical players (``aliases.yaml``, see aliases.example.yaml).
+"""Map raw spreadsheet names to players.
+
+The aliases live in the database (``PlayerAlias``, edited on the Player admin page);
+``aliases.yaml`` (see aliases.example.yaml) is only a way to load many of them at once
+(``upsert_aliases``, run by ``import_sheet --aliases``).
 
 Resolution order: an explicit alias always wins; otherwise a raw name may match a player's own
 ``name``. A raw name that matches the name of several players (three "Дима" with different
-nicknames) is never guessed: it must be listed as an explicit alias of one of them.
+nicknames) is never guessed: it must be an explicit alias of one of them.
 """
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+
+from club.models import Player
+from importer.models import PlayerAlias
 
 
 class AliasError(Exception):
@@ -33,33 +41,23 @@ class CanonicalPlayer:
 
 
 class AmbiguousName(Exception):
-    def __init__(self, raw_name: str, candidates: list[CanonicalPlayer]):
+    def __init__(self, raw_name: str, candidates: list):
         self.raw_name, self.candidates = raw_name, candidates
         super().__init__(
             f"{raw_name!r} matches the name of several players: "
-            f"{', '.join(map(str, candidates))}; list it under 'aliases' of one of them"
+            f"{', '.join(map(str, candidates))}; make it an alias of one of them"
         )
 
 
 @dataclass
 class AliasMap:
+    """A validated aliases file. Only loaded into the database (upsert_aliases), never resolved
+    against directly: DbAliasMap applies the same rules to the tables."""
+
     players: list[CanonicalPlayer] = field(default_factory=list)
     by_alias: dict[str, CanonicalPlayer] = field(default_factory=dict)
-    by_name: dict[str, list[CanonicalPlayer]] = field(default_factory=dict)
-
-    def candidates(self, raw_name: str) -> list[CanonicalPlayer]:
-        """Players the raw name may mean: an explicit alias wins, else every name match."""
-        key = normalize(raw_name)
-        if key in self.by_alias:
-            return [self.by_alias[key]]
-        return self.by_name.get(key, [])
-
-    def resolve(self, raw_name: str) -> CanonicalPlayer | None:
-        """The one player for ``raw_name``, None if unknown; AmbiguousName, never a guess."""
-        candidates = self.candidates(raw_name)
-        if len(candidates) > 1:
-            raise AmbiguousName(raw_name, candidates)
-        return candidates[0] if candidates else None
+    # Aliases as written in the file (spaces collapsed), per player: what upsert_aliases stores.
+    raw_aliases: dict[CanonicalPlayer, list[str]] = field(default_factory=dict)
 
 
 def load_aliases(path: str | Path) -> AliasMap:
@@ -101,14 +99,84 @@ def build_alias_map(data) -> AliasMap:
         alias_map.players.append(player)
         # Several players may share a name (checked when a raw name is resolved), but an
         # explicit alias must point to exactly one player.
-        alias_map.by_name.setdefault(normalize(player.name), []).append(player)
+        written = {normalize(a): " ".join(a.split()) for a in reversed(aliases)}
         for alias in dict.fromkeys(normalize(a) for a in aliases):
             owner = alias_map.by_alias.get(alias)
             if owner is not None and owner != player:
                 errors.append(f"{where}: alias {alias!r} already belongs to {owner}")
                 continue
             alias_map.by_alias[alias] = player
+            alias_map.raw_aliases.setdefault(player, []).append(written[alias])
 
     if errors:
         raise AliasError(errors)
     return alias_map
+
+
+class DbAliasMap:
+    """The same lookup over ``PlayerAlias`` and ``Player`` (two queries), resolving to players."""
+
+    def __init__(self):
+        players = {player.pk: player for player in Player.objects.all()}
+        self.by_name: dict[str, list[Player]] = defaultdict(list)
+        for player in players.values():
+            self.by_name[normalize(player.name)].append(player)
+        # A list, not one player: two aliases that differ only in ё/е could still point to two
+        # players (the admin checks it, the database cannot), and that must not be a guess.
+        self.by_alias: dict[str, list[Player]] = defaultdict(list)
+        for raw_name, player_id in PlayerAlias.objects.values_list("raw_name", "player_id"):
+            owners = self.by_alias[normalize(raw_name)]
+            if players[player_id] not in owners:
+                owners.append(players[player_id])
+
+    def resolve(self, raw_name: str) -> Player | None:
+        """The one player for ``raw_name``, None if unknown; AmbiguousName, never a guess."""
+        key = normalize(raw_name)
+        candidates = self.by_alias.get(key) or self.by_name.get(key, [])
+        if len(candidates) > 1:
+            raise AmbiguousName(raw_name, candidates)
+        return candidates[0] if candidates else None
+
+
+@dataclass
+class AliasUpsert:
+    players_created: list[str] = field(default_factory=list)
+    aliases_created: list[str] = field(default_factory=list)
+    aliases_moved: list[str] = field(default_factory=list)  # "raw: old player -> new player"
+
+
+def upsert_aliases(alias_map: AliasMap) -> AliasUpsert:
+    """Load a validated aliases file into the database; the file wins, nothing is deleted.
+
+    A file player is found by slug when the file gives one (the player may have been renamed in
+    the admin since), else by (name, nickname), else created. Call inside a transaction.
+    """
+    upsert = AliasUpsert()
+    existing = {normalize(alias.raw_name): alias for alias in PlayerAlias.objects.all()}
+    for canonical in alias_map.players:
+        player = find_player(canonical)
+        if player is None:
+            player = Player(name=canonical.name, nickname=canonical.nickname, slug=canonical.slug)
+            player.full_clean()  # generates the slug when the file has none
+            player.save()
+            upsert.players_created.append(f"{player} [{player.slug}]")
+        for raw_name in alias_map.raw_aliases.get(canonical, []):
+            alias = existing.get(normalize(raw_name))
+            if alias is None:
+                existing[normalize(raw_name)] = PlayerAlias.objects.create(
+                    raw_name=raw_name, player=player
+                )
+                upsert.aliases_created.append(f"{raw_name}: {player}")
+            elif alias.player_id != player.pk:
+                upsert.aliases_moved.append(f"{alias.raw_name}: {alias.player} -> {player}")
+                alias.player = player
+                alias.save(update_fields=["player"])
+    return upsert
+
+
+def find_player(canonical: CanonicalPlayer) -> Player | None:
+    if canonical.slug:
+        player = Player.objects.filter(slug=canonical.slug).first()
+        if player is not None:
+            return player
+    return Player.objects.filter(name=canonical.name, nickname=canonical.nickname).first()

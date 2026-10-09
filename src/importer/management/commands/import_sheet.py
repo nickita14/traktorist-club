@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from importer.aliases import AliasError, AliasMap, load_aliases
+from importer.aliases import AliasError, load_aliases, upsert_aliases
 from importer.sync import LIVE_IN_PROGRESS, LIVE_RECORDED, ImportProblem, import_workbook
 from importer.verify import LABELS, verify
 from importer.workbook import SheetError, parse_workbook
@@ -28,7 +28,10 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("path", help="the .xlsx file (keep it in data/)")
-        parser.add_argument("--aliases", help="aliases.yaml mapping raw names to players")
+        parser.add_argument(
+            "--aliases",
+            help="aliases.yaml to load into the database first (players and their raw names)",
+        )
         parser.add_argument(
             "--sheets", help="comma-separated sheet names to import (default: all import sheets)"
         )
@@ -42,11 +45,9 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        if not options["aliases"] and not options["create_missing"]:
-            raise CommandError("--aliases is required (or pass --create-missing)")
         try:
             parsed = parse_workbook(options["path"], sheet_list(options["sheets"]))
-            alias_map = load_aliases(options["aliases"]) if options["aliases"] else AliasMap()
+            alias_map = load_aliases(options["aliases"]) if options["aliases"] else None
         except FileNotFoundError as exc:
             raise CommandError(str(exc)) from exc
         except (SheetError, AliasError) as exc:
@@ -57,10 +58,10 @@ class Command(BaseCommand):
         self._write_parse_notes(parsed)
 
         with transaction.atomic():
+            if alias_map is not None:
+                self._write_upsert(upsert_aliases(alias_map))
             try:
-                result = import_workbook(
-                    parsed, alias_map, create_missing=options["create_missing"]
-                )
+                result = import_workbook(parsed, create_missing=options["create_missing"])
             except ImportProblem as exc:
                 raise CommandError("\n".join(["Nothing imported:", *exc.errors])) from exc
             reports = verify(parsed, result)
@@ -89,6 +90,17 @@ class Command(BaseCommand):
         self._section(
             "Date columns without results (no game created)",
             [f"{s.title}!{column}" for s in parsed.sheets for column in s.empty_columns],
+        )
+
+    def _write_upsert(self, upsert) -> None:
+        self._section(
+            "Aliases file",
+            [
+                f"aliases created {len(upsert.aliases_created)}, "
+                f"re-pointed {len(upsert.aliases_moved)}"
+            ]
+            + [f"player created: {line}" for line in upsert.players_created]
+            + [f"alias re-pointed: {line}" for line in upsert.aliases_moved],
         )
 
     def _write_changes(self, result) -> None:

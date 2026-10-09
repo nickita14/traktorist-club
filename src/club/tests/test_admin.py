@@ -23,6 +23,7 @@ from club.tests.factories import (
     make_season,
     make_structure,
 )
+from importer.models import PlayerAlias
 
 pytestmark = pytest.mark.django_db
 
@@ -246,8 +247,13 @@ class TestOrganizerBlinds:
 class TestPlayerAddForm:
     """Through the real admin form: constraints are validated before save() runs."""
 
-    def post(self, client, **fields):
+    def post(self, client, aliases=(), **fields):
         data = {"name": "Тестов Иван", "nickname": "", "slug": ""} | fields
+        data |= {
+            "aliases-TOTAL_FORMS": len(aliases),
+            "aliases-INITIAL_FORMS": 0,
+            **{f"aliases-{i}-raw_name": raw for i, raw in enumerate(aliases)},
+        }
         return client.post(reverse("admin:club_player_add"), data)
 
     def test_empty_slug_is_generated(self, admin_client):
@@ -267,6 +273,30 @@ class TestPlayerAddForm:
     def test_explicit_slug_kept(self, admin_client):
         self.post(admin_client, slug="custom")
         assert Player.objects.get().slug == "custom"
+
+    def test_sheet_names_saved_with_the_player(self, admin_client):
+        response = self.post(admin_client, aliases=["Иван - Трактор", " Ваня   (Т) "])
+
+        assert response.status_code == 302
+        assert set(Player.objects.get().aliases.values_list("raw_name", flat=True)) == {
+            "Иван - Трактор",
+            "Ваня (Т)",
+        }
+
+    def test_sheet_name_of_another_player_refused(self, admin_client):
+        PlayerAlias.objects.create(raw_name="Пётр - Сеялка", player=make_player("Пётр"))
+
+        response = self.post(admin_client, aliases=["петр - сеялка"])
+
+        assert response.status_code == 200
+        assert "уже записано за игроком Пётр" in response.text
+        assert not Player.objects.filter(name="Тестов Иван").exists()
+
+    def test_organizer_has_no_sheet_names(self, organizer_client):
+        player = make_player()
+        response = organizer_client.get(reverse("admin:club_player_change", args=[player.pk]))
+        assert response.status_code == 200
+        assert "aliases-TOTAL_FORMS" not in response.text
 
 
 class TestSheetManaged:
@@ -660,7 +690,7 @@ class TestSearchPlaceholder:
     @pytest.mark.parametrize(
         ("model", "placeholder"),
         [
-            ("player", "Имя, ник или slug"),
+            ("player", "Имя, ник, slug или имя в таблице"),
             ("game", "Место или игрок"),
             ("blindstructure", "Название структуры"),
             ("rankladder", "Лестница или звание"),

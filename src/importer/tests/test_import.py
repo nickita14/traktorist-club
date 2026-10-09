@@ -195,9 +195,23 @@ class TestOptions:
             (2026, "cash"),
         ]
 
-    def test_aliases_required_unless_create_missing(self, run_command, workbook_path):
-        with pytest.raises(CommandError, match="--aliases is required"):
+    def test_aliases_come_from_the_database(self, run_import, run_command, workbook_path):
+        run_import()  # loads the aliases file once
+        before = db_counts()
+
+        out = run_command("import_sheet", workbook_path)
+
+        assert db_counts() == before
+        assert "Aliases file" not in out
+
+    def test_without_any_aliases_names_are_unknown(self, run_command, workbook_path):
+        with pytest.raises(CommandError, match="Unknown player names"):
             run_command("import_sheet", workbook_path)
+
+    def test_aliases_file_summary(self, run_import):
+        out = run_import()
+        assert "aliases created 7, re-pointed 0" in out
+        assert "player created: Олег Пробный [oleg]" in out
 
     def test_create_missing(self, run_command, workbook_path):
         run_command("import_sheet", workbook_path, create_missing=True)
@@ -291,4 +305,5 @@ class TestSharedNames:
         results = Result.objects.filter(player__name="Дима")
         assert set(results.values_list("player__nickname", flat=True)) == {"Рыжий"}
         assert results.count() == 2  # the two ТУР2026 games of the renamed row
-        assert not Player.objects.filter(name="Дима", nickname="Большой").exists()
+        # The file's other Димы are loaded as players, without games.
+        assert not Result.objects.filter(player__nickname="Большой").exists()
