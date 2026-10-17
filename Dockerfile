@@ -6,7 +6,7 @@
 FROM ghcr.io/astral-sh/uv:0.12.21 AS uv
 
 # Dependencies only, into /opt/venv (outside /app, so compilemessages never walks into it).
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 COPY --from=uv /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -30,7 +30,7 @@ RUN set -a && . deploy/build.env && set +a \
     && /opt/venv/bin/python manage.py compilemessages \
     && /opt/venv/bin/python manage.py collectstatic --noinput
 
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 # No pip at runtime: the app runs from /opt/venv (made by uv, without pip), and the base image's
 # own pip only brings its vendored packages into the image and its vulnerability scans.
 RUN python -m pip uninstall --yes --no-input pip \
