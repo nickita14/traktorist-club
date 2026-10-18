@@ -3,25 +3,30 @@
 <h2 class="live-heading">Добавить игрока</h2>
 <label class="field mt-3">
   <span class="field-label">Поиск по имени или нику</span>
-  {# hx-preserve: the board polls and swaps; the field and what is typed in it stay. #}
-  <input id="search" class="live-input live-input-text" type="search" name="q" value="{{ query }}" autocomplete="off" hx-preserve="true"
+  {# hx-preserve: the board polls and swaps; the field and what is typed in it stay. Names match in any alphabet (club.search). #}
+  <input id="search" class="live-input live-input-text" type="search" name="q" value="{{ query }}" placeholder="имя или ник"
+         autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" hx-preserve="true"
          hx-get="{% url 'live:board' game.pk %}" hx-trigger="input changed delay:250ms, search" hx-target="#board" hx-swap="outerHTML">
 </label>
-<ul class="quick-add" aria-label="{% if query %}Найдено{% else %}Недавние игроки{% endif %}">
-  {% for player in candidates %}
-    <li>
-      <form hx-post="{% url 'live:seat' game.pk %}" hx-target="#board" hx-swap="outerHTML" hx-disabled-elt="find button">
-        <input type="hidden" name="key" value="{% new_key %}">
-        <input type="hidden" name="player" value="{{ player.pk }}">
-        <input type="hidden" name="stage" value="{{ game.live_stage }}">
-        <button type="submit" class="btn btn-dashed" aria-label="За стол: {{ player }}">+ {{ player.label }}</button>
-      </form>
-    </li>
-  {% empty %}
-    {% if query %}<li class="quick-add-empty">Никого не нашли.</li>{% endif %}
-  {% endfor %}
-  <li><button type="button" class="btn btn-dashed" hx-get="{% url 'live:seat_new' game.pk %}" hx-target="#sheet" hx-swap="innerHTML">+ Новый игрок</button></li>
-</ul>
+{% if candidates %}
+  <ul class="live-list mt-2" aria-label="{% if query %}Найдено{% else %}Недавние игроки{% endif %}">
+    {% for player in candidates %}
+      <li class="live-row live-row-seat">
+        <span class="min-w-0"><span class="live-name">{{ player.name }}</span>{% if player.nickname %} <span class="live-nick">{{ player.nickname }}</span>{% endif %}</span>
+        <form hx-post="{% url 'live:seat' game.pk %}" hx-target="#board" hx-swap="outerHTML" hx-disabled-elt="find button">
+          <input type="hidden" name="key" value="{% new_key %}">
+          <input type="hidden" name="player" value="{{ player.pk }}">
+          <input type="hidden" name="stage" value="{{ game.live_stage }}">
+          <button type="submit" class="btn live-seat" aria-label="Посадить {{ player }}">+</button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+{% elif query %}
+  <p class="mt-3 text-muted italic">Никого не нашли.</p>
+{% endif %}
+{# The search goes along: the new player's name starts as what was typed. #}
+<button type="button" class="btn w-full mt-3" hx-get="{% url 'live:seat_new' game.pk %}" hx-include="#search" hx-target="#sheet" hx-swap="innerHTML">+ Новый игрок</button>
 
 <h2 class="live-heading live-heading-split">
   <span>За столом · <span class="font-num">{{ seated|length }}</span></span>

@@ -1260,22 +1260,22 @@
     cursor: pointer;
   }
 
-  /* Quick-add buttons on the lineup: "+ Имя", dashed until the player sits down. */
-  .quick-add {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
+  /* A player to seat on the lineup: name, nickname, and the one "+" that acts. */
+  .live-row-seat {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .quick-add-empty {
-    align-self: center;
+  .live-nick {
     color: var(--muted);
-    font-style: italic;
+    font-family: var(--font-stack-head);
   }
 
-  .btn-dashed {
-    border-style: dashed;
+  .live-seat {
+    width: 2.75rem;
+    padding-inline: 0;
+    font-family: var(--font-stack-num);
+    font-size: var(--text-lg);
+    font-weight: 400;
   }
 
   /* The entry toggle on the collection: ПРИНЯТЬ (accent outline) / СДАЛ (filled ink). */

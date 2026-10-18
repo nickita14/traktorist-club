@@ -372,6 +372,18 @@ class TestSeating:
         assert response.text.lstrip().startswith('<div id="player-list">')
         assert [p.name for p in response.context["candidates"]] == ["Дмитрий"]
 
+    def test_search_in_any_alphabet_keeps_the_order(self, org, tour):
+        game, _ = tour
+        old = make_player("Ion Ceban")
+        make_result(make_game(make_season(2020)), old)
+        recent = make_player("Ионел")
+        make_result(make_game(make_season(2025)), recent)
+        never = make_player("Ionuț")
+        make_player("Ivan")
+        url = reverse("live:seating", args=[game.pk])
+        candidates = list(org.get(url, {"q": "ио"}).context["candidates"])
+        assert candidates == [recent, old, never]
+
     def test_seat_from_the_list(self, org, tour):
         game, _ = tour
         player = make_player("Дельта")

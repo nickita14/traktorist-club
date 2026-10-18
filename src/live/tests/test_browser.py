@@ -250,9 +250,9 @@ def test_lineup_collect_start_and_bust_confirmation(phone):
     page = phone(reverse("live:board", args=[game.pk]))
     expect(page.locator(".live-bar")).to_contain_text("Посадка")
 
-    # Step 1: seat five from the quick-add buttons, remove one added by mistake.
+    # Step 1: seat five with the "+" buttons, remove one added by mistake.
     for name in ("Альфа", "Браво", "Чарли", "Дельта", "Эхо"):
-        page.get_by_label(f"За стол: {name}").click()
+        page.get_by_label(f"Посадить {name}").click()
         expect(page.get_by_label(f"Убрать: {name}")).to_be_visible()
     expect(page.locator("#board")).to_contain_text("За столом · 5")
     assert_fits(page)
@@ -310,15 +310,60 @@ def test_lineup_search_survives_polling(phone, settings):
     page = phone(reverse("live:board", args=[game.pk]))
 
     page.locator("#search").fill("дел")
-    expect(page.get_by_label("За стол: Эхо")).to_have_count(0)
+    expect(page.get_by_label("Посадить Эхо")).to_have_count(0)
     page.locator("#search").blur()
     seat(game, "Фокстрот")  # another phone: the poll brings it in, the search stays
     expect(page.locator("#board")).to_contain_text("Фокстрот", timeout=5000)
 
     expect(page.locator("#search")).to_have_value("дел")
-    expect(page.get_by_label("За стол: Эхо")).to_have_count(0)
-    page.get_by_label("За стол: Дельта").click()
+    expect(page.get_by_label("Посадить Эхо")).to_have_count(0)
+    page.get_by_label("Посадить Дельта").click()
     expect(page.locator("#board")).to_contain_text("За столом · 2")
+    assert_clean(page)
+
+
+@pytest.mark.parametrize("width", [360, 390])
+def test_lineup_list_and_search_in_any_alphabet(phone, settings, width):
+    settings.LIVE_POLL_SECONDS = 1
+    game = lineup_game(SeasonKind.TOUR)
+    seat(game, "Альфа")
+    make_player("Константин Константинопольский", nickname="Костя-Трактор")
+    make_player("Ion Ceban")
+    make_player("Ștefan Ţurcanu", nickname="Fane")
+    page = phone(reverse("live:board", args=[game.pk]))
+    page.set_viewport_size({"width": width, "height": 844})
+
+    rows = page.locator(".live-row-seat")
+    expect(rows).to_have_count(3)  # Альфа is at the table
+    expect(rows.filter(has_text="Константин")).to_contain_text("Костя-Трактор")
+    for button in page.locator(".live-seat").all():
+        box = button.bounding_box()
+        assert box["width"] >= MIN_TARGET and box["height"] >= MIN_TARGET
+        assert box["x"] + box["width"] <= width
+    assert_touch_targets(page)
+    assert page.evaluate("document.documentElement.scrollWidth") <= width
+
+    # The wrong keyboard layout: Cyrillic finds the Latin name, without its diacritics.
+    page.locator("#search").fill("цуркану")
+    expect(rows).to_have_count(1)
+    expect(rows).to_contain_text("Ștefan Ţurcanu")
+    page.locator("#search").fill("ио")
+    expect(rows).to_have_count(1)
+    expect(rows).to_contain_text("Ion Ceban")
+    page.locator("#search").blur()
+    seat(game, "Браво")  # another phone: the poll brings it in, the search stays
+    expect(page.locator("#board")).to_contain_text("За столом · 2", timeout=5000)
+    expect(page.locator("#search")).to_have_value("ио")
+    expect(rows).to_have_count(1)
+
+    page.locator("#search").fill("Зорро")
+    expect(page.locator("#board")).to_contain_text("Никого не нашли.")
+    page.get_by_role("button", name="+ Новый игрок").click()
+    expect(page.get_by_label("Имя", exact=True)).to_have_value("Зорро")
+    assert page.evaluate("document.documentElement.scrollWidth") <= width
+
+    page.locator(".sheet-panel").get_by_role("button", name="Создать и посадить").click()
+    expect(page.locator("#board")).to_contain_text("За столом · 3")
     assert_clean(page)
 
 

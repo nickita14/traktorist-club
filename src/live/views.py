@@ -10,10 +10,11 @@ import math
 import uuid
 from dataclasses import dataclass
 from fractions import Fraction
+from itertools import islice
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db.models import F, Max, Q
+from django.db.models import F, Max
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -21,7 +22,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from club import stats
+from club import search, stats
 from club.formatting import ru_plural
 from club.models import BlindStructure, Game, LiveStage, Player, Result, SeasonKind
 from live import actions, clock
@@ -627,16 +628,26 @@ def tablo_public_state(request, token: str):
 
 
 def seat_candidates(game: Game, query: str, limit: int = SEAT_CANDIDATES):
-    """Players not at this table yet, whoever played most recently first."""
+    """Players not at this table yet, whoever played most recently first. One query.
+
+    The search runs in Python over the club's players (a few dozen): a name matches in any
+    alphabet (`club.search`), which a database lookup cannot do.
+    """
     players = (
         Player.objects.exclude(pk__in=game.results.values("player"))
         .annotate(last_played=Max("results__game__date"))
         .order_by(F("last_played").desc(nulls_last=True), "name", "nickname")
     )
     query = query.strip()
-    if query:
-        players = players.filter(Q(name__icontains=query) | Q(nickname__icontains=query))
-    return players[:limit]
+    if not query:
+        return list(players[:limit])
+    needles = search.folds(query)
+    found = (
+        player
+        for player in players
+        if search.found(needles, search.folds(player.name, player.nickname))
+    )
+    return list(islice(found, limit))
 
 
 def seating_context(game: Game, query: str) -> dict:
@@ -749,7 +760,9 @@ def seat_new(request, pk: int):
     """
     if request.method == "GET":
         game = _sheet_game(pk)
-        context = _new_player_context(game, NewPlayerForm(initial=_fresh()), "board")
+        # "+ Новый игрок" under the search: the name starts as what was typed.
+        initial = _fresh() | {"name": request.GET.get("q", "").strip()[:100]}
+        context = _new_player_context(game, NewPlayerForm(initial=initial), "board")
         return render(request, "live/_new_player_sheet.html", context)
     form = NewPlayerForm(request.POST)
     target = "board" if request.headers.get("HX-Target") == "board" else "player-list"
