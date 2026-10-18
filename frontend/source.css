@@ -93,14 +93,17 @@
 
   /* The club name on phones. Ruslan Display is 337px wide at text-lg, 270px at 15px: only with
      "Проходная" (69px) beside it does it drop to 15px, so both fit in the 358px of a 390px screen.
-     Organizers and the login page keep text-lg. sm:text-lg and md:text-xl take over from 640px. */
+     Organizers and the login page keep text-lg. From sm (40rem) sm:text-lg and md:text-xl size it;
+     the 15px rule stays under sm so it never competes with them, whatever the layer order. */
   .site-head-name {
     font-size: var(--text-lg);
     line-height: var(--text-lg--line-height);
   }
 
-  .site-head:has(.site-nav-login) .site-head-name {
-    font-size: 0.9375rem;
+  @media (width < 40rem) {
+    .site-head:has(.site-nav-login) .site-head-name {
+      font-size: 0.9375rem;
+    }
   }
 
   /* Phones: the nav is a row of its own under the name line (base.html). */

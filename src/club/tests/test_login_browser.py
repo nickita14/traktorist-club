@@ -51,8 +51,10 @@ def anonymous_phone(browser, live_server):
     context.close()
 
 
-def open_anonymous(browser, live_server, width, path=None, **options):
+def open_at(browser, live_server, width, path=None, session=None, **options):
     context = browser.new_context(viewport={"width": width, "height": 900}, **options)
+    if session:
+        context.add_cookies([{"name": "sessionid", "value": session, "url": live_server.url}])
     context.add_init_script(COLLECT_CSP_VIOLATIONS)
     page = context.new_page()
     page.goto(live_server.url + (path or reverse("player_list")))
@@ -89,6 +91,19 @@ def header_parts(page):
         page.locator(".site-nav"),
         header.get_by_role("link", name="Проходная"),
     )
+
+
+# The club name: 15px only beside "Проходная" under sm (40rem); sm:text-lg, md:text-xl above.
+NAME_SIZE = """el => getComputedStyle(el).fontSize"""
+NAME_SIZES = {
+    360: "15px",
+    390: "15px",
+    639: "15px",
+    640: "19px",
+    768: "24px",
+    1024: "24px",
+    1280: "24px",
+}
 
 
 def assert_header_fits(page, width):
@@ -145,7 +160,7 @@ def test_login_and_logout(anonymous_phone, organizer):
     expect(page.get_by_role("link", name="Проходная")).to_have_count(0)
     expect(page.locator("footer").get_by_role("link")).to_have_count(0)
     # No pass beside it: organizers keep the full-size club name.
-    assert header_parts(page)[0].evaluate("el => getComputedStyle(el).fontSize") == "19px"
+    assert header_parts(page)[0].evaluate(NAME_SIZE) == "19px"
     assert_target(logout)
     assert page.evaluate("document.documentElement.scrollWidth") <= PHONE["viewport"]["width"]
     assert_clean(page)
@@ -162,7 +177,7 @@ def test_header_line_on_a_phone(anonymous_phone, organizer):
     settle(page)
     assert_header_fits(page, 390)
     name, nav, link = header_parts(page)
-    assert name.evaluate("el => getComputedStyle(el).fontSize") == "15px"
+    assert name.evaluate(NAME_SIZE) == NAME_SIZES[390]
     name_box, nav_box, link_box = name.bounding_box(), nav.bounding_box(), link.bounding_box()
     # One line: the name on the left, the pass at the right gutter, the nav row below.
     assert (
@@ -176,11 +191,12 @@ def test_header_line_on_a_phone(anonymous_phone, organizer):
 
 
 def test_header_at_360(browser, live_server, organizer):
-    context, page = open_anonymous(browser, live_server, 360, is_mobile=True, has_touch=True)
+    context, page = open_at(browser, live_server, 360, is_mobile=True, has_touch=True)
     settle(page)
     assert_header_fits(page, 360)
     name, nav, link = header_parts(page)
     name_box, nav_box, link_box = name.bounding_box(), nav.bounding_box(), link.bounding_box()
+    assert name.evaluate(NAME_SIZE) == NAME_SIZES[360]
     # The accepted fallback: the pass on a line of its own, at the right gutter, no rule.
     assert link_box["y"] >= name_box["y"] + name_box["height"] - 1
     assert nav_box["y"] >= link_box["y"] + link_box["height"] - 1
@@ -191,12 +207,22 @@ def test_header_at_360(browser, live_server, organizer):
     context.close()
 
 
+@pytest.mark.parametrize("width", [639, 640])
+def test_small_club_name_stops_at_sm(browser, live_server, organizer, width):
+    context, page = open_at(browser, live_server, width)
+    settle(page)
+    assert header_parts(page)[0].evaluate(NAME_SIZE) == NAME_SIZES[width]
+    assert page.evaluate("document.documentElement.scrollWidth") <= width
+    context.close()
+
+
 @pytest.mark.parametrize("width", [768, 1024, 1280])
-def test_header_link_after_the_sections(browser, live_server, organizer, width):
-    context, page = open_anonymous(browser, live_server, width)
+def test_header_link_after_the_sections(browser, live_server, organizer, client, width):
+    context, page = open_at(browser, live_server, width)
     settle(page)
     assert_header_fits(page, width)
     name, nav, link = header_parts(page)
+    assert name.evaluate(NAME_SIZE) == NAME_SIZES[width]
     items = [
         box
         for box in nav.locator("li > a, li > span").evaluate_all(
@@ -218,4 +244,14 @@ def test_header_link_after_the_sections(browser, live_server, organizer, width):
         assert link_box["y"] >= name_box["y"] + name_box["height"] - 1
     assert_clean(page)
     page.screenshot(path=SCREENSHOTS / f"header-{width}.png")
+    context.close()
+
+    # Organizers (no pass in the header) get the same name size.
+    client.force_login(organizer)
+    context, page = open_at(browser, live_server, width, session=client.cookies["sessionid"].value)
+    settle(page)
+    expect(page.get_by_role("button", name="Выйти")).to_be_visible()
+    expect(page.get_by_role("link", name="Проходная")).to_have_count(0)
+    assert header_parts(page)[0].evaluate(NAME_SIZE) == NAME_SIZES[width]
+    assert_clean(page)
     context.close()
