@@ -11,8 +11,9 @@ from club.tests.factories import make_game, make_player, make_result, make_seaso
 pytestmark = pytest.mark.django_db
 
 
-@pytest.fixture
-def live(club):
+# Every live stage hides the game: the pre-game steps as much as the final one.
+@pytest.fixture(params=[Game.Stage.LINEUP, Game.Stage.COLLECT, Game.Stage.FINAL])
+def live(club, request):
     """A live tour game after t3 in club's tour season: Альфа and Эхо bought in 100, no payouts.
 
     Эхо has no other games, so everything about Эхо comes from this game alone.
@@ -21,7 +22,7 @@ def live(club):
         club["seasons"]["tour"],
         day=29,
         month=3,
-        live_stage=Game.Stage.FINAL,
+        live_stage=request.param,
         started_at=timezone.now(),
     )
     make_result(game, club["players"]["A"], buyin=100, rebuys=0, addon=False)

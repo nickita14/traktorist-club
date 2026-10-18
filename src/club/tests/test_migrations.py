@@ -1,3 +1,5 @@
+import datetime
+
 import pytest
 from django.contrib.auth.models import Group
 from django.db import connection
@@ -136,6 +138,70 @@ def test_existing_seasons_become_sheet_managed():
         assert list(apps.get_model("club", "Season").objects.values_list("sheet_managed")) == [
             (True,)
         ]
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_existing_results_become_paid():
+    before = ("club", "0012_season_sheet_managed")
+    after = ("club", "0013_lineup_entry_paid")
+
+    def migrate(target):
+        executor = MigrationExecutor(connection)
+        executor.migrate([target])
+        executor.loader.build_graph()
+        return executor.loader.project_state([target]).apps
+
+    try:
+        apps = migrate(before)
+        season = apps.get_model("club", "Season").objects.create(year=2025, kind="tour")
+        game = apps.get_model("club", "Game").objects.create(
+            season=season, date=datetime.date(2025, 3, 14)
+        )
+        player = apps.get_model("club", "Player").objects.create(name="Альфа", slug="alfa")
+        apps.get_model("club", "Result").objects.create(game=game, player=player, buyin=50)
+
+        apps = migrate(after)
+        assert list(apps.get_model("club", "Result").objects.values_list("entry_paid")) == [(True,)]
+        # The longer stage names fit and pass the check constraint.
+        games = apps.get_model("club", "Game").objects
+        games.filter(pk=game.pk).update(
+            live_stage="collect", started_at=datetime.datetime.now(datetime.UTC)
+        )
+        assert games.get(pk=game.pk).live_stage == "collect"
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rows_inserted_without_entry_paid_are_paid():
+    # The previous image (after a rollback) does not know entry_paid: its INSERT leaves it out,
+    # so the column must keep its database default.
+    after = ("club", "0013_lineup_entry_paid")
+
+    def migrate(target):
+        executor = MigrationExecutor(connection)
+        executor.migrate([target])
+        executor.loader.build_graph()
+        return executor.loader.project_state([target]).apps
+
+    try:
+        apps = migrate(after)
+        season = apps.get_model("club", "Season").objects.create(year=2025, kind="tour")
+        game = apps.get_model("club", "Game").objects.create(
+            season=season, date=datetime.date(2025, 3, 14)
+        )
+        player = apps.get_model("club", "Player").objects.create(name="Альфа", slug="alfa")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO club_result (game_id, player_id, buyin, payout)"
+                " VALUES (%s, %s, 50, 0) RETURNING entry_paid",
+                [game.pk, player.pk],
+            )
+            assert cursor.fetchone() == (True,)
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())

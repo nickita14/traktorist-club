@@ -4,7 +4,19 @@ from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, User
 from django.core.exceptions import ValidationError
-from django.db.models import Case, Count, F, IntegerField, Min, Q, Sum, When, Window
+from django.db.models import (
+    Case,
+    Count,
+    Exists,
+    F,
+    IntegerField,
+    Min,
+    OuterRef,
+    Q,
+    Sum,
+    When,
+    Window,
+)
 from django.shortcuts import redirect
 from django.utils.html import format_html
 from django_otp.plugins.otp_totp.models import TOTPDevice
@@ -369,6 +381,7 @@ class ResultInline(TabularInline):
         "rebuys",
         "addon",
         "out_order",
+        "entry_paid",
         "net",
     ]
     readonly_fields = ["net"]
@@ -419,6 +432,24 @@ class LeftoverMismatchFilter(DropdownFilter):
         return queryset
 
 
+class EntryUnpaidFilter(DropdownFilter):
+    """Games where someone has not handed over the entry yet (marked on the live screens)."""
+
+    title = "вход не сдан"
+    parameter_name = "entry_unpaid"
+
+    def lookups(self, request, model_admin):
+        return [("yes", "Да"), ("no", "Нет")]
+
+    def queryset(self, request, queryset):
+        unpaid = Exists(Result.objects.filter(game=OuterRef("pk"), entry_paid=False))
+        if self.value() == "yes":
+            return queryset.filter(unpaid)
+        if self.value() == "no":
+            return queryset.filter(~unpaid)
+        return queryset
+
+
 @admin.register(Game)
 class GameAdmin(ModelAdmin):
     list_display = [
@@ -432,6 +463,7 @@ class GameAdmin(ModelAdmin):
         "leftover_mismatch",
     ]
     list_filter = [
+        EntryUnpaidFilter,
         LeftoverMismatchFilter,
         year_filter("season__year"),
         ("season__kind", ChoicesDropdownFilter),
