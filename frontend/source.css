@@ -91,19 +91,76 @@
     cursor: pointer;
   }
 
-  /* The organizers' way in, in the footer: as quiet as the rest of it, but a full touch target. */
-  .footer-login {
-    display: inline-flex;
+  /* The club name on phones. Ruslan Display is 337px wide at text-lg, 270px at 15px: only with
+     "Проходная" (69px) beside it does it drop to 15px, so both fit in the 358px of a 390px screen.
+     Organizers and the login page keep text-lg. From sm (40rem) sm:text-lg and md:text-xl size it;
+     the 15px rule stays under sm so it never competes with them, whatever the layer order. */
+  .site-head-name {
+    font-size: var(--text-lg);
+    line-height: var(--text-lg--line-height);
+  }
+
+  @media (width < 40rem) {
+    .site-head:has(.site-nav-login) .site-head-name {
+      font-size: 0.9375rem;
+    }
+  }
+
+  /* Phones: the nav is a row of its own under the name line (base.html). */
+  .site-nav-row {
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  /* The organizers' way in ("Проходная"): one step smaller than the sections and muted, but a
+     full touch target. On phones it sits at the right end of the name line, or on a line of its
+     own under the name when both do not fit (below about 382px). */
+  .site-nav-login {
+    display: flex;
     align-items: center;
     justify-content: center;
     min-width: 2.75rem;
     min-height: 2.75rem;
+    margin-left: auto;
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
     text-decoration: none;
   }
 
-  .footer-login:hover {
+  .site-nav-login:hover {
     color: var(--ink);
-    text-decoration: underline;
+    text-decoration: underline 2px var(--accent);
+    text-underline-offset: 0.35em;
+  }
+
+  @media (width >= 48rem) {
+    .site-nav-row {
+      order: 0;
+      flex-basis: auto;
+    }
+
+    /* After the last section, behind a short rule. */
+    .site-nav-login {
+      position: relative;
+      margin-left: 0.75rem;
+      padding-left: 1.5rem;
+      letter-spacing: var(--tracking-caps);
+    }
+
+    .site-nav-login::before {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 1px;
+      height: 1.375rem;
+      translate: 0 -50%;
+      background: var(--rule);
+      content: "";
+    }
   }
 
   .site-nav li > span {

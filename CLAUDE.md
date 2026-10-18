@@ -119,7 +119,7 @@ While the club's Google Sheet is the main record, superusers pull it into the ap
 - `/prokhodnaya/` ("Проходная", `club.auth`, template `club/login.html`): the public-site login, beside the admin one (which stays). `OrganizerLoginForm` subclasses the admin `LoginForm`, so it runs the same backends (django-axes counts failures and lockouts across both pages), the TOTP code with `ADMIN_REQUIRE_2FA`, and CSRF. It drops the admin's `is_staff` check for an organizer check.
 - Non-organizers, wrong passwords and unknown users all get the same `REFUSED` message; a right password for a non-organizer is sent as `user_login_failed`, so neither the message nor the lockout tells them apart.
 - `next` goes through `club.auth.safe_next` (same host, never under ADMIN_URL, never the login pages); without one the page the visitor came from (Referer), else home. The page never contains ADMIN_URL; noindex meta, `X-Robots-Tag`, `Disallow` in robots.txt.
-- "Войти" is a quiet link in the footer for anonymous visitors (`footer_login` block, empty on the login page); organizers get "Выйти" (a POST form, `logout`) after the shortcuts in the nav. Tests: `src/club/tests/test_login.py`, `test_login_browser.py`.
+- "Проходная" is a muted link in the header for anonymous visitors (`header_login` block, `site-nav-login`, empty on the login page): after the sections behind a 22px rule from `md`, at the right end of the club-name line on phones (the name is 15px there; below about 382px the link takes a line of its own). The header is one row from `xl`; at `md`/`lg` the name sits above the nav row. Organizers get "Выйти" (a POST form, `logout`) after the shortcuts in the nav. Tests: `src/club/tests/test_login.py`, `test_login_browser.py`.
 
 ## Blind timer
 

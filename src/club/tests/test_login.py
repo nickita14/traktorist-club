@@ -114,7 +114,7 @@ class TestLogin:
         text = client.get(reverse("player_list")).text
         assert "Живая игра</a>" in text and "Админка</a>" in text
         assert f'action="{reverse("logout")}"' in text and ">Выйти</button>" in text
-        assert ">Войти</a>" not in text
+        assert "site-nav-login" not in text and "Проходная</a>" not in text
         assert client.get(reverse("live:index")).status_code == 200
 
     def test_superuser_logs_in(self, client, admin_user):
@@ -296,22 +296,32 @@ class TestLogout:
         assert "_auth_user_id" in client.session
 
 
-class TestFooterLink:
-    def test_anonymous_visitors_get_a_quiet_link_back_here(self, client, season):
+class TestHeaderLink:
+    def test_anonymous_visitors_get_the_pass_after_the_sections(self, client, season):
         text = client.get("/players/?sort=net").text
 
-        assert '<a class="footer-login" href="/prokhodnaya/?next=/players/%3Fsort%3Dnet">' in text
-        # Not in the header nav.
-        assert text.index("footer-login") > text.index("<footer")
+        link = (
+            '<a class="site-nav-login" href="/prokhodnaya/?next=/players/%3Fsort%3Dnet">'
+            "Проходная</a>"
+        )
+        assert link in text
+        assert text.index("<header") < text.index(link) < text.index("</header>")
+        assert text.index("Почёт</span></a>") < text.index(link)
         assert ">Выйти<" not in text
 
+    def test_no_login_link_in_the_footer(self, client, season):
+        footer = client.get(reverse("player_list")).text.split("<footer", 1)[1]
+        assert "prokhodnaya" not in footer and "Войти" not in footer
+        assert "footer-login" not in footer
+
     def test_not_on_the_login_page_itself(self, client):
-        assert "footer-login" not in client.get(reverse("login")).text
+        text = client.get(reverse("login")).text
+        assert "site-nav-login" not in text and "Проходная</a>" not in text
 
     def test_signed_in_users_get_no_login_link(self, client, guest, season):
         client.force_login(guest)
         text = client.get(reverse("player_list")).text
-        assert "footer-login" not in text
+        assert "site-nav-login" not in text and "Проходная</a>" not in text
         # Not an organizer: no shortcuts, no logout button either.
         assert ">Выйти<" not in text and ADMIN_PATH not in text
 
