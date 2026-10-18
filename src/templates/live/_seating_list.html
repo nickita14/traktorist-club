@@ -4,12 +4,22 @@
     За столом: <span class="font-num">{{ seated|length }}</span>{% if seated %} · {% for result in seated %}{{ result.player.label }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
   </p>
   {% if not can_seat %}
-    <p class="mt-4 text-accent">Ребаи закрыты: новых игроков в турнир уже не сажают.</p>
+    {% if game.live_stage == "collect" %}
+      <p class="mt-4 text-accent">Состав уже утверждён: вернитесь к составу, чтобы добавить игрока.</p>
+    {% else %}
+      <p class="mt-4 text-accent">Ребаи закрыты: новых игроков в турнир уже не сажают.</p>
+    {% endif %}
   {% else %}
     <h2 class="live-heading">{% if query %}Найдено{% else %}Недавние игроки{% endif %}</h2>
     <ul class="live-list">
       {% for player in candidates %}
         <li>
+          {% if late %}
+            <button type="button" class="live-row live-row-button" hx-get="{% url 'live:late' game.pk player.pk %}" hx-target="#sheet" hx-swap="innerHTML" aria-haspopup="dialog">
+              <span class="min-w-0"><span class="live-name">{{ player.name }}</span>{% if player.nickname %} <span class="text-muted">{{ player.nickname }}</span>{% endif %}</span>
+              <span class="live-add">+ за стол</span>
+            </button>
+          {% else %}
           <form hx-post="{% url 'live:seat' game.pk %}" hx-target="#player-list" hx-swap="outerHTML" hx-include="#search" hx-disabled-elt="find button">
             <input type="hidden" name="key" value="{% new_key %}">
             <input type="hidden" name="player" value="{{ player.pk }}">
@@ -18,6 +28,7 @@
               <span class="live-add">+ за стол</span>
             </button>
           </form>
+          {% endif %}
         </li>
       {% empty %}
         <li class="py-3 text-muted italic">Никого не нашли. Добавьте нового игрока ниже.</li>
@@ -27,4 +38,5 @@
 </div>
 {% if oob %}
   {% include "live/_toast.html" with undo_target="player-list" %}
+  <div id="sheet" hx-swap-oob="true"></div>
 {% endif %}

@@ -1,0 +1,37 @@
+{% load ledger live %}
+{# Step 2: who handed over the entry. The buy-in is recorded at seating; this is only the mark. #}
+<dl class="stat-strip stat-strip-3 mt-4">
+  <div><dt>К сбору, лей</dt><dd class="stat-value">{{ collection.due|money }}</dd></div>
+  <div><dt>Собрано</dt><dd class="stat-value">{{ collection.collected|money }}</dd></div>
+  <div><dt>Не сдали</dt><dd class="stat-value{% if collection.unpaid %} text-accent{% endif %}">{% count_value collection.unpaid %}</dd></div>
+</dl>
+
+<h2 class="live-heading live-heading-split">
+  <span>За столом · <span class="font-num">{{ seated|length }}</span></span>
+  <span>Вход <span class="font-num">{{ collection.entry|money }}</span> лей</span>
+</h2>
+<ul class="live-list">
+  {% for result in seated %}
+    <li class="live-row">
+      <span class="min-w-0"><span class="live-name">{{ result.player.name }}</span>{% if result.player.nickname %} <span class="text-muted">{{ result.player.nickname }}</span>{% endif %}</span>
+      <span class="live-sum">{{ result.buyin|money }}</span>
+      <span class="live-actions">
+        {% if result.entry_paid %}
+          {% include "live/_button.html" with action="paid-off" text="Сдал" css="btn btn-toggle btn-on" pressed="true" label="Вход: "|add:result.player.label %}
+        {% else %}
+          {% include "live/_button.html" with action="paid-on" text="Принять" css="btn btn-toggle btn-accent" pressed="false" label="Вход: "|add:result.player.label %}
+        {% endif %}
+      </span>
+    </li>
+  {% endfor %}
+</ul>
+<p class="mt-3 text-sm text-muted italic">Вход уже записан в закупку. Отметка только говорит, что деньги на столе; второе нажатие её снимает.</p>
+
+<nav class="bottom-bar" aria-label="Действия">
+  {% include "live/_stage_button.html" with to="lineup" text="← Состав" css="btn" side=True %}
+  {% if collection.unpaid %}
+    <button type="button" class="btn btn-primary" hx-get="{% url 'live:begin' game.pk %}" hx-target="#sheet" hx-swap="innerHTML">Начать игру</button>
+  {% else %}
+    {% include "live/_stage_button.html" with to=play_stage text="Начать игру" %}
+  {% endif %}
+</nav>

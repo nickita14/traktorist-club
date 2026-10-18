@@ -1,0 +1,10 @@
+{% load ledger %}
+{# A player's name on the board after the start. While the entry is unpaid, or the player can still be taken off as never seated, the name opens the row's sheet. #}
+{% if result.can_unseat or not result.entry_paid %}
+  <button type="button" class="live-name-button" hx-get="{% url 'live:player' game.pk result.pk %}" hx-target="#sheet" hx-swap="innerHTML" aria-haspopup="dialog">
+    <span><span class="live-name">{{ result.player.name }}</span>{% if result.player.nickname %} <span class="text-muted">{{ result.player.nickname }}</span>{% endif %}</span>
+    {% if not result.entry_paid %}<span class="live-unpaid">не сдал <span class="font-num">{{ entry|money }}</span> · <span class="underline">принять</span></span>{% endif %}
+  </button>
+{% else %}
+  <span class="live-name">{{ result.player.name }}</span>{% if result.player.nickname %} <span class="text-muted">{{ result.player.nickname }}</span>{% endif %}
+{% endif %}

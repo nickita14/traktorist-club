@@ -1,0 +1,8 @@
+{# A sheet's top line: an optional small label, the heading and "×". #}
+<div class="flex items-start justify-between gap-4">
+  <div class="min-w-0">
+    {% if sheet_label %}<p class="sheet-label">{{ sheet_label }}</p>{% endif %}
+    <h2 id="sheet-title" class="{{ title_class|default:'live-title mt-0' }}">{{ title }}{% if subtitle %} <span class="text-muted">{{ subtitle }}</span>{% endif %}</h2>
+  </div>
+  <button type="button" class="btn" data-close-sheet aria-label="Закрыть">×</button>
+</div>

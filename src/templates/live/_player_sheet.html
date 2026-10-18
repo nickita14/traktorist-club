@@ -1,0 +1,25 @@
+{% load ledger live %}
+{# A player's row after the start: take the entry money; take off a player who never sat down. #}
+<div class="sheet-backdrop" data-close-sheet></div>
+<section class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  {% include "live/_sheet_head.html" with title=result.player.name subtitle=result.player.nickname %}
+  {% if result.entry_paid %}
+    <p class="text-muted">Вход сдан.</p>
+  {% else %}
+    <p class="text-accent">Вход не сдан: <span class="font-num">{{ entry|money }}</span> лей.</p>
+    <form class="mt-3" hx-post="{% url 'live:act' game.pk 'paid-on' %}" hx-target="#board" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="key" value="{% new_key %}">
+      <input type="hidden" name="result" value="{{ result.pk }}">
+      <button type="submit" class="btn btn-primary w-full"><span>Принять <span class="font-num">{{ entry|money }}</span> лей</span></button>
+    </form>
+  {% endif %}
+  {% if can_unseat %}
+    <form class="mt-6" hx-post="{% url 'live:act' game.pk 'unseat' %}" hx-target="#board" hx-swap="outerHTML" hx-disabled-elt="find button"
+          hx-confirm="Убрать {{ result.player.label }} из игры? Запись удалится целиком: без места и без закупки.">
+      <input type="hidden" name="key" value="{% new_key %}">
+      <input type="hidden" name="result" value="{{ result.pk }}">
+      <button type="submit" class="btn btn-accent w-full">Не садился · убрать</button>
+    </form>
+    <p class="mt-1 text-sm text-muted italic">Для ошибки посадки: пока у игрока нет ребаев, аддона, выхода и выплат.</p>
+  {% endif %}
+</section>

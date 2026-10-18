@@ -1,0 +1,20 @@
+{% load ledger live %}
+{# A player joining after the start: paid at once, or owes the entry (the mark stays until paid). #}
+<div class="sheet-backdrop" data-close-sheet></div>
+<section class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  {% include "live/_sheet_head.html" with sheet_label="Посадить в игру" title=player.name subtitle=player.nickname %}
+  <div class="sheet-stack">
+    <form hx-post="{% url 'live:seat' game.pk %}" hx-target="#player-list" hx-swap="outerHTML" hx-include="#search" hx-disabled-elt="find button">
+      <input type="hidden" name="key" value="{% new_key %}">
+      <input type="hidden" name="player" value="{{ player.pk }}">
+      <input type="hidden" name="paid" value="1">
+      <button type="submit" class="btn btn-primary w-full"><span>Посадить · внёс <span class="font-num">{{ entry|money }}</span></span></button>
+    </form>
+    <form hx-post="{% url 'live:seat' game.pk %}" hx-target="#player-list" hx-swap="outerHTML" hx-include="#search" hx-disabled-elt="find button">
+      <input type="hidden" name="key" value="{% new_key %}">
+      <input type="hidden" name="player" value="{{ player.pk }}">
+      <input type="hidden" name="paid" value="0">
+      <button type="submit" class="btn w-full">Посадить · не сдал</button>
+    </form>
+  </div>
+</section>

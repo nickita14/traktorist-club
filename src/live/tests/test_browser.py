@@ -5,9 +5,10 @@ import pytest
 from django.urls import reverse
 
 from club.models import Result, SeasonKind
+from club.tests.factories import make_player
 from conftest import COLLECT_CSP_VIOLATIONS
 from live import actions
-from live.tests.conftest import key, live_game, seat
+from live.tests.conftest import key, lineup_game, live_game, seat
 
 sync_api = pytest.importorskip("playwright.sync_api")
 expect = sync_api.expect
@@ -192,9 +193,10 @@ def test_seating_search_and_new_player(phone):
     expect(page.locator("#player-list")).to_contain_text("Никого не нашли")
     page.get_by_label("Имя", exact=True).fill("Дельта")
     page.get_by_label("Ник", exact=True).fill("Дед")
-    page.get_by_role("button", name="Создать и посадить").click()
+    # A late entry: the organizer says whether the entry is paid.
+    page.get_by_role("button", name="Посадить · не сдал").click()
 
-    expect(page.locator(".toast")).to_contain_text("За стол: Дед, 50")
+    expect(page.locator(".toast")).to_contain_text("За стол: Дед, 50 · не сдал")
     expect(page.get_by_label("Имя", exact=True)).to_have_value("")
     assert Result.objects.filter(game=game, player__name="Дельта").exists()
     assert_touch_targets(page)
@@ -233,4 +235,103 @@ def test_results_prefilled_split_redistribute_and_save(phone):
     page.wait_for_url(f"**{reverse('game_detail', args=[tour.pk])}")
     alpha.refresh_from_db()
     assert (alpha.place, alpha.payout) == (1, 150)
+    assert_clean(page)
+
+
+def assert_fits(page):
+    assert_touch_targets(page)
+    assert page.evaluate("document.documentElement.scrollWidth") <= PHONE["viewport"]["width"]
+
+
+def test_lineup_collect_start_and_bust_confirmation(phone):
+    game = lineup_game(SeasonKind.TOUR, entry_price=100)
+    for name in ("Альфа", "Браво", "Чарли", "Дельта", "Эхо"):
+        make_player(name)
+    page = phone(reverse("live:board", args=[game.pk]))
+    expect(page.locator(".live-bar")).to_contain_text("Посадка")
+
+    # Step 1: seat five from the quick-add buttons, remove one added by mistake.
+    for name in ("Альфа", "Браво", "Чарли", "Дельта", "Эхо"):
+        page.get_by_label(f"За стол: {name}").click()
+        expect(page.get_by_label(f"Убрать: {name}")).to_be_visible()
+    expect(page.locator("#board")).to_contain_text("За столом · 5")
+    assert_fits(page)
+    page.get_by_label("Убрать: Эхо").click()
+    expect(page.locator(".toast")).to_contain_text("Убран из состава: Эхо")
+    expect(page.locator("#board")).to_contain_text("За столом · 4")
+    assert not Result.objects.filter(game=game, player__name="Эхо").exists()
+    page.get_by_role("button", name="Состав верен · к сбору").click()
+
+    # Step 2: three hand over the entry, Дельта does not.
+    expect(page.locator('.step-strip [aria-current="step"]')).to_contain_text("Сбор")
+    for name in ("Альфа", "Браво", "Чарли"):
+        page.get_by_label(f"Вход: {name}").click()
+        expect(page.get_by_label(f"Вход: {name}")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator(".stat-strip")).to_contain_text("Собрано300")
+    expect(page.get_by_label("Вход: Дельта")).to_have_attribute("aria-pressed", "false")
+    assert_fits(page)
+
+    # The start asks first: one has not paid.
+    page.get_by_role("button", name="Начать игру").click()
+    sheet = page.locator(".sheet-panel")
+    expect(sheet).to_contain_text("1 не сдал")
+    expect(sheet).to_contain_text("Дельта")
+    assert_fits(page)
+    sheet.get_by_role("button", name="Начать всё равно").click()
+    expect(page.locator(".live-bar")).to_contain_text("Идёт игра")
+    expect(page.locator(".sheet-panel")).to_have_count(0)
+
+    # Later Дельта pays: accepted from the row.
+    page.get_by_role("button", name="Дельта не сдал 100 · принять").click()
+    page.locator(".sheet-panel").get_by_role("button", name="Принять 100 лей").click()
+    expect(page.locator(".toast")).to_contain_text("Вход принят: Дельта, 100")
+    expect(page.locator("#board")).not_to_contain_text("не сдал")
+    assert Result.objects.get(game=game, player__name="Дельта").entry_paid
+
+    # Four in game, three paid places: the next bust is the bubble and asks first.
+    page.get_by_label("Выбыл: Альфа").click()
+    sheet = page.locator(".sheet-panel")
+    expect(sheet).to_contain_text("Подтвердите выбывание")
+    expect(sheet.locator(".bust-place-number")).to_have_text("4")
+    expect(sheet).to_contain_text("первое без выплаты")
+    expect(sheet).to_contain_text("В игре останутся трое, все в призах.")
+    assert_fits(page)
+    sheet.get_by_role("button", name="Выбыл · 4-е место").click()
+    expect(page.locator(".toast")).to_contain_text("Выбыл: Альфа")
+    assert Result.objects.get(game=game, player__name="Альфа").out_order == 1
+    assert_clean(page)
+
+
+def test_lineup_search_survives_polling(phone, settings):
+    settings.LIVE_POLL_SECONDS = 1
+    game = lineup_game(SeasonKind.CASH)
+    make_player("Дельта")
+    make_player("Эхо")
+    page = phone(reverse("live:board", args=[game.pk]))
+
+    page.locator("#search").fill("дел")
+    expect(page.get_by_label("За стол: Эхо")).to_have_count(0)
+    page.locator("#search").blur()
+    seat(game, "Фокстрот")  # another phone: the poll brings it in, the search stays
+    expect(page.locator("#board")).to_contain_text("Фокстрот", timeout=5000)
+
+    expect(page.locator("#search")).to_have_value("дел")
+    expect(page.get_by_label("За стол: Эхо")).to_have_count(0)
+    page.get_by_label("За стол: Дельта").click()
+    expect(page.locator("#board")).to_contain_text("За столом · 2")
+    assert_clean(page)
+
+
+def test_never_seated_after_the_start(phone):
+    game = live_game(SeasonKind.TOUR)
+    alpha, *_ = seat(game, "Альфа", "Браво", "Чарли")
+    actions.set_paid(game.pk, key(), None, alpha.pk, True)
+    page = phone(reverse("live:board", args=[game.pk]))
+
+    page.get_by_role("button", name="Альфа", exact=True).click()
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.locator(".sheet-panel").get_by_role("button", name="Не садился · убрать").click()
+
+    expect(page.locator(".toast")).to_contain_text("Убран из состава: Альфа")
+    assert not Result.objects.filter(pk=alpha.pk).exists()
     assert_clean(page)

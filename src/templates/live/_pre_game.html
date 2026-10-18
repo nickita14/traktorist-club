@@ -1,0 +1,13 @@
+{# The steps before play, inside the board: the lineup or the entry collection. #}
+<header class="live-bar">
+  <a class="live-bar-link" href="{% url 'live:index' %}">← Игры</a>
+  <span class="live-status-quiet">Посадка</span>
+  <time class="font-num" datetime="{{ now|date:'c' }}">{{ now|date:"H:i" }}</time>
+</header>
+{% include "live/_game_head.html" %}
+{% include "live/_step_strip.html" %}
+{% if game.live_stage == "lineup" %}
+  {% include "live/_lineup.html" %}
+{% else %}
+  {% include "live/_collect.html" %}
+{% endif %}

@@ -486,7 +486,8 @@ class TestStartAndCancel:
         date = datetime.date(2026, 9, 28)
         tour = actions.start_game(key(), organizer, kind=SeasonKind.TOUR, date=date).action.game
         cash = actions.start_game(key(), organizer, kind=SeasonKind.CASH, date=date).action.game
-        assert (tour.live_stage, cash.live_stage) == (Game.Stage.REBUYS, Game.Stage.CASH)
+        # Every game starts with its lineup; play starts after the entry collection.
+        assert (tour.live_stage, cash.live_stage) == (Game.Stage.LINEUP, Game.Stage.LINEUP)
         assert tour.started_at is not None
         assert tour.live_actions.get().user == organizer
 

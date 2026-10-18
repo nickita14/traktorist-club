@@ -1,0 +1,48 @@
+{% load ledger live %}
+{# Step 1: who sits down. Removing a player here leaves nothing behind; no money is counted yet. #}
+<h2 class="live-heading">Добавить игрока</h2>
+<label class="field mt-3">
+  <span class="field-label">Поиск по имени или нику</span>
+  {# hx-preserve: the board polls and swaps; the field and what is typed in it stay. #}
+  <input id="search" class="live-input live-input-text" type="search" name="q" value="{{ query }}" autocomplete="off" hx-preserve="true"
+         hx-get="{% url 'live:board' game.pk %}" hx-trigger="input changed delay:250ms, search" hx-target="#board" hx-swap="outerHTML">
+</label>
+<ul class="quick-add" aria-label="{% if query %}Найдено{% else %}Недавние игроки{% endif %}">
+  {% for player in candidates %}
+    <li>
+      <form hx-post="{% url 'live:seat' game.pk %}" hx-target="#board" hx-swap="outerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="key" value="{% new_key %}">
+        <input type="hidden" name="player" value="{{ player.pk }}">
+        <button type="submit" class="btn btn-dashed" aria-label="За стол: {{ player }}">+ {{ player.label }}</button>
+      </form>
+    </li>
+  {% empty %}
+    {% if query %}<li class="quick-add-empty">Никого не нашли.</li>{% endif %}
+  {% endfor %}
+  <li><button type="button" class="btn btn-dashed" hx-get="{% url 'live:seat_new' game.pk %}" hx-target="#sheet" hx-swap="innerHTML">+ Новый игрок</button></li>
+</ul>
+
+<h2 class="live-heading live-heading-split">
+  <span>За столом · <span class="font-num">{{ seated|length }}</span></span>
+  <span>Вход <span class="font-num">{{ collection.entry|money }}</span> лей</span>
+</h2>
+{% if seated %}
+  <ol class="live-list">
+    {% for result in seated %}
+      <li class="live-row">
+        <span class="min-w-0"><span class="live-place">{{ forloop.counter }}</span><span class="live-name">{{ result.player.name }}</span>{% if result.player.nickname %} <span class="text-muted">{{ result.player.nickname }}</span>{% endif %}</span>
+        <span class="live-actions">
+          {% include "live/_button.html" with action="unseat" text="убрать" css="btn-link live-quiet" label="Убрать: "|add:result.player.label %}
+        </span>
+      </li>
+    {% endfor %}
+  </ol>
+{% else %}
+  <p class="mt-3 text-muted italic">За столом пока никого нет.</p>
+{% endif %}
+<p class="mt-3 text-sm text-muted italic">«Убрать» стирает игрока из состава без следа. Деньги на этом шаге не считаются.</p>
+
+<nav class="bottom-bar" aria-label="Действия">
+  <a class="btn bottom-bar-side" href="{% url 'live:cancel' game.pk %}">Отменить</a>
+  {% include "live/_stage_button.html" with to="collect" text="Состав верен · к сбору" disabled=can_collect|yesno:",1" %}
+</nav>

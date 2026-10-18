@@ -1,0 +1,18 @@
+{% load live %}
+{# The three steps of a game; a passed step is a way back (a stage change, so a form). #}
+<ol class="step-strip" aria-label="Шаги игры">
+  <li{% if game.live_stage == "lineup" %} aria-current="step"{% endif %}>
+    {% if game.live_stage == "collect" %}
+      <form hx-post="{% url 'live:act' game.pk 'stage' %}" hx-target="#board" hx-swap="outerHTML transition:true" hx-disabled-elt="find button">
+        <input type="hidden" name="key" value="{% new_key %}">
+        <input type="hidden" name="from" value="collect">
+        <input type="hidden" name="to" value="lineup">
+        <button type="submit" class="step-link"><span><span class="font-num">1</span> · Состав</span></button>
+      </form>
+    {% else %}
+      <span><span><span class="font-num">1</span> · Состав</span></span>
+    {% endif %}
+  </li>
+  <li{% if game.live_stage == "collect" %} aria-current="step"{% endif %}><span><span><span class="font-num">2</span> · Сбор</span></span></li>
+  <li><span><span><span class="font-num">3</span> · Игра</span></span></li>
+</ol>

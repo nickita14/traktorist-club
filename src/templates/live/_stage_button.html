@@ -1,6 +1,8 @@
 {% load live %}
-<form class="flex" hx-post="{% url 'live:act' game.pk 'stage' %}" hx-target="#board" hx-swap="outerHTML transition:true" hx-disabled-elt="find button">
+{# A stage change; ``to`` picks the target where a stage has more than one way on (or back). #}
+<form class="flex{% if side %} bottom-bar-side{% endif %}" hx-post="{% url 'live:act' game.pk 'stage' %}" hx-target="#board" hx-swap="outerHTML transition:true" hx-disabled-elt="find button">
   <input type="hidden" name="key" value="{% new_key %}">
   <input type="hidden" name="from" value="{{ game.live_stage }}">
-  <button type="submit" class="btn btn-primary w-full">{{ text }}</button>
+  {% if to %}<input type="hidden" name="to" value="{{ to }}">{% endif %}
+  <button type="submit" class="{{ css|default:'btn btn-primary' }} w-full"{% if disabled %} disabled{% endif %}>{{ text }}</button>
 </form>
