@@ -237,8 +237,9 @@ class Season(models.Model):
         if self.pk is None:
             return
         # The other side of Game.clean: a game's date lies in its season's year, so the year of
-        # a season with games stays put (pages filter a player's year by the season year).
-        if Game.objects.filter(season=self).exclude(date__year=self.year).exists():
+        # a season with games stays put (pages filter a player's year by the season year). The
+        # stored year decides, not the games' dates: moving a season is never an edit.
+        if Season.objects.filter(pk=self.pk, games__isnull=False).exclude(year=self.year).exists():
             raise ValidationError(
                 {"year": "В сезоне есть игры другого года: год сезона не меняется."}
             )

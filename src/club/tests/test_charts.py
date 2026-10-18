@@ -1,6 +1,8 @@
 import datetime
 import logging
 
+import pytest
+
 from club.charts import (
     BOTTOM,
     HEIGHT,
@@ -17,6 +19,11 @@ from club.stats import TimelinePoint
 
 def timeline(*points):
     return [TimelinePoint(datetime.date(*date), net) for date, net in points]
+
+
+def axis_x(offset: float, days: int) -> float:
+    """Where a date ``offset`` days after 1 January sits on an axis of ``days`` days."""
+    return X_PAD + offset * (100 - 2 * X_PAD) / days
 
 
 def parse(points: str) -> list[tuple[float, float]]:
@@ -100,11 +107,20 @@ class TestYearChart:
         assert x0 < x1 < 100 - X_PAD
 
     def test_steps_follow_the_calendar(self):
-        chart = year_chart(timeline(((2025, 1, 11), 10), ((2025, 1, 21), 20)), 2025)
+        chart = year_chart(
+            timeline(((2025, 1, 1), 10), ((2025, 1, 3), 20), ((2025, 1, 25), 30)), 2025
+        )
 
         xs = [x for x, _ in parse(chart.points)]
-        # Ten days apart twice: 1 -> 11 -> 21 January in a 31-day axis.
-        assert round(xs[1] - xs[0], 1) == round(xs[3] - xs[1], 1)
+        # The last game is in January, so the axis runs from 1 January to 1 February: 31 days.
+        # Gaps of 2 and 22 days: spacing by game index would put the steps evenly apart.
+        expected = [axis_x(offset, 31) for offset in (0, 2, 24)]
+        assert xs[0] == pytest.approx(X_PAD)
+        for step, x in enumerate(expected):
+            # Each game draws two points at its date: along the old total, then to the new one.
+            assert xs[1 + 2 * step] == pytest.approx(x, abs=0.01)
+            assert xs[2 + 2 * step] == pytest.approx(x, abs=0.01)
+        assert chart.last_x == pytest.approx(expected[-1], abs=0.01)
 
     def test_games_on_one_date_share_their_x(self):
         chart = year_chart(timeline(((2025, 3, 1), 50), ((2025, 3, 1), 20)), 2025)
@@ -129,10 +145,18 @@ class TestYearChart:
             ("АПР", True),
         ]
         assert chart.months[0].start == X_PAD
-        # The axis ends with the last game's month; each label sits in the middle of its month.
         assert chart.last_x < 100 - X_PAD
-        for month in chart.months:
-            assert month.start < month.x
+        # The axis ends with the last game's month (1 January to 1 May 2025: 120 days); each
+        # label sits in the middle of its month, so 28-day February has a narrower band.
+        days = (datetime.date(2025, 5, 1) - datetime.date(2025, 1, 1)).days
+        for number, month in enumerate(chart.months, start=1):
+            begin = (datetime.date(2025, number, 1) - datetime.date(2025, 1, 1)).days
+            end = (datetime.date(2025, number + 1, 1) - datetime.date(2025, 1, 1)).days
+            assert month.start == pytest.approx(axis_x(begin, days), abs=0.1), month.label
+            assert month.x == pytest.approx(axis_x((begin + end) / 2, days), abs=0.1), month.label
+        january, february = chart.months[:2]
+        assert january.x == pytest.approx(axis_x(15.5, days), abs=0.1)
+        assert february.x == pytest.approx(axis_x(45, days), abs=0.1)
 
     def test_a_december_game_ends_the_axis_with_december(self):
         chart = year_chart(timeline(((2025, 12, 31), 10)), 2025)
