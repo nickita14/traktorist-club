@@ -118,6 +118,16 @@ Mobile page for organizers to record a game at the table instead of on paper.
 - [x] Stage 1 without a timer: elapsed time, `rebuy_minutes` as a hint only
 - [x] `Season.entry_price` default 50
 
+## Stage 7c. Lineup and entry collection (branch `live-lineup`)
+
+After the first real live game (18.10.2026).
+
+- [x] Steps before play: `lineup` ("Состав": seat and remove without a trace) and `collect` ("Сбор": who handed over the entry), then play; step strip, undoable both ways
+- [x] `Result.entry_paid` (existing rows settled), toggled through the action log; the unpaid mark stays until paid, admin filter "Вход не сдан"
+- [x] Start with unpaid entries through a confirmation sheet; late entries paid or unpaid
+- [x] "Не садился": remove a seated player who never played, also after the start
+- [x] Bust confirmation near the money (place `<= paid_places + 1`), refused if the place changed meanwhile
+
 ## Stage 8. Club fund (blocked: rules not decided)
 
 The cash leftover goes to a common pot; what happens to it is not confirmed yet. Do not start until this section is updated with the rules.
