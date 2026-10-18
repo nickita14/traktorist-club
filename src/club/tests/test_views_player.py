@@ -4,34 +4,49 @@ import pytest
 from django.urls import reverse
 
 from club import achievements, views
-from club.models import RankLadder
+from club.models import RankLadder, SeasonKind
 from club.tests.conftest import NUM, PAST_YEAR, plain_text
+from club.tests.factories import make_game, make_player, make_result, make_season
 
 pytestmark = pytest.mark.django_db
 
 MINUS = "−"
 
 
-def get_card(client, player):
-    return client.get(reverse("player_detail", args=[player.slug]))
+def get_card(client, player, **params):
+    return client.get(reverse("player_detail", args=[player.slug]), params)
+
+
+def all_years(client, player):
+    return get_card(client, player, year="all")
 
 
 class TestPlayerCard:
-    def test_heading_stamp_and_meta(self, client, club):
-        RankLadder.objects.all().delete()  # no ranks: the stamp keeps the join year
+    def test_heading_and_meta_of_a_year(self, client, club):
+        RankLadder.objects.all().delete()  # no ranks: no stamp at all, the join year is in the meta
         response = get_card(client, club["players"]["A"])
         html = response.content.decode()
 
         assert response.status_code == 200
         assert "Форма № 2-И · Личная карточка участника" in html
         assert 'Альфа <span class="font-normal text-muted normal-case">Трактор</span>' in html
+        assert "stamp" not in html.split('class="doc-head')[1].split("</section>")[0]
+        meta = " ".join(plain_text(html.split('id="doc-title"')[1].split("</section>")[0]).split())
+        assert f"В {PAST_YEAR} году 5 игр · всего 6 · в клубе с {PAST_YEAR - 1} года" in meta
         assert (
-            # The year keeps the stamp's own font.
-            f'<p class="stamp stamp-ink">В клубе с {PAST_YEAR - 1} года</p>'
+            f'В <span class="font-num not-italic">{PAST_YEAR}</span> году '
+            '<span class="font-num num-run not-italic">5</span> игр</span>'
         ) in html
+
+    def test_heading_and_meta_of_all_years(self, client, club):
+        RankLadder.objects.all().delete()
+        html = all_years(client, club["players"]["A"]).content.decode()
+
+        assert "stamp" not in html.split('class="doc-head')[1].split("</section>")[0]
         assert '<span class="font-num num-run not-italic">6</span> игр' in html
         assert f">10.11.{PAST_YEAR - 1}</time>" in html
         assert f">22.03.{PAST_YEAR}</time>" in html
+        assert "в клубе с" not in html
 
     def test_stat_strip_totals(self, client, club):
         player = get_card(client, club["players"]["A"]).context["player"]
@@ -47,14 +62,15 @@ class TestPlayerCard:
         assert (player.first_places, player.second_places, player.third_places) == (4, 0, 0)
 
     def test_stat_strip_markup(self, client, club):
-        html = get_card(client, club["players"]["A"]).content.decode()
+        html = all_years(client, club["players"]["A"]).content.decode()
 
+        assert "<dt>Итог за всё время, лей</dt>" in html
         assert '<dd class="stat-value">+190</dd>' in html
         assert "4 игры · ITM 4" in html
         assert f'<dd class="stat-value"><span class="val-neg">{MINUS}20</span></dd>' in html
 
     def test_seasons_table(self, client, club):
-        response = get_card(client, club["players"]["A"])
+        response = all_years(client, club["players"]["A"])
         html = response.content.decode()
 
         rows = [(s.year, s.kind, s.games_played, s.net) for s in response.context["seasons"]]
@@ -72,13 +88,13 @@ class TestPlayerCard:
         assert '<td class="num">+190</td>' in tfoot
 
     def test_tour_caption_omits_zero_itm(self, client, club):
-        html = get_card(client, club["players"]["B"]).content.decode()
+        html = all_years(client, club["players"]["B"]).content.decode()
 
         assert '<dd class="stat-caption">4 игры</dd>' in html
         assert "ITM 0" not in html
 
     def test_zero_itm_is_a_faint_dot_like_the_places(self, client, club):
-        html = get_card(client, club["players"]["B"]).content.decode()
+        html = all_years(client, club["players"]["B"]).content.decode()
         table = html.split('id="seasons-title"')[1].split("</table>")[0]
 
         # Браво: two tour rows and the total, each with ITM 0 and no places (4 dots per row).
@@ -86,7 +102,7 @@ class TestPlayerCard:
         assert '<span class="val-zero">0</span>' not in table
 
     def test_history_place_cells(self, client, club):
-        html = get_card(client, club["players"]["B"]).content.decode()
+        html = all_years(client, club["players"]["B"]).content.decode()
         body = html.split('id="history-title"')[1].split("<tbody>")[1].split("</tbody>")[0]
         place_cells = [row.split("<td")[4] for row in body.split("<tr>")[1:]]
 
@@ -97,14 +113,16 @@ class TestPlayerCard:
         assert all("нет" in cell for cell in place_cells[3:])
 
     def test_full_history_uses_the_same_place_cells(self, client, club):
-        response = client.get(reverse("player_games", args=[club["players"]["B"].slug]))
+        response = client.get(
+            reverse("player_games", args=[club["players"]["B"].slug]), {"year": "all"}
+        )
         body = response.content.decode().split("<tbody>")[1]
 
         assert body.count('<td class="num"></td>') == 2
         assert body.count('<span class="sr-only">нет</span>') == 4
 
     def test_history_is_newest_first_with_season_numbers(self, client, club):
-        response = get_card(client, club["players"]["A"])
+        response = all_years(client, club["players"]["A"])
 
         rows = [
             (r.game.date.day, r.game.season.kind, r.game_number, r.net)
@@ -129,16 +147,16 @@ class TestPlayerCard:
     def test_history_is_cut_and_links_to_the_full_list(self, client, club, monkeypatch):
         monkeypatch.setattr(views, "PLAYER_RECENT_GAMES", 3)
 
-        response = get_card(client, club["players"]["A"])
+        response = all_years(client, club["players"]["A"])
 
         assert len(response.context["recent_results"]) == 3
         assert (
-            'href="/players/traktor/games/"><span>Вся история: <span class="font-num">6</span>'
-            " игр →</span></a>"
+            'href="/players/traktor/games/?year=all"><span>Вся история: '
+            '<span class="font-num">6</span> игр →</span></a>'
         ) in response.content.decode()
 
     def test_chart_has_a_point_per_game_and_a_year_line(self, client, club):
-        response = get_card(client, club["players"]["A"])
+        response = all_years(client, club["players"]["A"])
         chart = response.context["chart"]
         html = response.content.decode()
 
@@ -154,7 +172,7 @@ class TestPlayerCard:
         assert "," not in html.split('<line class="chart-zero"')[1].split("/>")[0]
 
     def test_single_game_player_gets_a_segment_and_a_dot(self, client, club):
-        response = get_card(client, club["players"]["D"])
+        response = all_years(client, club["players"]["D"])
         html = response.content.decode()
 
         assert len(response.context["chart"].points.split()) == 2
@@ -181,14 +199,170 @@ class TestPlayerCard:
     def test_unknown_slug_is_404(self, client, club):
         assert client.get("/players/nobody/").status_code == 404
 
-    def test_query_count(self, client, club, django_assert_num_queries):
-        # Card totals, seasons, timeline, recent history, nav years, the awards.
-        with django_assert_num_queries(5 + achievements.QUERY_COUNT):
+    def test_query_count_of_a_year(self, client, club, django_assert_num_queries):
+        # Card totals, the player's years, the year's totals, seasons, timeline, recent history,
+        # nav years, the awards.
+        with django_assert_num_queries(7 + achievements.QUERY_COUNT):
             get_card(client, club["players"]["A"])
+
+    def test_query_count_of_all_years(self, client, club, django_assert_num_queries):
+        # As above without the year's totals.
+        with django_assert_num_queries(6 + achievements.QUERY_COUNT):
+            all_years(client, club["players"]["A"])
 
     def test_query_count_without_games(self, client, club, django_assert_num_queries):
         with django_assert_num_queries(2):
             get_card(client, club["players"]["E"])
+
+
+class TestPlayerYears:
+    """The year view of the card. Альфа in PAST_YEAR: tour +160 in 3 games (ITM 3, three 1st
+    places), cash −20 in 2, +140 in 5 (buy-ins 350, payouts 490); one tour game the year before."""
+
+    def test_default_is_the_latest_year_with_games(self, client, club):
+        # The fixture has nothing this year: the card opens on last year, not an empty one.
+        assert get_card(client, club["players"]["A"]).context["year"] == PAST_YEAR
+
+    def test_default_is_the_current_year_when_the_player_has_games_in_it(self, client, club):
+        game = make_game(make_season(PAST_YEAR + 1, SeasonKind.CASH), day=1, month=1)
+        make_result(game, club["players"]["A"], buyin=50, payout=50)
+
+        assert get_card(client, club["players"]["A"]).context["year"] == PAST_YEAR + 1
+
+    def test_a_live_game_does_not_open_its_year(self, client, club):
+        game = make_game(
+            make_season(PAST_YEAR + 1, SeasonKind.TOUR),
+            live_stage="rebuys",
+            started_at=datetime.datetime.now(datetime.UTC),
+        )
+        make_result(game, club["players"]["A"])
+        response = get_card(client, club["players"]["A"])
+
+        assert response.context["year"] == PAST_YEAR
+        assert f"?year={PAST_YEAR + 1}" not in response.content.decode()
+
+    def test_all_years(self, client, club):
+        response = all_years(client, club["players"]["A"])
+
+        assert response.context["year"] is None
+        assert response.context["totals"].games_played == 6
+
+    @pytest.mark.parametrize("value", ["", "abc", "1999", "2025.5", "-1", "ALL"])
+    def test_anything_else_falls_back_to_the_default(self, client, club, value):
+        response = get_card(client, club["players"]["A"], year=value)
+
+        assert response.status_code == 200
+        assert response.context["year"] == PAST_YEAR
+
+    def test_a_year_without_the_players_games_falls_back(self, client, club):
+        # Чарли only played in PAST_YEAR; the club played the year before too.
+        response = get_card(client, club["players"]["C"], year=PAST_YEAR - 1)
+
+        assert response.status_code == 200
+        assert response.context["year"] == PAST_YEAR
+
+    def test_switcher_lists_the_players_years(self, client, club):
+        html = get_card(client, club["players"]["A"], year=PAST_YEAR - 1).content.decode()
+        switcher = html.split('aria-label="Карточка по годам"')[1].split("</nav>")[0]
+
+        assert (
+            f'<li><a href="/players/traktor/?year={PAST_YEAR - 1}" aria-current="page">'
+            f"{PAST_YEAR - 1}</a></li>"
+        ) in switcher
+        assert f'<li><a href="/players/traktor/?year={PAST_YEAR}">{PAST_YEAR}</a></li>' in switcher
+        assert (
+            '<li class="segmented-word"><a href="/players/traktor/?year=all">Все годы</a></li>'
+        ) in switcher
+        assert switcher.count("<li") == 3
+        assert ">Год<" in switcher
+
+        html = get_card(client, club["players"]["C"]).content.decode()
+        switcher = html.split('aria-label="Карточка по годам"')[1].split("</nav>")[0]
+        assert switcher.count("<li") == 2  # PAST_YEAR and all years
+
+    def test_switcher_marks_all_years(self, client, club):
+        html = all_years(client, club["players"]["A"]).content.decode()
+
+        assert '<a href="/players/traktor/?year=all" aria-current="page">Все годы</a>' in html
+
+    def test_stat_strip_of_a_year(self, client, club):
+        response = get_card(client, club["players"]["A"])
+        totals = response.context["totals"]
+        html = response.content.decode()
+
+        assert (totals.games_played, totals.buyin_total, totals.payout_total, totals.net) == (
+            5,
+            350,
+            490,
+            140,
+        )
+        assert (totals.tour_games_played, totals.tour_net, totals.tour_itm) == (3, 160, 3)
+        assert (totals.cash_games_played, totals.cash_net) == (2, -20)
+        assert f'<dt>Итог за <span class="font-num">{PAST_YEAR}</span>, лей</dt>' in html
+        assert '<dd class="stat-value">+140</dd>' in html
+        assert "3 игры · ITM 3" in html
+        assert f'<dd class="stat-value"><span class="val-neg">{MINUS}20</span></dd>' in html
+        # The all-time player stays on the card for the meta line.
+        assert response.context["player"].games_played == 6
+
+    def test_seasons_of_a_year(self, client, club):
+        response = get_card(client, club["players"]["A"])
+        html = response.content.decode()
+
+        assert [(s.year, s.kind) for s in response.context["seasons"]] == [
+            (PAST_YEAR, "tour"),
+            (PAST_YEAR, "cash"),
+        ]
+        table = html.split('id="seasons-title"')[1].split("</table>")[0]
+        assert f'>Сезоны <span class="font-num">{PAST_YEAR}</span></h2>' in table
+        tfoot = table.split("<tfoot>")[1]
+        assert f'uppercase">За <span class="font-num">{PAST_YEAR}</span></td>' in tfoot
+        assert '<td class="num max-md:hidden">350</td>' in tfoot
+        assert '<td class="num">+140</td>' in tfoot
+
+    def test_chart_of_a_year(self, client, club):
+        response = get_card(client, club["players"]["A"])
+        chart = response.context["chart"]
+        html = response.content.decode()
+
+        assert [m.label for m in chart.months] == ["ЯНВ", "ФЕВ", "МАР"]
+        assert chart.years == []
+        assert len(chart.points.split()) == 1 + 2 * 5  # the start, a step per game
+        assert f'Динамика итога · <span class="font-num">{PAST_YEAR}</span></h2>' in html
+        assert '<p class="section-note">нарастающим итогом с 1 января, все форматы</p>' in html
+        assert html.count('class="chart-month"') == 3
+        assert f"Итог за {PAST_YEAR} год нарастающим итогом по 5 играм, сейчас +140 лей" in html
+
+    def test_chart_of_last_year_runs_to_its_last_month(self, client, club):
+        chart = get_card(client, club["players"]["A"], year=PAST_YEAR - 1).context["chart"]
+
+        assert [m.label for m in chart.months][-1] == "НОЯ"
+        assert len(chart.months) == 11
+
+    def test_history_of_a_year(self, client, club):
+        response = get_card(client, club["players"]["A"])
+        html = response.content.decode()
+
+        assert [r.game.date.year for r in response.context["recent_results"]] == [PAST_YEAR] * 5
+        assert f'История игр · <span class="font-num">{PAST_YEAR}</span></h2>' in html
+        assert (
+            f'href="/players/traktor/games/?year={PAST_YEAR}"><span>Все '
+            f'<span class="font-num">5</span> игр <span class="font-num">{PAST_YEAR}</span> года'
+            " →</span></a>"
+        ) in html
+
+    def test_history_link_plural(self, client, club):
+        html = get_card(client, club["players"]["D"]).content.decode()
+
+        assert '<span>Все <span class="font-num">1</span> игра <span class="font-num">' in html
+
+    def test_awards_stay_all_time(self, client, club, award_rules):
+        year = get_card(client, club["players"]["A"]).content.decode()
+        every = all_years(client, club["players"]["A"]).content.decode()
+
+        for title_id in ("ranks-title", "badges-title", "record-title"):
+            assert section(year, title_id) == section(every, title_id), title_id
+        assert "«Старожил»" in year.split('class="doc-head')[1].split("</section>")[0]
 
 
 class TestPlayerGames:
@@ -196,7 +370,7 @@ class TestPlayerGames:
         return client.get(reverse("player_games", args=[player.slug]), params)
 
     def test_full_history(self, client, club):
-        response = self.get(client, club["players"]["A"])
+        response = self.get(client, club["players"]["A"], year="all")
 
         assert response.status_code == 200
         assert len(response.context["page"].object_list) == 6
@@ -205,14 +379,16 @@ class TestPlayerGames:
     def test_pages(self, client, club, monkeypatch):
         monkeypatch.setattr(views, "PLAYER_GAMES_PER_PAGE", 4)
 
-        first = self.get(client, club["players"]["A"])
-        second = self.get(client, club["players"]["A"], page=2)
+        first = self.get(client, club["players"]["A"], year="all")
+        second = self.get(client, club["players"]["A"], year="all", page=2)
 
         assert [r.game.date.day for r in first.context["page"]] == [22, 15, 8, 8]
         assert [r.game.date.day for r in second.context["page"]] == [1, 10]
-        assert '<a class="next" href="?page=2" rel="next">Лист 2 →</a>' in first.content.decode()
+        assert (
+            '<a class="next" href="?year=all&amp;page=2" rel="next">Лист 2 →</a>'
+        ) in first.content.decode()
         html = second.content.decode()
-        assert '<a href="?page=1" rel="prev">← Лист 1</a>' in html
+        assert '<a href="?year=all&amp;page=1" rel="prev">← Лист 1</a>' in html
         assert "<span>Лист 2</span>" in html  # footer sheet number
 
     @pytest.mark.parametrize("page", ["2", "0", "abc"])
@@ -228,9 +404,51 @@ class TestPlayerGames:
     def test_unknown_slug_is_404(self, client, club):
         assert client.get("/players/nobody/games/").status_code == 404
 
+    def test_default_year(self, client, club):
+        response = self.get(client, club["players"]["A"])
+        html = response.content.decode()
+
+        assert response.context["year"] == PAST_YEAR
+        assert [r.game.date.year for r in response.context["page"]] == [PAST_YEAR] * 5
+        assert f'<span class="font-num not-italic">{PAST_YEAR}</span> год</span> ·' in html
+        assert f'<a href="/players/traktor/?year={PAST_YEAR}">← Личная карточка</a>' in html
+        assert 'aria-label="История по годам"' in html
+        assert f'href="/players/traktor/games/?year={PAST_YEAR - 1}"' in html
+
+    def test_one_year(self, client, club):
+        response = self.get(client, club["players"]["A"], year=PAST_YEAR - 1)
+
+        assert [r.game.date for r in response.context["page"]] == [club["games"]["t0"].date]
+
+    @pytest.mark.parametrize("value", ["", "abc", "1999"])
+    def test_bad_year_falls_back(self, client, club, value):
+        response = self.get(client, club["players"]["A"], year=value)
+
+        assert response.status_code == 200
+        assert response.context["year"] == PAST_YEAR
+
+    def test_pages_keep_the_year(self, client, club, monkeypatch):
+        monkeypatch.setattr(views, "PLAYER_GAMES_PER_PAGE", 2)
+
+        first = self.get(client, club["players"]["A"])
+        third = self.get(client, club["players"]["A"], year=PAST_YEAR, page=3)
+
+        assert len(first.context["page"].object_list) == 2
+        assert first.context["page"].paginator.num_pages == 3
+        assert (
+            f'<a class="next" href="?year={PAST_YEAR}&amp;page=2" rel="next">Лист 2 →</a>'
+        ) in first.content.decode()
+        assert [r.game.date.day for r in third.context["page"]] == [1]
+        assert f'<a href="?year={PAST_YEAR}&amp;page=2" rel="prev">' in third.content.decode()
+
+    def test_player_without_games_has_no_switcher(self, client, club):
+        html = self.get(client, club["players"]["E"], year=PAST_YEAR).content.decode()
+
+        assert "История по годам" not in html
+
     def test_query_count(self, client, club, django_assert_num_queries):
-        # Player, count, page of results, nav years.
-        with django_assert_num_queries(4):
+        # Player, the player's years, count, page of results, nav years.
+        with django_assert_num_queries(5):
             self.get(client, club["players"]["A"])
 
 
@@ -356,9 +574,6 @@ class TestPlayerAwards:
         assert 'получено <span class="font-num not-italic">1</span> знак<' in html
 
     def test_leading_line(self, client, award_rules, monkeypatch):
-        from club.models import SeasonKind
-        from club.tests.factories import make_game, make_player, make_result, make_season
-
         monkeypatch.setattr(
             achievements.timezone, "localdate", lambda: datetime.date(PAST_YEAR, 10, 20)
         )

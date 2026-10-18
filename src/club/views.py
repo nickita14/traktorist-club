@@ -100,17 +100,66 @@ def game_detail(request, pk: int):
     )
 
 
+# ``?year=`` of the player card and history: a season year, or every year.
+ALL_YEARS = "all"
+
+
+def _player_year(request, years: list[int]) -> int | None:
+    """The year a player page shows: ``?year=all`` is every year (None); a year the player has
+    games in is that year; anything else (no value, garbage, a year without their games) is the
+    latest year with games. None for a player without games."""
+    requested = request.GET.get("year")
+    if requested == ALL_YEARS or not years:
+        return None
+    try:
+        year = int(requested)
+    except (TypeError, ValueError):
+        return years[-1]
+    return year if year in years else years[-1]
+
+
+def _year_query(year: int | None) -> str:
+    return urlencode({"year": ALL_YEARS if year is None else year})
+
+
+def _player_year_links(url: str, years: list[int], current: int | None) -> list[dict]:
+    """The year switcher of a player page: every year with games, oldest first, then all years.
+    Each link names its year explicitly and carries nothing else."""
+    links = [
+        {"label": year, "url": f"{url}?{_year_query(year)}", "current": year == current}
+        for year in years
+    ]
+    links.append(
+        {
+            "label": "Все годы",
+            "url": f"{url}?{_year_query(None)}",
+            "current": current is None,
+            "words": True,
+        }
+    )
+    return links
+
+
 def player_detail(request, slug: str):
     player = get_object_or_404(stats.annotate_player_card(Player.objects.all()), slug=slug)
     context = {"player": player, "nav_section": "players"}
     # A player created ahead of their first game gets the heading only.
     if player.games_played:
-        timeline = stats.player_net_timeline(player)
+        years = stats.player_years(player)
+        year = _player_year(request, years)
+        totals = player if year is None else stats.player_year_card(player, year)
+        timeline = stats.player_net_timeline(player, year)
         context |= {
-            "seasons": stats.player_season_breakdown(player),
-            "chart": charts.net_chart(timeline),
-            "recent_results": stats.player_results(player)[:PLAYER_RECENT_GAMES],
-            "has_more_games": player.games_played > PLAYER_RECENT_GAMES,
+            "year": year,
+            "totals": totals,
+            "year_links": _player_year_links(player.get_absolute_url(), years, year),
+            "seasons": stats.player_season_breakdown(player, year),
+            "chart": charts.net_chart(timeline)
+            if year is None
+            else charts.year_chart(timeline, year),
+            "recent_results": stats.player_results(player, year)[:PLAYER_RECENT_GAMES],
+            "has_more_games": totals.games_played > PLAYER_RECENT_GAMES,
+            "games_url": f"{reverse('player_games', args=[player.slug])}?{_year_query(year)}",
             "awards": achievements.load().player(player.pk),
         }
     return render(request, "club/player_detail.html", context)
@@ -118,7 +167,9 @@ def player_detail(request, slug: str):
 
 def player_games(request, slug: str):
     player = get_object_or_404(Player, slug=slug)
-    paginator = Paginator(stats.player_results(player), PLAYER_GAMES_PER_PAGE)
+    years = stats.player_years(player)
+    year = _player_year(request, years)
+    paginator = Paginator(stats.player_results(player, year), PLAYER_GAMES_PER_PAGE)
     try:
         page = paginator.page(request.GET.get("page", 1))
     except InvalidPage as error:
@@ -126,7 +177,18 @@ def player_games(request, slug: str):
     return render(
         request,
         "club/player_games.html",
-        {"player": player, "page": page, "nav_section": "players"},
+        {
+            "player": player,
+            "page": page,
+            "year": year,
+            "year_links": (
+                _player_year_links(reverse("player_games", args=[player.slug]), years, year)
+                if years
+                else []
+            ),
+            "year_query": _year_query(year),
+            "nav_section": "players",
+        },
     )
 
 

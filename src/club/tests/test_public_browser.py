@@ -93,3 +93,61 @@ def test_favicons_load_without_csp_violations(open_page, season):
     assert loaded["ico"][:2] == [200, True]
     assert "icon" in loaded["ico"][2]
     assert page.evaluate("window.cspViolations") == []
+
+
+@pytest.fixture
+def three_years():
+    """A player with games in three years, each with a cash game too."""
+    player = make_player("Альфа", nickname="Трактор")
+    other = make_player("Браво")
+    for year in (2023, 2024, 2025):
+        for kind in (SeasonKind.TOUR, SeasonKind.CASH):
+            game = make_game(make_season(year, kind), day=7, month=6)
+            if kind == SeasonKind.TOUR:
+                make_result(game, player, buyin=50, payout=100, place=1)
+                make_result(game, other, buyin=50, payout=0, place=2)
+            else:
+                make_result(game, player, buyin=100, payout=70)
+                make_result(game, other, buyin=100, payout=130)
+    return player
+
+
+@pytest.mark.parametrize("path", ["player_detail", "player_games"])
+def test_phone_year_switcher(open_page, three_years, path):
+    page = open_page(reverse(path, args=[three_years.slug]), 390)
+
+    title = page.locator("#doc-title").bounding_box()
+    switcher = page.locator(".doc-head nav[aria-label]")
+    # Under the name on phones, like the season pages.
+    assert switcher.bounding_box()["y"] >= title["y"] + title["height"]
+    links = switcher.locator("a")
+    assert links.count() == 4
+    for index in range(links.count()):
+        assert links.nth(index).bounding_box()["height"] >= 44
+    expect(switcher.locator("a[aria-current]")).to_have_text("2025")
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    assert page.evaluate("window.cspViolations") == []
+
+
+def test_desktop_year_switcher_sits_right_of_the_name(open_page, three_years):
+    page = open_page(reverse("player_detail", args=[three_years.slug]), 1280)
+
+    title = page.locator("#doc-title").bounding_box()
+    switcher = page.locator(".doc-head nav[aria-label]").bounding_box()
+    assert switcher["x"] > title["x"] + title["width"]
+    assert switcher["y"] < title["y"] + title["height"]
+    page.get_by_role("link", name="Все годы").click()
+    expect(page).to_have_url(re.compile(r"\?year=all$"))
+    expect(page.locator(".net-chart .chart-year")).to_have_count(2)
+    assert page.evaluate("window.cspViolations") == []
+
+
+def test_phone_year_chart_fits(open_page, three_years):
+    page = open_page(reverse("player_detail", args=[three_years.slug]), 390)
+
+    months = page.locator(".net-chart .chart-month")
+    expect(months).to_have_count(6)
+    boxes = [months.nth(index).bounding_box() for index in range(6)]
+    # Month labels do not run into each other.
+    assert all(a["x"] + a["width"] <= b["x"] for a, b in zip(boxes, boxes[1:], strict=False))
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
