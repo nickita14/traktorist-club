@@ -134,6 +134,28 @@ class TestSeason:
         season.kind = SeasonKind.CASH
         season.full_clean()
 
+    def test_year_change_rejected_when_the_season_has_games(self):
+        season = make_season(2025)
+        make_game(season)
+        season.year = 2026
+        with pytest.raises(ValidationError) as exc:
+            season.full_clean()
+        assert exc.value.message_dict["year"] == [
+            "В сезоне есть игры другого года: год сезона не меняется."
+        ]
+
+    def test_year_change_allowed_without_games(self):
+        season = make_season(2025)
+        season.year = 2026
+        season.full_clean()
+
+    def test_other_changes_allowed_when_the_season_has_games(self):
+        season = make_season(2025)
+        make_game(season)
+        season.paid_places = 2
+        season.payout_weights = "3,2"
+        season.full_clean()
+
 
 class TestPlayerSlug:
     def test_transliterate(self):

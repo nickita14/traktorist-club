@@ -162,15 +162,17 @@ PLAYER_CARD_SCOPES = {
 }
 
 
-def annotate_player_card(players: QuerySet[Player]) -> QuerySet[Player]:
+def annotate_player_card(players: QuerySet[Player], *, year: int | None = None) -> QuerySet[Player]:
     """The record card totals in one query.
 
-    All-time fields as in annotate_player_totals, the same with ``tour_`` and ``cash_`` prefixes,
-    and first_game_date / last_game_date (None for a player without games).
+    Fields as in annotate_player_totals, the same with ``tour_`` and ``cash_`` prefixes, and
+    first_game_date / last_game_date (None for a player without games). With ``year`` the totals
+    cover that season year only; the two dates stay all-time.
     """
+    in_year = Q(results__game__season__year=year) if year is not None else Q()
     annotations = {}
     for prefix, scope in PLAYER_CARD_SCOPES.items():
-        annotations |= _player_totals("results", scope, prefix)
+        annotations |= _player_totals("results", scope & in_year, prefix)
     finished = Q(results__game__live_stage="")
     return players.annotate(
         **annotations,
@@ -179,13 +181,31 @@ def annotate_player_card(players: QuerySet[Player]) -> QuerySet[Player]:
     )
 
 
-def player_season_breakdown(player: Player) -> QuerySet[Season]:
+def player_year_card(player: Player, year: int) -> Player:
+    """``player`` with the record card totals of one season year (see annotate_player_card)."""
+    return annotate_player_card(Player.objects.filter(pk=player.pk), year=year).get()
+
+
+def player_years(player: Player) -> list[int]:
+    """Season years in which ``player`` has a finished game, oldest first.
+
+    A game's date lies in its season's year (Game.clean, Season.clean), so these are calendar
+    years too.
+    """
+    return list(
+        player.results.filter(game__live_stage="")
+        .order_by("game__season__year")
+        .values_list("game__season__year", flat=True)
+        .distinct()
+    )
+
+
+def player_season_breakdown(player: Player, year: int | None = None) -> QuerySet[Season]:
     """Seasons ``player`` played in, newest year first and tour before cash within a year, each
-    with that player's totals (same fields as above)."""
+    with that player's totals (same fields as above). With ``year``, that year's seasons only."""
+    seasons = Season.objects.all() if year is None else Season.objects.filter(year=year)
     return (
-        Season.objects.annotate(
-            **_player_totals("games__results", Q(games__results__player=player))
-        )
+        seasons.annotate(**_player_totals("games__results", Q(games__results__player=player)))
         .filter(games_played__gt=0)
         .order_by("-year", SEASON_KIND_ORDER)
     )
@@ -459,15 +479,19 @@ def game_results(game: Game) -> list[Result]:
     return results
 
 
-def player_results(player: Player) -> QuerySet[Result]:
+def _player_finished_results(player: Player, year: int | None) -> QuerySet[Result]:
+    results = player.results.filter(game__live_stage="")
+    return results if year is None else results.filter(game__season__year=year)
+
+
+def player_results(player: Player, year: int | None = None) -> QuerySet[Result]:
     """The player's results, newest first, with ``net``, ``game_number`` and the game's season.
+    With ``year``, that season year only.
 
     On a date with both kinds, cash comes before tour (the reverse of player_net_timeline).
     """
     return (
-        annotate_result_net(
-            player.results.filter(game__live_stage="").select_related("game__season")
-        )
+        annotate_result_net(_player_finished_results(player, year).select_related("game__season"))
         .annotate(game_number=game_number("game__season", "game__date"))
         .order_by("-game__date", "game__season__kind")
     )
@@ -479,13 +503,14 @@ class TimelinePoint:
     net: int
 
 
-def player_net_timeline(player: Player) -> list[TimelinePoint]:
+def player_net_timeline(player: Player, year: int | None = None) -> list[TimelinePoint]:
     """Cumulative net after each of the player's games, oldest first. One query.
 
+    With ``year`` it covers that season year only and so counts from zero on 1 January.
     On a date with both kinds the tournament comes first ("tour" sorts after "cash").
     """
     rows = (
-        player.results.filter(game__live_stage="")
+        _player_finished_results(player, year)
         .order_by("game__date", "-game__season__kind")
         .values_list("game__date", "buyin", "payout")
     )

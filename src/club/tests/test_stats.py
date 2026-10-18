@@ -534,6 +534,115 @@ class TestPlayerResults:
         ]
 
 
+@pytest.fixture
+def two_years():
+    """Two years of invented games, worked out by hand. Tours pay 3 places.
+
+    Tour 2024  01.05: Альфа 50->100 (1st), Эхо 50->0 (2nd)
+    Tour 2025  01.03: Альфа 50->100 (1st), Дельта 50->60 (2nd), Браво 50->20 (3rd),
+                      Чарли 50->20 (3rd, tie)
+    Cash 2025  01.03: Альфа 100->70, Браво 100->130
+    Tour 2025  14.06: Браво 50->120 (1st), Чарли 50->50 (2nd), Дельта 50->30 (3rd),
+                      Альфа 50->0 (4th)
+    Tour 2025  01.09: live (rebuys), Эхо 50 in: counts nowhere
+    """
+    tour_old = make_season(2024, SeasonKind.TOUR)
+    tour = make_season(2025, SeasonKind.TOUR)
+    cash = make_season(2025, SeasonKind.CASH)
+    a, b, c, d, e = (make_player(name) for name in ["Альфа", "Браво", "Чарли", "Дельта", "Эхо"])
+    g0 = make_game(tour_old, day=1, month=5)
+    t1, c1 = make_game(tour, day=1, month=3), make_game(cash, day=1, month=3)
+    t2 = make_game(tour, day=14, month=6)
+    live = make_game(
+        tour, day=1, month=9, live_stage="rebuys", started_at=datetime.datetime.now(datetime.UTC)
+    )
+    for game, player, buyin, payout, place in [
+        (g0, a, 50, 100, 1),
+        (g0, e, 50, 0, 2),
+        (t1, a, 50, 100, 1),
+        (t1, d, 50, 60, 2),
+        (t1, b, 50, 20, 3),
+        (t1, c, 50, 20, 3),
+        (c1, a, 100, 70, None),
+        (c1, b, 100, 130, None),
+        (t2, b, 50, 120, 1),
+        (t2, c, 50, 50, 2),
+        (t2, d, 50, 30, 3),
+        (t2, a, 50, 0, 4),
+        (live, e, 50, 0, None),
+    ]:
+        make_result(game, player, buyin=buyin, payout=payout, place=place)
+    return {"A": a, "B": b, "C": c, "D": d, "E": e}
+
+
+class TestPlayerYear:
+    def test_years_oldest_first(self, two_years):
+        assert stats.player_years(two_years["A"]) == [2024, 2025]
+        assert stats.player_years(two_years["B"]) == [2025]
+
+    def test_years_leave_out_live_games(self, two_years):
+        # Эхо's only game of 2025 is still being played.
+        assert stats.player_years(two_years["E"]) == [2024]
+
+    def test_year_card(self, two_years):
+        card = stats.player_year_card(two_years["A"], 2025)
+
+        assert totals(card) == {
+            "games_played": 3,
+            "buyin_total": 200,
+            "payout_total": 170,
+            "net": -30,
+            "itm": 1,
+            "first_places": 1,
+            "second_places": 0,
+            "third_places": 0,
+        }
+        assert (card.tour_games_played, card.tour_net, card.tour_itm) == (2, 0, 1)
+        assert (card.cash_games_played, card.cash_net) == (1, -30)
+        # The dates stay all-time ("в клубе с").
+        assert (card.first_game_date, card.last_game_date) == (
+            datetime.date(2024, 5, 1),
+            datetime.date(2025, 6, 14),
+        )
+
+    def test_year_card_shared_third_place_counts_for_both(self, two_years):
+        for name, second in [("B", 0), ("C", 1)]:
+            card = stats.player_year_card(two_years[name], 2025)
+            assert (card.itm, card.second_places, card.third_places) == (2, second, 1), name
+
+    def test_year_card_of_a_year_without_games(self, two_years):
+        card = stats.player_year_card(two_years["E"], 2025)
+
+        assert (card.games_played, card.net, card.itm) == (0, 0, 0)
+
+    def test_season_breakdown_of_one_year(self, two_years):
+        rows = [
+            (s.year, s.kind, s.games_played, s.net)
+            for s in stats.player_season_breakdown(two_years["A"], 2025)
+        ]
+
+        assert rows == [(2025, "tour", 2, 0), (2025, "cash", 1, -30)]
+
+    def test_results_of_one_year(self, two_years):
+        rows = [
+            (r.game.date, r.game.season.kind) for r in stats.player_results(two_years["A"], 2025)
+        ]
+
+        assert rows == [
+            (datetime.date(2025, 6, 14), "tour"),
+            (datetime.date(2025, 3, 1), "cash"),
+            (datetime.date(2025, 3, 1), "tour"),
+        ]
+        assert not stats.player_results(two_years["E"], 2025).exists()
+
+    def test_timeline_of_one_year_starts_from_zero(self, two_years):
+        points = stats.player_net_timeline(two_years["A"], 2025)
+
+        # 2024's +50 is left out; the tournament comes before the cash game on 01.03.
+        assert [(p.date.month, p.net) for p in points] == [(3, 50), (3, 20), (6, -30)]
+        assert stats.player_net_timeline(two_years["A"])[-1].net == 20
+
+
 class TestAllTimeRankAndClubTotals:
     def test_rank(self, club):
         assert [(p.rank, p.name) for p in stats.all_time_standings(kind=SeasonKind.CASH)] == [
