@@ -15,11 +15,12 @@
 </head>
 <body>
   <div class="mx-auto flex min-h-screen max-w-page flex-col px-4 md:px-8">
-    <header class="site-head flex flex-wrap items-center justify-between gap-x-10 border-b border-ink pt-3 pb-2">
+    {# Phones: the name and "Проходная" on one line, the nav below; md: the name, then the nav with "Проходная"; xl: one row (frontend/source.css, site-nav). #}
+    <header class="site-head flex flex-wrap items-center gap-x-3 border-b border-ink pt-3 pb-2">
       {# Ruslan Display's accents reach its ascent line: keep the text scale's own line height (no leading-*) and the padding, or the first line touches the viewport top when the name wraps. #}
-      <a class="flex min-h-11 items-center py-1 font-display text-lg uppercase no-underline md:text-xl"
+      <a class="site-head-name mr-auto flex min-h-11 items-center py-1 font-display uppercase no-underline sm:text-lg md:basis-full md:text-xl xl:basis-auto xl:pr-7"
          href="{% url 'home' %}">Кочующий Клуб Тракториста</a>
-      <nav class="site-nav" aria-label="Разделы">
+      <nav class="site-nav site-nav-row" aria-label="Разделы">
         <ul class="flex flex-wrap gap-x-3 md:gap-x-6">
           <li>
             {% if latest_years.tour %}
@@ -51,6 +52,12 @@
           {% endif %}
         </ul>
       </nav>
+      {% block header_login %}
+        {# The organizers' way in (club.auth.LoginView), not a section: after the nav. The login page empties this block. #}
+        {% if not user.is_authenticated %}
+          <a class="site-nav-login" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">Проходная</a>
+        {% endif %}
+      {% endblock %}
     </header>
     {% if organizer.is_organizer %}
       {% for game in organizer.live_games %}
@@ -69,12 +76,6 @@
       <span>Лист {% block sheet %}1{% endblock %}</span>
       <div class="flex flex-wrap items-center gap-x-6">
         {% block footer_meta %}{% endblock %}
-        {% block footer_login %}
-          {# For organizers only, so kept out of the nav. The login page is club.auth.LoginView. #}
-          {% if not user.is_authenticated %}
-            <a class="footer-login" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">Войти</a>
-          {% endif %}
-        {% endblock %}
       </div>
     </footer>
   </div>
