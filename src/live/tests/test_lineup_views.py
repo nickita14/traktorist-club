@@ -464,3 +464,106 @@ def test_results_screen_marks_unpaid(org):
     actions.advance_stage(game.pk, key(), None, "addon")
     words = text(org.get(reverse("live:results", args=[game.pk])).text)
     assert words.count("не сдал 50") == 1
+
+
+class TestCollectHasNoUnseat:
+    def test_no_control_and_refused(self, org, collect):
+        game, (alpha, *_) = collect
+        page = board(org, game)
+        assert "unseat" not in page and "Убрать:" not in page and "Не садился" not in page
+        assert "Не садился" not in org.get(reverse("live:player", args=[game.pk, alpha.pk])).text
+
+        response = act(org, game, "unseat", result=alpha)
+
+        assert "Состав утверждён: вернитесь к составу" in response.text
+        assert Result.objects.filter(pk=alpha.pk).exists()
+
+
+class TestStaleLineupControls:
+    def test_lineup_forms_post_their_stage(self, org, lineup):
+        game, _ = lineup
+        page = board(org, game)
+        # Every quick-add seat and every "убрать" carries it.
+        seat_forms = page.count(reverse("live:seat", args=[game.pk]))
+        unseat_forms = page.count('aria-label="Убрать: ')
+        assert page.count('name="stage" value="lineup"') == seat_forms + unseat_forms
+        sheet = org.get(reverse("live:seat_new", args=[game.pk])).text
+        assert 'name="stage" value="lineup"' in sheet
+
+    @pytest.fixture(params=["collect", "play"])
+    def moved(self, request, lineup):
+        game, results = lineup
+        actions.advance_stage(game.pk, key(), None, "lineup")
+        if request.param == "play":
+            actions.advance_stage(game.pk, key(), None, "collect")
+        return game, results
+
+    def assert_refused(self, response, game):
+        assert response.status_code == 200
+        assert "toast-warn" in response.text
+        assert "Пока вы смотрели, этап сменился." in response.text
+        # The board comes back in the stage the game is in now.
+        assert '<section id="board"' in response.text
+        assert 'name="stage" value="lineup"' not in response.text
+
+    def test_seat(self, org, moved):
+        game, _ = moved
+        response = org.post(
+            reverse("live:seat", args=[game.pk]),
+            {"key": str(uuid.uuid4()), "player": make_player("Дельта").pk, "stage": "lineup"},
+            **HTMX,
+        )
+        self.assert_refused(response, game)
+        assert game.results.count() == 3
+
+    def test_seat_new(self, org, moved):
+        game, _ = moved
+        response = org.post(
+            reverse("live:seat_new", args=[game.pk]),
+            {"key": str(uuid.uuid4()), "name": "Дельта", "nickname": "", "stage": "lineup"},
+            **HTMX,
+        )
+        self.assert_refused(response, game)
+        assert not game.results.filter(player__name="Дельта").exists()
+
+    def test_unseat(self, org, moved):
+        game, (alpha, *_) = moved
+        response = act(org, game, "unseat", result=alpha, stage="lineup")
+        self.assert_refused(response, game)
+        assert Result.objects.filter(pk=alpha.pk).exists()
+
+
+class TestLateEntryViews:
+    def test_without_paid_refused(self, org):
+        game = live_game(SeasonKind.TOUR)
+        response = org.post(
+            reverse("live:seat", args=[game.pk]),
+            {"key": str(uuid.uuid4()), "player": make_player("Дельта").pk, "stage": "rebuys"},
+            HTTP_HX_REQUEST="true",
+            HTTP_HX_TARGET="player-list",
+        )
+        assert "Укажите, внёс ли игрок деньги за вход." in response.text
+        assert not game.results.exists()
+
+    def test_sheets_post_their_stage(self, org):
+        game = live_game(SeasonKind.TOUR)
+        alpha, *_ = seat(game, "Альфа", "Браво")
+        late = org.get(reverse("live:late", args=[game.pk, make_player("Дельта").pk])).text
+        assert late.count('name="stage" value="rebuys"') == 2
+        sheet = org.get(reverse("live:player", args=[game.pk, alpha.pk])).text
+        assert 'name="stage" value="rebuys"' in sheet
+
+
+class TestReturnTheEntry:
+    def test_only_for_a_paid_player(self, org):
+        game = live_game(SeasonKind.TOUR)
+        alpha, bravo = seat(game, "Альфа", "Браво")
+        actions.set_paid(game.pk, key(), None, alpha.pk, True)
+
+        paid = org.get(reverse("live:player", args=[game.pk, alpha.pk])).text
+        unpaid = org.get(reverse("live:player", args=[game.pk, bravo.pk])).text
+
+        assert "Вход уже сдан. Верните" in text(paid)
+        assert "Верните 50 лей." in text(paid)
+        assert re.search(r'hx-confirm="[^"]*Верните 50 лей\."', paid)
+        assert "Верните" not in unpaid

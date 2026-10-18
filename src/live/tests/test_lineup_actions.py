@@ -6,7 +6,7 @@ import datetime
 import pytest
 from django.utils import timezone
 
-from club.models import Game, Result, SeasonKind
+from club.models import Game, Player, Result, SeasonKind
 from club.tests.factories import make_player
 from live import actions
 from live.actions import RuleError
@@ -310,3 +310,106 @@ class TestCancelBeforePlay:
         seat(game, "Альфа")
         with pytest.raises(RuleError, match="такую игру отменить нельзя"):
             actions.cancel_game(game.pk, organizer)
+
+
+class TestNoUnseatInCollect:
+    def test_refused(self, lineup):
+        game, (alpha, *_) = lineup
+        change(game)
+        assert not actions.unseat_allowed(alpha, Game.objects.get(pk=game.pk))
+        with pytest.raises(RuleError, match="Состав утверждён: вернитесь к составу"):
+            actions.unseat(game.pk, key(), None, alpha.pk)
+        assert Result.objects.filter(pk=alpha.pk).exists()
+
+
+class TestStaleStage:
+    @pytest.fixture(params=["collect", "play"])
+    def moved(self, request, lineup):
+        """The lineup's controls were rendered; then the game moved on."""
+        game, results = lineup
+        change(game)
+        if request.param == "play":
+            change(game)
+        return game, results
+
+    def test_seat(self, moved):
+        game, _ = moved
+        with pytest.raises(RuleError, match="Пока вы смотрели, этап сменился."):
+            actions.seat(game.pk, key(), None, make_player().pk, paid=False, stage="lineup")
+        assert game.results.count() == 3
+
+    def test_seat_new(self, moved):
+        game, _ = moved
+        with pytest.raises(RuleError, match="этап сменился"):
+            actions.seat_new(game.pk, key(), None, "Дельта", "", paid=False, stage="lineup")
+        assert not Player.objects.filter(name="Дельта").exists()
+
+    def test_unseat(self, moved):
+        game, (alpha, *_) = moved
+        with pytest.raises(RuleError, match="этап сменился"):
+            actions.unseat(game.pk, key(), None, alpha.pk, stage="lineup")
+        assert Result.objects.filter(pk=alpha.pk).exists()
+
+    def test_the_same_stage_passes(self, lineup):
+        game, (alpha, *_) = lineup
+        actions.unseat(game.pk, key(), None, alpha.pk, stage="lineup")
+        actions.seat(game.pk, key(), None, make_player().pk, stage="lineup")
+        assert game.results.count() == 3
+
+
+class TestLateEntryNeedsPaid:
+    def test_seat_without_paid_refused(self):
+        game = live_game(SeasonKind.TOUR)
+        with pytest.raises(RuleError, match="внёс ли игрок деньги"):
+            actions.seat(game.pk, key(), None, make_player().pk)
+        assert not game.results.exists()
+
+    def test_seat_new_without_paid_refused(self):
+        game = live_game(SeasonKind.CASH)
+        with pytest.raises(RuleError, match="внёс ли игрок деньги"):
+            actions.seat_new(game.pk, key(), None, "Дельта", "")
+        assert not Player.objects.filter(name="Дельта").exists()
+
+    def test_lineup_needs_no_paid(self):
+        game = lineup_game(SeasonKind.TOUR)
+        result = actions.seat(game.pk, key(), None, make_player().pk).action.result
+        assert result.entry_paid is False
+
+
+class TestSupersededUnseat:
+    def test_only_the_latest_unseat_undoes(self, lineup):
+        game, (alpha, *_) = lineup
+        first = actions.unseat(game.pk, key(), None, alpha.pk)
+        again = actions.seat(game.pk, key(), None, alpha.player_id).action.result
+        latest = actions.unseat(game.pk, key(), None, again.pk)
+
+        with pytest.raises(RuleError, match="уже изменили"):
+            actions.undo(first.action.pk, None)
+        assert not game.results.filter(player=alpha.player_id).exists()
+
+        actions.undo(latest.action.pk, None)
+        assert game.results.get(player=alpha.player_id).pk == again.pk
+        # The seat after the first unseat still stands: the first stays superseded.
+        with pytest.raises(RuleError, match="уже изменили"):
+            actions.undo(first.action.pk, None)
+
+    def test_seat_snapshot_names_the_player(self, lineup):
+        game, (alpha, *_) = lineup
+        seat_action = LiveAction.objects.get(kind=LiveAction.Kind.SEAT, result=alpha)
+        assert seat_action.after["player_id"] == alpha.player_id
+
+    def test_old_seat_snapshot_without_player_does_not_crash(self, lineup):
+        game, (alpha, *_) = lineup
+        first = actions.unseat(game.pk, key(), None, alpha.pk)
+        again = actions.seat(game.pk, key(), None, alpha.player_id)
+        # Logged before the player was in SEAT snapshots.
+        old = again.action
+        old.after = {k: v for k, v in old.after.items() if k != "player_id"}
+        old.save(update_fields=["after"])
+
+        # Not recognised as superseded, but the unique clash still refuses it.
+        with pytest.raises(RuleError, match="уже изменили"):
+            actions.undo(first.action.pk, None)
+        # And the old SEAT itself still undoes.
+        actions.undo(old.pk, None)
+        assert not game.results.filter(player=alpha.player_id).exists()

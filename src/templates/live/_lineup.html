@@ -13,6 +13,7 @@
       <form hx-post="{% url 'live:seat' game.pk %}" hx-target="#board" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="key" value="{% new_key %}">
         <input type="hidden" name="player" value="{{ player.pk }}">
+        <input type="hidden" name="stage" value="{{ game.live_stage }}">
         <button type="submit" class="btn btn-dashed" aria-label="За стол: {{ player }}">+ {{ player.label }}</button>
       </form>
     </li>
@@ -32,7 +33,7 @@
       <li class="live-row">
         <span class="min-w-0"><span class="live-place">{{ forloop.counter }}</span><span class="live-name">{{ result.player.name }}</span>{% if result.player.nickname %} <span class="text-muted">{{ result.player.nickname }}</span>{% endif %}</span>
         <span class="live-actions">
-          {% include "live/_button.html" with action="unseat" text="убрать" css="btn-link live-quiet" label="Убрать: "|add:result.player.label %}
+          {% include "live/_button.html" with action="unseat" text="убрать" css="btn-link live-quiet" label="Убрать: "|add:result.player.label guard_stage=True %}
         </span>
       </li>
     {% endfor %}

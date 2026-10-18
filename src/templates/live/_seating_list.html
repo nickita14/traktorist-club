@@ -23,6 +23,7 @@
           <form hx-post="{% url 'live:seat' game.pk %}" hx-target="#player-list" hx-swap="outerHTML" hx-include="#search" hx-disabled-elt="find button">
             <input type="hidden" name="key" value="{% new_key %}">
             <input type="hidden" name="player" value="{{ player.pk }}">
+            <input type="hidden" name="stage" value="{{ game.live_stage }}">
             <button type="submit" class="live-row live-row-button">
               <span class="min-w-0"><span class="live-name">{{ player.name }}</span>{% if player.nickname %} <span class="text-muted">{{ player.nickname }}</span>{% endif %}</span>
               <span class="live-add">+ за стол</span>

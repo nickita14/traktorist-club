@@ -367,7 +367,9 @@ def _paid(paid: bool):
 ACTIONS = {
     "rebuy": _row_action("rebuy"),
     "eliminate": _eliminate,
-    "unseat": _row_action("unseat"),
+    "unseat": lambda pk, key, user, post: actions.unseat(
+        pk, key, user, parse_int(post.get("result"), minimum=1), stage=_seen_stage(post)
+    ),
     "paid-on": _paid(True),
     "paid-off": _paid(False),
     "restore": _row_action("restore"),
@@ -702,7 +704,14 @@ def seat(request, pk: int):
     if key is None or player is None:
         return HttpResponseBadRequest("Нет игрока.")
     try:
-        outcome = actions.seat(pk, key, request.user, player, paid=_paid_flag(request))
+        outcome = actions.seat(
+            pk,
+            key,
+            request.user,
+            player,
+            paid=_paid_flag(request),
+            stage=_seen_stage(request.POST),
+        )
     except RuleError as error:
         return refresh(request, pk, message=str(error))
     except GameGone:
@@ -710,8 +719,14 @@ def seat(request, pk: int):
     return refresh(request, pk, outcome=outcome)
 
 
-def _paid_flag(request) -> bool:
-    return request.POST.get("paid") == "1"
+def _paid_flag(request) -> bool | None:
+    """ "1" paid, "0" owes the entry; anything else is unknown (a late entry refuses it)."""
+    return {"1": True, "0": False}.get(request.POST.get("paid"))
+
+
+def _seen_stage(post) -> str | None:
+    """The stage a form was rendered in, posted to refuse controls left from an earlier one."""
+    return post.get("stage") or None
 
 
 def _new_player_context(game: Game, form: NewPlayerForm, target: str) -> dict:
@@ -748,6 +763,7 @@ def seat_new(request, pk: int):
                 data["name"],
                 data["nickname"],
                 paid=_paid_flag(request),
+                stage=_seen_stage(request.POST),
             )
         except ValidationError as error:
             form.add_error(None, error)

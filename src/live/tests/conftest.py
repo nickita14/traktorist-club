@@ -42,7 +42,7 @@ def seat(game, *names):
     results = []
     for name in names:
         player = make_player(name)
-        outcome = actions.seat(game.pk, key(), None, player.pk)
+        outcome = actions.seat(game.pk, key(), None, player.pk, paid=False)
         results.append(outcome.action.result)
     return results
 

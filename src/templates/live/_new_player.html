@@ -3,6 +3,7 @@
 <form id="new-player" class="live-form"{% if oob %} hx-swap-oob="true"{% endif %} hx-post="{% url 'live:seat_new' game.pk %}" hx-target="#{{ target|default:'player-list' }}" hx-swap="outerHTML" hx-include="#search" hx-disabled-elt="find button">
   {% if not sheet %}<h2 class="live-heading">Новый игрок</h2>{% endif %}
   {{ new_player.key }}
+  <input type="hidden" name="stage" value="{{ game.live_stage }}">
   {% for error in new_player.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
   <label class="field">
     <span class="field-label">Имя</span>

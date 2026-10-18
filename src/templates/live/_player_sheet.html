@@ -15,11 +15,13 @@
   {% endif %}
   {% if can_unseat %}
     <form class="mt-6" hx-post="{% url 'live:act' game.pk 'unseat' %}" hx-target="#board" hx-swap="outerHTML" hx-disabled-elt="find button"
-          hx-confirm="Убрать {{ result.player.label }} из игры? Запись удалится целиком: без места и без закупки.">
+          hx-confirm="Убрать {{ result.player.label }} из игры? Запись удалится целиком: без места и без закупки.{% if result.entry_paid %} Верните {{ entry|money }} лей.{% endif %}">
       <input type="hidden" name="key" value="{% new_key %}">
+      <input type="hidden" name="stage" value="{{ game.live_stage }}">
       <input type="hidden" name="result" value="{{ result.pk }}">
       <button type="submit" class="btn btn-accent w-full">Не садился · убрать</button>
     </form>
     <p class="mt-1 text-sm text-muted italic">Для ошибки посадки: пока у игрока нет ребаев, аддона, выхода и выплат.</p>
+    {% if result.entry_paid %}<p class="mt-1 text-sm">Вход уже сдан. Верните <span class="font-num">{{ entry|money }}</span> лей.</p>{% endif %}
   {% endif %}
 </section>

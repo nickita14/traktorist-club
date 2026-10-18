@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from django.contrib.admin.models import DELETION, LogEntry
 from django.db import IntegrityError, transaction
-from django.db.models import F, Max, OuterRef, Subquery
+from django.db.models import F, Max, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -271,14 +271,35 @@ def start_game(
         return Outcome(action)
 
 
-def seat(game_pk: int, key: uuid.UUID, user, player_pk: int, *, paid: bool = False) -> Outcome:
+STAGE_CHANGED = "Пока вы смотрели, этап сменился."
+LATE_ENTRY_UNPAID_UNKNOWN = "Укажите, внёс ли игрок деньги за вход."
+
+
+def _require_seen_stage(game: Game, stage: str | None) -> None:
+    """``stage`` is the stage the form was rendered in (like ``from_stage`` and ``place``): a
+    control left on a screen from an earlier stage must not act in the new one."""
+    if stage is not None and stage != game.live_stage:
+        raise RuleError(STAGE_CHANGED)
+
+
+def seat(
+    game_pk: int,
+    key: uuid.UUID,
+    user,
+    player_pk: int,
+    *,
+    paid: bool | None = None,
+    stage: str | None = None,
+) -> Outcome:
     """Seat an existing player with the entry price (tour) or one cash step.
 
-    ``paid``: the entry is already in the cash box (a late entry who paid at once). In the lineup
-    nobody has paid yet: the collection step marks it.
+    In the lineup nobody has paid yet (the collection step marks it), so ``paid`` is ignored. A
+    late entry (after the start) must say whether the entry is in the cash box: ``paid`` True or
+    False, never left out. ``stage``: see _require_seen_stage.
     """
 
     def operation(game: Game) -> Change:
+        _require_seen_stage(game, stage)
         player = Player.objects.filter(pk=player_pk).first()
         if player is None:
             raise RuleError("Такого игрока нет.")
@@ -288,11 +309,19 @@ def seat(game_pk: int, key: uuid.UUID, user, player_pk: int, *, paid: bool = Fal
 
 
 def seat_new(
-    game_pk: int, key: uuid.UUID, user, name: str, nickname: str, *, paid: bool = False
+    game_pk: int,
+    key: uuid.UUID,
+    user,
+    name: str,
+    nickname: str,
+    *,
+    paid: bool | None = None,
+    stage: str | None = None,
 ) -> Outcome:
     """Create a player (validated like the admin form) and seat them in one action."""
 
     def operation(game: Game) -> Change:
+        _require_seen_stage(game, stage)
         player = Player(name=name, nickname=nickname)
         player.full_clean()  # ValidationError goes back to the form
         player.save()
@@ -307,33 +336,40 @@ def can_seat(game: Game) -> bool:
     return game.live_stage in (LiveStage.LINEUP, LiveStage.REBUYS, LiveStage.CASH)
 
 
-def _seat(game: Game, player: Player, paid: bool) -> Change:
+def _seat(game: Game, player: Player, paid: bool | None) -> Change:
     season = game.season
     if not can_seat(game):
         if game.live_stage == LiveStage.COLLECT:
             raise RuleError("Состав уже утверждён: вернитесь к составу, чтобы добавить игрока.")
         raise RuleError("Новых игроков можно сажать только на этапе 1.")
     lineup = game.live_stage == LiveStage.LINEUP
-    fields = {"buyin": entry_amount(season), "entry_paid": paid and not lineup}
-    if season.kind == SeasonKind.TOUR:
-        fields |= {"rebuys": 0, "addon": False}
     if Result.objects.filter(game=game, player=player).exists():
         raise RuleError(f"{player.label} уже за столом.")
+    if not lineup and paid is None:
+        raise RuleError(LATE_ENTRY_UNPAID_UNKNOWN)
+    fields = {"buyin": entry_amount(season), "entry_paid": bool(paid) and not lineup}
+    if season.kind == SeasonKind.TOUR:
+        fields |= {"rebuys": 0, "addon": False}
     result = Result.objects.create(game=game, player=player, **fields)
     summary = f"За стол: {player.label}, {fields['buyin']}"
     if not lineup:
         summary += " · внёс" if paid else " · не сдал"
-    return Change(ActionKind.SEAT, summary, result.pk, None, _snapshot(result))
+    # The player in the snapshot lets undoing an earlier unseat of them see it was superseded.
+    after = _snapshot(result) | {"player_id": player.pk}
+    return Change(ActionKind.SEAT, summary, result.pk, None, after)
 
 
 def unseat_allowed(result: Result, game: Game) -> bool:
     """Whether a seated player can be taken off the list as if they never sat down.
 
-    In the lineup anyone can. Later only a player nothing has happened to yet: no rebuy or
-    add-on, still in, nothing paid out, no chips counted, and the single entry as the buy-in.
+    In the lineup anyone can. During the collection nobody: the lineup is confirmed (go back to
+    it). From the start on only a player nothing has happened to yet: no rebuy or add-on, still
+    in, nothing paid out, no chips counted, and the single entry as the buy-in.
     """
     if game.live_stage == LiveStage.LINEUP:
         return True
+    if game.live_stage == LiveStage.COLLECT:
+        return False
     return (
         not result.rebuys
         and not result.addon
@@ -344,14 +380,19 @@ def unseat_allowed(result: Result, game: Game) -> bool:
     )
 
 
-def unseat(game_pk: int, key: uuid.UUID, user, result_pk: int) -> Outcome:
+def unseat(
+    game_pk: int, key: uuid.UUID, user, result_pk: int, *, stage: str | None = None
+) -> Outcome:
     """Remove a player who never played: the row is deleted, nothing is left behind.
 
     The snapshot keeps the row and the actions that pointed at it (deleting the row clears
-    their link), so undo puts both back exactly.
+    their link), so undo puts both back exactly. ``stage``: see _require_seen_stage.
     """
 
     def operation(game: Game) -> Change:
+        _require_seen_stage(game, stage)
+        if game.live_stage == LiveStage.COLLECT:
+            raise RuleError("Состав утверждён: вернитесь к составу, чтобы убрать игрока.")
         result = _row(game, result_pk)
         if not unseat_allowed(result, game):
             raise RuleError(f"{result.player.label} уже в игре: убрать нельзя.")
@@ -1024,6 +1065,18 @@ def undo(action_pk: int, user) -> Outcome:
 CHANGED_SINCE = "Отменить нельзя: после этого запись уже изменили."
 
 
+def _superseded(game: Game, action: LiveAction) -> bool:
+    """Whether the player of an unseat was seated or unseated again afterwards (and that was not
+    undone): putting the old row back would then undo more than this action. Older SEAT
+    snapshots have no player and never match."""
+    player_id = action.before.get("player_id")
+    later = game.live_actions.filter(pk__gt=action.pk, undone_at__isnull=True)
+    return later.filter(
+        Q(kind=ActionKind.SEAT, after__player_id=player_id)
+        | Q(kind=ActionKind.UNSEAT, before__player_id=player_id)
+    ).exists()
+
+
 def _reseat(game: Game, before: dict) -> int:
     """Put an unseated row back with its pk and values, and relink its actions."""
     fields = {field: before[field] for field in SNAPSHOT_FIELDS if field in before}
@@ -1055,7 +1108,7 @@ def _undo_change(game: Game, action: LiveAction) -> None:
     elif action.kind == ActionKind.SEAT:
         changed, _ = Result.objects.filter(pk=action.result_id, **action.after).delete()
     elif action.kind == ActionKind.UNSEAT:
-        changed = _reseat(game, action.before)
+        changed = 0 if _superseded(game, action) else _reseat(game, action.before)
     else:
         try:
             with transaction.atomic():

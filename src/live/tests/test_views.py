@@ -377,7 +377,7 @@ class TestSeating:
         player = make_player("Дельта")
         response = org.post(
             reverse("live:seat", args=[game.pk]),
-            {"key": str(uuid.uuid4()), "player": player.pk, "q": ""},
+            {"key": str(uuid.uuid4()), "player": player.pk, "q": "", "paid": "0"},
             HTTP_HX_REQUEST="true",
             HTTP_HX_TARGET="player-list",
         )
@@ -390,7 +390,7 @@ class TestSeating:
         game, _ = cash
         response = org.post(
             reverse("live:seat_new", args=[game.pk]),
-            {"key": str(uuid.uuid4()), "name": "Евгений", "nickname": "Женя"},
+            {"key": str(uuid.uuid4()), "name": "Евгений", "nickname": "Женя", "paid": "1"},
             HTTP_HX_REQUEST="true",
             HTTP_HX_TARGET="player-list",
         )
