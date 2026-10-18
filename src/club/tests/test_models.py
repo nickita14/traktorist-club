@@ -265,6 +265,19 @@ class TestGame:
             game.full_clean()
         assert "live_stage" in exc.value.message_dict
 
+    @pytest.mark.parametrize("kind", [SeasonKind.TOUR, SeasonKind.CASH])
+    @pytest.mark.parametrize("stage", [Game.Stage.LINEUP, Game.Stage.COLLECT])
+    def test_every_game_has_the_pre_game_steps(self, kind, stage):
+        game = Game(
+            season=make_season(2026, kind),
+            date=datetime.date(2026, 3, 14),
+            live_stage=stage,
+            started_at=timezone.now(),
+        )
+        game.full_clean()
+        game.save()
+        assert list(Game.objects.live()) == [game]
+
     def test_clean_asks_for_start_time(self):
         game = Game(season=make_season(2026), date=datetime.date(2026, 3, 14), live_stage="rebuys")
         with pytest.raises(ValidationError) as exc:

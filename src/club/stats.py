@@ -390,6 +390,8 @@ class LiveTotals:
     paid_out: int
     rebuys: int
     addons: int
+    # Players whose entry is not in the cash box yet (Result.entry_paid).
+    unpaid: int
     # Cash only: what the players who left put in the pot so far (chip value minus cash paid).
     pot: Fraction
 
@@ -407,6 +409,7 @@ def live_totals(game: Game) -> LiveTotals:
         paid_out=Coalesce(Sum("payout"), 0),
         rebuys=Coalesce(Sum("rebuys"), 0),
         addons=Count("pk", filter=Q(addon=True)),
+        unpaid=Count("pk", filter=Q(entry_paid=False)),
         left_chips=Coalesce(Sum("chips_out", filter=left), 0),
         left_payout=Coalesce(Sum("payout", filter=left), 0),
     )

@@ -61,7 +61,7 @@ class TestSeat:
     def test_prices_come_from_the_season(self):
         game = live_game(SeasonKind.TOUR, entry_price=150)
         player = make_player()
-        result = actions.seat(game.pk, key(), None, player.pk).action.result
+        result = actions.seat(game.pk, key(), None, player.pk, paid=False).action.result
         assert result.buyin == 150
 
     def test_twice_refused(self, tour):
@@ -77,7 +77,7 @@ class TestSeat:
 
     def test_new_player(self, tour):
         game, _ = tour
-        outcome = actions.seat_new(game.pk, key(), None, "Дельта", "Дед")
+        outcome = actions.seat_new(game.pk, key(), None, "Дельта", "Дед", paid=False)
         player = Player.objects.get(name="Дельта")
         assert (player.nickname, player.slug) == ("Дед", "ded")
         assert outcome.action.result.player == player
@@ -418,7 +418,7 @@ class TestIdempotency:
         [
             lambda game, r, k: actions.eliminate(game.pk, k, None, r.pk),
             lambda game, r, k: actions.advance_stage(game.pk, k, None, Game.Stage.REBUYS),
-            lambda game, r, k: actions.seat(game.pk, k, None, make_player().pk),
+            lambda game, r, k: actions.seat(game.pk, k, None, make_player().pk, paid=False),
         ],
         ids=["eliminate", "stage", "seat"],
     )
@@ -486,7 +486,8 @@ class TestStartAndCancel:
         date = datetime.date(2026, 9, 28)
         tour = actions.start_game(key(), organizer, kind=SeasonKind.TOUR, date=date).action.game
         cash = actions.start_game(key(), organizer, kind=SeasonKind.CASH, date=date).action.game
-        assert (tour.live_stage, cash.live_stage) == (Game.Stage.REBUYS, Game.Stage.CASH)
+        # Every game starts with its lineup; play starts after the entry collection.
+        assert (tour.live_stage, cash.live_stage) == (Game.Stage.LINEUP, Game.Stage.LINEUP)
         assert tour.started_at is not None
         assert tour.live_actions.get().user == organizer
 

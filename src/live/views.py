@@ -22,7 +22,8 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from club import stats
-from club.models import BlindStructure, Game, Player, Result, SeasonKind
+from club.formatting import ru_plural
+from club.models import BlindStructure, Game, LiveStage, Player, Result, SeasonKind
 from live import actions, clock
 from live import manifest as app_manifest
 from live.access import is_organizer, organizer_required
@@ -31,6 +32,8 @@ from live.forms import ExitForm, NewPlayerForm, StartForm, parse_int
 from live.models import BlindTimer, LiveAction
 
 SEAT_CANDIDATES = 30
+# Quick-add buttons on the lineup before anything is searched.
+QUICK_ADD = 12
 
 
 def _game(pk: int) -> Game:
@@ -117,24 +120,76 @@ def timer_clock(timer: BlindTimer | None, now: datetime.datetime) -> clock.Clock
     return clock.clock_at(rows, timer.position, timer.started_at, timer.paused_at, now)
 
 
-def board_context(game: Game) -> dict:
+@dataclass(frozen=True)
+class Collection:
+    """The entry collection, from the live totals: everyone at the table owes one entry."""
+
+    entry: int
+    players: int
+    unpaid: int
+
+    @property
+    def due(self) -> int:
+        return self.players * self.entry
+
+    @property
+    def collected(self) -> int:
+        return (self.players - self.unpaid) * self.entry
+
+
+def live_number(game: Game) -> int:
+    """The number the game gets in its season once finished ("ТУРНИР № 7"). One query."""
+    games = stats.annotate_live_number(Game.objects.filter(pk=game.pk))
+    return games.values_list("number", flat=True).get()
+
+
+def pre_game_context(game: Game, results: list[Result], totals, query: str) -> dict:
+    """The lineup and the collection: the heading, the step strip, the seated players."""
+    context = {
+        "number": live_number(game),
+        "collection": Collection(actions.entry_amount(game.season), totals.players, totals.unpaid),
+        "can_collect": totals.players >= actions.MIN_PLAYERS,
+        "play_stage": actions.play_stage(game.season),
+    }
+    if game.live_stage == LiveStage.LINEUP:
+        query = query.strip()
+        context |= {
+            # Seating order: the list is numbered as people sit down.
+            "seated": sorted(results, key=lambda result: result.pk),
+            "query": query,
+            "candidates": seat_candidates(game, query, QUICK_ADD if not query else SEAT_CANDIDATES),
+        }
+    else:
+        context["seated"] = results
+    return context
+
+
+def board_context(game: Game, query: str = "") -> dict:
     results = list(
         stats.annotate_result_net(game.results.select_related("player")).order_by(
             "player__name", "player__nickname"
         )
     )
     places = stats.elimination_places({result.pk: result.out_order for result in results})
+    pre_game = game.live_stage in actions.PRE_GAME
     for result in results:
         result.live_place = places[result.pk]
+        result.can_unseat = not pre_game and actions.unseat_allowed(result, game)
     now = timezone.localtime()
-    timer = game_timer(game)
-    return {
+    totals = stats.live_totals(game)
+    # The lineup and the collection show no timer: it waits for "Пуск" after the start.
+    timer = None if pre_game else game_timer(game)
+    context = {
         "game": game,
         "season": game.season,
         "cash": game.season.kind == SeasonKind.CASH,
+        "entry": actions.entry_amount(game.season),
         "timer": timer,
         "clock": timer_clock(timer, now),
-        "totals": stats.live_totals(game),
+        "totals": totals,
+        # The place the next bust gets; near the money "ВЫБЫЛ" asks first.
+        "bust_place": totals.in_game,
+        "confirm_bust": totals.in_game <= game.season.paid_places + 1,
         "playing": [result for result in results if result.out_order is None],
         # Latest out first: that is the one a "вернуть" is most likely for.
         "out": sorted(
@@ -147,6 +202,9 @@ def board_context(game: Game) -> dict:
         # The cash rate for one step, like the paper sheets: "5 000 фишек = 50 лей".
         "step_chips": game.season.cash_step * game.season.chips_per_lei,
     }
+    if pre_game:
+        context |= pre_game_context(game, results, totals, query)
+    return context
 
 
 def _toast(outcome: Outcome | None, message: str | None, warning: bool) -> dict:
@@ -179,7 +237,7 @@ def refresh(
         context = blinds_context(request, game)
         fragment = "live/_blinds.html"
     else:
-        context = board_context(game)
+        context = board_context(game, request.POST.get("q", ""))
         fragment = "live/_board.html"
     context |= _toast(outcome, message, warning) | {"oob": True}
     return render(request, fragment, context)
@@ -222,7 +280,7 @@ def start(request):
                 form.add_error(None, str(error))
             else:
                 game = outcome.action.game
-                url = reverse("live:seating", args=[game.pk])
+                url = reverse("live:board", args=[game.pk])
                 return _hx_redirect(url) if _is_htmx(request) else redirect(url)
     else:
         last = Game.objects.exclude(location="").order_by("-date").first()
@@ -243,13 +301,13 @@ def board(request, pk: int):
     game = _game(pk)
     if not game.is_live:
         return gone(request, pk)
-    context = board_context(game)
+    context = board_context(game, request.GET.get("q", ""))
     if _is_htmx(request) and request.headers.get("HX-Target") == "board":
         return render(request, "live/_board.html", context)
     return render(request, "live/board.html", context)
 
 
-def _tour_action(name: str):
+def _row_action(name: str):
     def call(pk, key, user, post):
         result = parse_int(post.get("result"), minimum=1)
         return getattr(actions, name)(pk, key, user, result)
@@ -293,19 +351,39 @@ def _step(step: int):
     return call
 
 
+def _eliminate(pk, key, user, post):
+    result = parse_int(post.get("result"), minimum=1)
+    place = parse_int(post.get("place"), minimum=1) if post.get("place") else None
+    return actions.eliminate(pk, key, user, result, place)
+
+
+def _paid(paid: bool):
+    def call(pk, key, user, post):
+        return actions.set_paid(pk, key, user, parse_int(post.get("result"), minimum=1), paid)
+
+    return call
+
+
 ACTIONS = {
-    "rebuy": _tour_action("rebuy"),
-    "eliminate": _tour_action("eliminate"),
-    "restore": _tour_action("restore"),
-    "topup": _tour_action("top_up"),
-    "return": _tour_action("cash_return"),
+    "rebuy": _row_action("rebuy"),
+    "eliminate": _eliminate,
+    "unseat": lambda pk, key, user, post: actions.unseat(
+        pk, key, user, parse_int(post.get("result"), minimum=1), stage=_seen_stage(post)
+    ),
+    "paid-on": _paid(True),
+    "paid-off": _paid(False),
+    "restore": _row_action("restore"),
+    "topup": _row_action("top_up"),
+    "return": _row_action("cash_return"),
     "addon-on": lambda pk, key, user, post: actions.set_addon(
         pk, key, user, parse_int(post.get("result"), minimum=1), True
     ),
     "addon-off": lambda pk, key, user, post: actions.set_addon(
         pk, key, user, parse_int(post.get("result"), minimum=1), False
     ),
-    "stage": lambda pk, key, user, post: actions.advance_stage(pk, key, user, post.get("from")),
+    "stage": lambda pk, key, user, post: actions.advance_stage(
+        pk, key, user, post.get("from"), post.get("to") or None
+    ),
     "close": lambda pk, key, user, post: actions.close_cash(pk, key, user),
     "timer-start": lambda pk, key, user, post: actions.start_timer(
         pk, key, user, *_numbers(post, "structure", minimum=1)
@@ -548,7 +626,7 @@ def tablo_public_state(request, token: str):
 # Seating.
 
 
-def seat_candidates(game: Game, query: str):
+def seat_candidates(game: Game, query: str, limit: int = SEAT_CANDIDATES):
     """Players not at this table yet, whoever played most recently first."""
     players = (
         Player.objects.exclude(pk__in=game.results.values("player"))
@@ -558,7 +636,7 @@ def seat_candidates(game: Game, query: str):
     query = query.strip()
     if query:
         players = players.filter(Q(name__icontains=query) | Q(nickname__icontains=query))
-    return players[:SEAT_CANDIDATES]
+    return players[:limit]
 
 
 def seating_context(game: Game, query: str) -> dict:
@@ -571,7 +649,11 @@ def seating_context(game: Game, query: str) -> dict:
         "query": query,
         "candidates": seat_candidates(game, query),
         "seated": seated,
-        "can_seat": game.season.kind == SeasonKind.CASH or game.live_stage == Game.Stage.REBUYS,
+        "can_seat": actions.can_seat(game),
+        # After the start a new player either paid at once or owes the entry: the organizer says
+        # which (the late-entry sheet, the two buttons of the new-player form).
+        "late": game.live_stage != LiveStage.LINEUP,
+        "entry": actions.entry_amount(game.season),
     }
 
 
@@ -589,6 +671,28 @@ def seating(request, pk: int):
     )
 
 
+def _sheet_game(pk: int) -> Game:
+    """The live game a sheet belongs to; a finished or deleted one is a 404 (the board, polling
+    on, sends the phone away)."""
+    game = _game(pk)
+    if not game.is_live:
+        raise Http404
+    return game
+
+
+@organizer_required
+@require_GET
+def late_sheet(request, pk: int, player_pk: int):
+    """A late entry: paid at once or owes the entry."""
+    game = _sheet_game(pk)
+    player = get_object_or_404(Player, pk=player_pk)
+    return render(
+        request,
+        "live/_late_sheet.html",
+        {"game": game, "player": player, "entry": actions.entry_amount(game.season)},
+    )
+
+
 def _fresh() -> dict:
     return {"key": uuid.uuid4()}
 
@@ -600,7 +704,14 @@ def seat(request, pk: int):
     if key is None or player is None:
         return HttpResponseBadRequest("Нет игрока.")
     try:
-        outcome = actions.seat(pk, key, request.user, player)
+        outcome = actions.seat(
+            pk,
+            key,
+            request.user,
+            player,
+            paid=_paid_flag(request),
+            stage=_seen_stage(request.POST),
+        )
     except RuleError as error:
         return refresh(request, pk, message=str(error))
     except GameGone:
@@ -608,16 +719,51 @@ def seat(request, pk: int):
     return refresh(request, pk, outcome=outcome)
 
 
+def _paid_flag(request) -> bool | None:
+    """ "1" paid, "0" owes the entry; anything else is unknown (a late entry refuses it)."""
+    return {"1": True, "0": False}.get(request.POST.get("paid"))
+
+
+def _seen_stage(post) -> str | None:
+    """The stage a form was rendered in, posted to refuse controls left from an earlier one."""
+    return post.get("stage") or None
+
+
+def _new_player_context(game: Game, form: NewPlayerForm, target: str) -> dict:
+    return {
+        "game": game,
+        "new_player": form,
+        "target": target,
+        "sheet": target == "board",
+        "late": game.live_stage != LiveStage.LINEUP,
+        "entry": actions.entry_amount(game.season),
+    }
+
+
 @organizer_required
-@require_POST
+@require_http_methods(["GET", "POST"])
 def seat_new(request, pk: int):
-    """Create a player and seat them. Errors re-render the form in place."""
+    """Create a player and seat them. Errors re-render the form in place.
+
+    GET is the lineup's new-player sheet (the board polls, so the form cannot live in it).
+    """
+    if request.method == "GET":
+        game = _sheet_game(pk)
+        context = _new_player_context(game, NewPlayerForm(initial=_fresh()), "board")
+        return render(request, "live/_new_player_sheet.html", context)
     form = NewPlayerForm(request.POST)
+    target = "board" if request.headers.get("HX-Target") == "board" else "player-list"
     if form.is_valid():
         data = form.cleaned_data
         try:
             outcome = actions.seat_new(
-                pk, data["key"], request.user, data["name"], data["nickname"]
+                pk,
+                data["key"],
+                request.user,
+                data["name"],
+                data["nickname"],
+                paid=_paid_flag(request),
+                stage=_seen_stage(request.POST),
             )
         except ValidationError as error:
             form.add_error(None, error)
@@ -627,14 +773,15 @@ def seat_new(request, pk: int):
             return gone(request, pk)
         else:
             response = refresh(request, pk, outcome=outcome)
-            # A clean form for the next new player.
-            response.content += render_to_string(
-                "live/_new_player.html",
-                {"game": _game(pk), "new_player": NewPlayerForm(initial=_fresh()), "oob": True},
-                request,
-            ).encode()
+            if target == "player-list" and response.status_code == 200:
+                # A clean form for the next new player (the lineup's sheet just closes).
+                context = _new_player_context(_game(pk), NewPlayerForm(initial=_fresh()), target)
+                response.content += render_to_string(
+                    "live/_new_player.html", context | {"oob": True}, request
+                ).encode()
             return response
-    response = render(request, "live/_new_player.html", {"game": _game(pk), "new_player": form})
+    context = _new_player_context(_game(pk), form, target)
+    response = render(request, "live/_new_player.html", context)
     response["HX-Retarget"] = "#new-player"
     response["HX-Reswap"] = "outerHTML"
     return response
@@ -759,10 +906,104 @@ def cancel(request, pk: int):
     game = _game(pk)
     if not game.is_live:
         return gone(request, pk)
+    has_players = game.results.exists()
     return render(
         request,
         "live/cancel.html",
-        {"game": game, "season": game.season, "has_players": game.results.exists()},
+        {
+            "game": game,
+            "season": game.season,
+            "has_players": has_players,
+            "blocked": has_players and game.live_stage not in actions.PRE_GAME,
+        },
+    )
+
+
+# Sheets on the board.
+
+
+@organizer_required
+@require_GET
+def begin_sheet(request, pk: int):
+    """ "НАЧАТЬ ИГРУ" while someone has not paid: who, and start anyway or go on collecting."""
+    game = _sheet_game(pk)
+    unpaid = list(
+        game.results.filter(entry_paid=False)
+        .select_related("player")
+        .order_by("player__name", "player__nickname")
+    )
+    return render(
+        request,
+        "live/_begin_sheet.html",
+        {
+            "game": game,
+            "unpaid": unpaid,
+            "entry": actions.entry_amount(game.season),
+            "play_stage": actions.play_stage(game.season),
+        },
+    )
+
+
+@organizer_required
+@require_GET
+def player_sheet(request, pk: int, result_pk: int):
+    """A player's row after the start: accept the entry, or take off one who never sat down."""
+    game = _sheet_game(pk)
+    result = get_object_or_404(Result.objects.select_related("player"), pk=result_pk, game=game)
+    return render(
+        request,
+        "live/_player_sheet.html",
+        {
+            "game": game,
+            "result": result,
+            "entry": actions.entry_amount(game.season),
+            "can_unseat": actions.unseat_allowed(result, game),
+        },
+    )
+
+
+# "трое": how many stay in after a bust, as the table says it.
+COLLECTIVE = {
+    2: "двое",
+    3: "трое",
+    4: "четверо",
+    5: "пятеро",
+    6: "шестеро",
+    7: "семеро",
+    8: "восьмеро",
+    9: "девятеро",
+    10: "десятеро",
+}
+
+
+PLAYER_FORMS = ("игрок", "игрока", "игроков")
+
+
+def bust_lines(place: int, paid_places: int) -> tuple[str, str]:
+    """What the bust sheet says next to the place: the main line and a quiet one."""
+    if place <= paid_places:
+        return "место, в призах.", ""
+    remaining = place - 1
+    who = COLLECTIVE.get(remaining) or f"{remaining} {ru_plural(remaining, PLAYER_FORMS)}"
+    verb = ru_plural(remaining, ("останется", "останутся", "останутся"))
+    every = "все " if remaining > 1 else ""
+    return "место, первое без выплаты.", f"В игре {verb} {who}, {every}в призах."
+
+
+@organizer_required
+@require_GET
+def bust_sheet(request, pk: int, result_pk: int):
+    """ "ВЫБЫЛ" near the money: the place it gives, confirmed before it is recorded."""
+    game = _sheet_game(pk)
+    if game.season.kind != SeasonKind.TOUR:
+        raise Http404
+    result = get_object_or_404(Result.objects.select_related("player"), pk=result_pk, game=game)
+    place = game.results.filter(out_order__isnull=True).count()
+    line, note = bust_lines(place, game.season.paid_places)
+    return render(
+        request,
+        "live/_bust_sheet.html",
+        {"game": game, "result": result, "place": place, "line": line, "note": note},
     )
 
 
@@ -879,6 +1120,7 @@ def results(request, pk: int):
         "game": game,
         "season": game.season,
         "rows": rows,
+        "entry": actions.entry_amount(game.season),
         "balance": _balance(game, rows),
         "error": error,
         "note": note,

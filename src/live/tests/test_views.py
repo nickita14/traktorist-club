@@ -312,8 +312,8 @@ class TestStart:
         season = make_season(2026, SeasonKind.TOUR)
         response = self.post(org, season=str(season.pk))
         game = Game.objects.get()
-        assert response["Location"] == reverse("live:seating", args=[game.pk])
-        assert (game.season, game.live_stage, game.location) == (season, "rebuys", "Гараж")
+        assert response["Location"] == reverse("live:board", args=[game.pk])
+        assert (game.season, game.live_stage, game.location) == (season, "lineup", "Гараж")
 
     def test_start_in_a_new_season(self, org, settings):
         make_season(2025, SeasonKind.CASH, chips_per_lei=10, cash_step=20)
@@ -377,7 +377,7 @@ class TestSeating:
         player = make_player("Дельта")
         response = org.post(
             reverse("live:seat", args=[game.pk]),
-            {"key": str(uuid.uuid4()), "player": player.pk, "q": ""},
+            {"key": str(uuid.uuid4()), "player": player.pk, "q": "", "paid": "0"},
             HTTP_HX_REQUEST="true",
             HTTP_HX_TARGET="player-list",
         )
@@ -390,7 +390,7 @@ class TestSeating:
         game, _ = cash
         response = org.post(
             reverse("live:seat_new", args=[game.pk]),
-            {"key": str(uuid.uuid4()), "name": "Евгений", "nickname": "Женя"},
+            {"key": str(uuid.uuid4()), "name": "Евгений", "nickname": "Женя", "paid": "1"},
             HTTP_HX_REQUEST="true",
             HTTP_HX_TARGET="player-list",
         )

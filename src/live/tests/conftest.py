@@ -26,12 +26,23 @@ def live_game(kind: str, **season_fields) -> Game:
     return make_game(season, day=28, month=9, live_stage=stage, started_at=timezone.now())
 
 
+def lineup_game(kind: str, **season_fields) -> Game:
+    """A game just started: in its lineup, nobody seated yet."""
+    season = make_season(2026, kind, **season_fields)
+    return make_game(
+        season, day=28, month=9, live_stage=Game.Stage.LINEUP, started_at=timezone.now()
+    )
+
+
 def seat(game, *names):
-    """Seat invented players through the real action; return their results in order."""
+    """Seat invented players through the real action; return their results in order.
+
+    In a game already playing that is a late entry with the entry unpaid.
+    """
     results = []
     for name in names:
         player = make_player(name)
-        outcome = actions.seat(game.pk, key(), None, player.pk)
+        outcome = actions.seat(game.pk, key(), None, player.pk, paid=False)
         results.append(outcome.action.result)
     return results
 

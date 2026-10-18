@@ -1120,6 +1120,187 @@
     flex: 1;
   }
 
+  .bottom-bar > .bottom-bar-side {
+    flex: none;
+  }
+
+  /* A quiet status in the top bar: "ПОСАДКА" on the steps before play. */
+  .live-status-quiet {
+    color: var(--muted);
+  }
+
+  /* The caps line above a game's heading: season, weekday, date, place. */
+  .live-label {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .live-heading-split {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  /* The steps of a game (1 · СОСТАВ, 2 · СБОР, 3 · ИГРА): the current one filled ink, the
+     others muted, a passed one an underlined way back. */
+  .step-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 0.75rem;
+    border: 1px solid var(--ink);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+
+  .step-strip li + li {
+    border-left: 1px solid var(--ink);
+  }
+
+  .step-strip li > span,
+  .step-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 2.75rem;
+    padding-inline: 0.25rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .step-strip [aria-current="step"] {
+    background: var(--ink);
+  }
+
+  .step-strip [aria-current="step"] > span {
+    color: var(--paper);
+    font-weight: 700;
+  }
+
+  .step-link {
+    border: 0;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    letter-spacing: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-transform: inherit;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
+  }
+
+  /* Quick-add buttons on the lineup: "+ Имя", dashed until the player sits down. */
+  .quick-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .quick-add-empty {
+    align-self: center;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  .btn-dashed {
+    border-style: dashed;
+  }
+
+  /* The entry toggle on the collection: ПРИНЯТЬ (accent outline) / СДАЛ (filled ink). */
+  .btn-toggle {
+    width: 6.5rem;
+  }
+
+  /* A confirmed bust near the money: the one filled accent button. */
+  .btn-accent-fill {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--paper);
+  }
+
+  .live-quiet {
+    min-width: 2.75rem;
+    color: var(--muted);
+  }
+
+  /* A name that opens the row's sheet (accept the entry, "не садился"); looks like the name. */
+  .live-name-button {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    max-width: 100%;
+    min-height: 2.75rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+
+  .live-unpaid {
+    display: block;
+    color: var(--accent);
+    font-size: var(--text-sm);
+  }
+
+  .sheet-label {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .sheet-name {
+    font-family: var(--font-stack-head);
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    line-height: var(--text-2xl--line-height);
+  }
+
+  .sheet-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+  }
+
+  .sheet-actions > * {
+    flex: 1;
+  }
+
+  .sheet-stack {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  /* The place a bust gives, large, between two rules. */
+  .bust-place {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-block: 0.75rem;
+    border-block: 1px solid var(--rule);
+  }
+
+  .bust-place-number {
+    font-family: var(--font-stack-num);
+    font-size: var(--text-3xl);
+    line-height: var(--text-3xl--line-height);
+  }
+
   .live-form {
     display: grid;
     gap: 0.75rem;

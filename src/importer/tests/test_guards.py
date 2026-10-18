@@ -105,10 +105,12 @@ class TestLiveGames:
         assert "18.01.2026 " not in changes.replace("skipped: 18.01.2026", "")
         assert "exists only in the database" not in changes
 
-    def test_game_in_progress_is_left_as_is(self, run_import, tmp_path):
+    # A game still in its lineup has no play recorded yet, but it is in progress all the same.
+    @pytest.mark.parametrize("stage", ["rebuys", "lineup"])
+    def test_game_in_progress_is_left_as_is(self, run_import, tmp_path, stage):
         run_import()
         game = tour_game(JAN_18)
-        Game.objects.filter(pk=game.pk).update(live_stage="rebuys", started_at=timezone.now())
+        Game.objects.filter(pk=game.pk).update(live_stage=stage, started_at=timezone.now())
 
         out = run_import(edited_workbook(tmp_path))
 

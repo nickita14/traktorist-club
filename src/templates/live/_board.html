@@ -1,6 +1,9 @@
 {% load ledger live %}
 {# The whole live board. Polls for what other phones changed; buttons swap it with the server's answer. #}
-<section id="board" hx-get="{% url 'live:board' game.pk %}" hx-trigger="every {{ poll_seconds }}s, timer-end" hx-target="this" hx-swap="outerHTML" data-poll>
+<section id="board" hx-get="{% url 'live:board' game.pk %}" hx-trigger="every {{ poll_seconds }}s, timer-end" hx-target="this" hx-swap="outerHTML" hx-include="#search" data-poll>
+  {% if game.live_stage == "lineup" or game.live_stage == "collect" %}
+  {% include "live/_pre_game.html" %}
+  {% else %}
   <header class="live-bar">
     <a class="live-bar-link" href="{% url 'live:index' %}">← Игры</a>
     <span class="live-status"><span class="live-dot" aria-hidden="true"></span>Идёт игра</span>
@@ -55,7 +58,7 @@
       {% for result in playing %}
         <li class="live-row">
           <span class="min-w-0">
-            <span class="live-name">{{ result.player.name }}</span>{% if result.player.nickname %} <span class="text-muted">{{ result.player.nickname }}</span>{% endif %}
+            {% include "live/_row_name.html" %}
             {% include "club/includes/rebuy_note.html" %}
           </span>
           <span class="live-sum">{{ result.buyin|money }}</span>
@@ -64,7 +67,11 @@
               {% include "live/_button.html" with action="rebuy" prefix="+" text=season.rebuy_price css="btn btn-num" label="Ребай: "|add:result.player.label %}
             {% endif %}
             {% if game.live_stage == "rebuys" or game.live_stage == "final" %}
-              {% include "live/_button.html" with action="eliminate" text="Выбыл" css="btn btn-accent" label="Выбыл: "|add:result.player.label %}
+              {% if confirm_bust %}
+                <button type="button" class="btn btn-accent" hx-get="{% url 'live:bust' game.pk result.pk %}" hx-target="#sheet" hx-swap="innerHTML" aria-haspopup="dialog" aria-label="Выбыл: {{ result.player.label }}">Выбыл</button>
+              {% else %}
+                {% include "live/_button.html" with action="eliminate" text="Выбыл" css="btn btn-accent" label="Выбыл: "|add:result.player.label expect_place=bust_place %}
+              {% endif %}
             {% elif game.live_stage == "addon" %}
               {% if result.addon %}
                 {% include "live/_button.html" with action="addon-off" text="✓ Аддон" css="btn btn-on" pressed="true" label="Аддон: "|add:result.player.label %}
@@ -88,7 +95,7 @@
         <li class="live-row live-row-out">
           <span class="min-w-0">
             {% if not cash %}<span class="live-place" title="место">{{ result.live_place }}</span>{% endif %}
-            <span class="live-name">{{ result.player.name }}</span>{% if result.player.nickname %} <span class="text-muted">{{ result.player.nickname }}</span>{% endif %}
+            {% include "live/_row_name.html" %}
             {% if cash %}
               <span class="block text-sm text-muted">фишек <span class="font-num num-run">{{ result.chips_out|money }}</span> · выдано <span class="font-num num-run">{{ result.payout|money }}</span></span>
             {% else %}
@@ -129,6 +136,7 @@
       <a class="btn btn-primary" href="{% url 'live:close' game.pk %}">Закрыть вечер</a>
     {% endif %}
   </nav>
+  {% endif %}
 </section>
 {% if oob %}
   {% include "live/_toast.html" with undo_target="board" %}
