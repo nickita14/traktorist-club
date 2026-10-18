@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from club.models import Game, Result, SeasonKind
 from club.tests.factories import make_player
-from live import actions
+from live import actions, views
 from live.tests.conftest import key, lineup_game, live_game, seat
 from live.views import bust_lines
 
@@ -89,15 +89,15 @@ class TestLineupScreen:
         game, _ = lineup
         make_player("Дельта")
         page = board(org, game)
-        assert 'aria-label="За стол: Дельта"' in page
-        assert 'aria-label="За стол: Альфа"' not in page  # already seated
+        assert 'aria-label="Посадить Дельта"' in page
+        assert 'aria-label="Посадить Альфа"' not in page  # already seated
 
     def test_search_filters_and_seating_keeps_it(self, org, lineup):
         game, _ = lineup
         make_player("Дельта")
         echo = make_player("Эхо")
         page = board(org, game, q="дел")
-        assert 'aria-label="За стол: Дельта"' in page and "Эхо" not in page
+        assert 'aria-label="Посадить Дельта"' in page and "Эхо" not in page
 
         response = org.post(
             reverse("live:seat", args=[game.pk]),
@@ -106,8 +106,81 @@ class TestLineupScreen:
         )
 
         assert game.results.filter(player=echo).exists()
-        assert 'aria-label="За стол: Дельта"' in response.text
-        assert 'aria-label="За стол: Эхо"' not in response.text
+        assert 'aria-label="Посадить Дельта"' in response.text
+        assert 'aria-label="Посадить Эхо"' not in response.text
+
+    def test_list_rows_show_name_and_nickname(self, org, lineup):
+        game, _ = lineup
+        make_player("Дмитрий", nickname="Трактор")
+        make_player("Ион")
+        page = board(org, game)
+        assert (
+            '<span class="live-name">Дмитрий</span> <span class="live-nick">Трактор</span>' in page
+        )
+        assert 'aria-label="Посадить Дмитрий (Трактор)"' in page
+        # No nickname, no empty muted span.
+        assert re.search(r'<span class="live-name">Ион</span></span>', page)
+        # The new player is a button of its own, under the list.
+        assert page.index("Посадить Ион") < page.index("+ Новый игрок")
+        assert "Никого не нашли" not in page
+
+    @pytest.mark.parametrize(
+        ("query", "found", "missed"),
+        [
+            ("ио", "Ion Ceban", "Ivan Rusu"),  # Cyrillic query, Latin name
+            ("ivan", "Иван Петров", "Ion Ceban"),  # Latin query, Cyrillic name
+            ("stefan", "Ștefan Ţurcanu", "Ion Ceban"),  # diacritics ignored
+            ("цуркану", "Ștefan Ţurcanu", "Ion Ceban"),
+            ("чобан", "Vasile Ciobanu", "Ion Ceban"),  # the Romanian reading
+            ("трак", "Дмитрий", "Ion Ceban"),  # the nickname
+        ],
+    )
+    def test_search_in_any_alphabet(self, org, lineup, query, found, missed):
+        game, _ = lineup
+        for name in ("Ion Ceban", "Ivan Rusu", "Иван Петров", "Ștefan Ţurcanu", "Vasile Ciobanu"):
+            make_player(name)
+        make_player("Дмитрий", nickname="Трактор")
+        page = board(org, game, q=query)
+        assert f'<span class="live-name">{found}</span>' in page
+        assert f'<span class="live-name">{missed}</span>' not in page
+
+    def test_search_skips_seated_players(self, org, lineup):
+        game, _ = lineup
+        make_player("Alfa")
+        page = board(org, game, q="альф")
+        assert 'aria-label="Посадить Alfa"' in page
+        assert 'aria-label="Посадить Альфа"' not in page  # already at the table
+
+    def test_nothing_found(self, org, lineup):
+        game, _ = lineup
+        page = board(org, game, q="Зорро")
+        assert '<p class="mt-3 text-muted italic">Никого не нашли.</p>' in page
+        assert "Посадить " not in page
+        # "+ Новый игрок" takes the search along and starts the name with it.
+        new = re.search(r"<button[^>]*>\+ Новый игрок</button>", page).group()
+        assert 'hx-include="#search"' in new
+        assert reverse("live:seat_new", args=[game.pk]) in new
+        sheet = org.get(reverse("live:seat_new", args=[game.pk]), {"q": " Зорро "}).text
+        assert 'name="name" maxlength="100" value="Зорро"' in sheet
+
+    def test_new_player_sheet_without_search(self, org, lineup):
+        game, _ = lineup
+        sheet = org.get(reverse("live:seat_new", args=[game.pk])).text
+        assert 'name="name" maxlength="100" value=""' in sheet
+
+    def test_search_input(self, org, lineup):
+        game, _ = lineup
+        field = re.search(r'<input id="search"[^>]*>', board(org, game, q="ио")).group()
+        for attribute in (
+            'placeholder="имя или ник"',
+            'value="ио"',
+            'autocomplete="off"',
+            'autocapitalize="off"',
+            'spellcheck="false"',
+            'enterkeyhint="search"',
+            'hx-preserve="true"',
+        ):
+            assert attribute in field
 
     def test_start_is_disabled_with_one_player(self, org):
         game = lineup_game(SeasonKind.CASH)
@@ -141,6 +214,23 @@ class TestLineupScreen:
 
         check(3)
         check(12)
+
+    @pytest.mark.parametrize("query", ["", "ио", "Зорро"])
+    def test_query_count_with_a_search(self, org, lineup, django_assert_num_queries, query):
+        game, _ = lineup
+        for name in ("Ion Ceban", "Ivan Rusu", "Иван Петров", "Ștefan Ţurcanu"):
+            make_player(name)
+        # The same 8 as above: the search runs in Python over the one candidates query.
+        with django_assert_num_queries(8):
+            assert org.get(reverse("live:board", args=[game.pk]), {"q": query}).status_code == 200
+
+    def test_search_keeps_the_limits(self, org, lineup):
+        game, _ = lineup
+        for i in range(40):
+            make_player(f"Ion {i:02}")
+        assert board(org, game).count('aria-label="Посадить ') == views.QUICK_ADD
+        page = board(org, game, q="ио")
+        assert page.count('aria-label="Посадить ') == views.SEAT_CANDIDATES
 
 
 class TestCollectScreen:
@@ -483,7 +573,7 @@ class TestStaleLineupControls:
     def test_lineup_forms_post_their_stage(self, org, lineup):
         game, _ = lineup
         page = board(org, game)
-        # Every quick-add seat and every "убрать" carries it.
+        # Every "+" seat and every "убрать" carries it.
         seat_forms = page.count(reverse("live:seat", args=[game.pk]))
         unseat_forms = page.count('aria-label="Убрать: ')
         assert page.count('name="stage" value="lineup"') == seat_forms + unseat_forms

@@ -8,7 +8,8 @@
   <h1 class="live-title">Кто играет</h1>
   <label class="field mt-4">
     <span class="field-label">Поиск по имени или нику</span>
-    <input id="search" class="live-input live-input-text" type="search" name="q" value="{{ query }}" autocomplete="off"
+    <input id="search" class="live-input live-input-text" type="search" name="q" value="{{ query }}" placeholder="имя или ник"
+           autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
            hx-get="{% url 'live:seating' game.pk %}" hx-trigger="input delay:250ms, search" hx-target="#player-list" hx-swap="outerHTML">
   </label>
   {% include "live/_seating_list.html" %}
