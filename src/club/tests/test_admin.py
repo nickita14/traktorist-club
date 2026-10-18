@@ -319,6 +319,26 @@ class TestSheetManaged:
         assert "ведётся в таблице" in response.text.lower()
 
 
+class TestSeasonYear:
+    def test_year_of_a_season_with_games_cannot_change(self, admin_client):
+        season = make_season(2025, SeasonKind.CASH)
+        make_game(season)
+        url = reverse("admin:club_season_change", args=[season.pk])
+        form = admin_client.get(url).context["adminform"].form
+        data = {
+            name: value
+            for name, value in form.initial.items()
+            if value is not None and name in form.fields
+        }
+
+        response = admin_client.post(url, data | {"year": 2026})
+
+        assert response.status_code == 200
+        assert "В сезоне есть игры другого года" in response.text
+        season.refresh_from_db()
+        assert season.year == 2025
+
+
 def inline_form_fields(response):
     formset = response.context["inline_admin_formsets"][0].formset
     return set(formset.empty_form.fields)

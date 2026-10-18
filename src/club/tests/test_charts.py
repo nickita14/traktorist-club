@@ -1,11 +1,29 @@
 import datetime
+import logging
 
-from club.charts import BOTTOM, HEIGHT, TOP, X_PAD, net_chart
+import pytest
+
+from club.charts import (
+    BOTTOM,
+    HEIGHT,
+    MONTH_LABEL_Y,
+    TOP,
+    X_PAD,
+    YEAR_BOTTOM,
+    YEAR_TOP,
+    net_chart,
+    year_chart,
+)
 from club.stats import TimelinePoint
 
 
 def timeline(*points):
     return [TimelinePoint(datetime.date(*date), net) for date, net in points]
+
+
+def axis_x(offset: float, days: int) -> float:
+    """Where a date ``offset`` days after 1 January sits on an axis of ``days`` days."""
+    return X_PAD + offset * (100 - 2 * X_PAD) / days
 
 
 def parse(points: str) -> list[tuple[float, float]]:
@@ -65,3 +83,106 @@ class TestNetChart:
         # Each new year's line sits between its first game and the game before it.
         assert xs[1] < chart.years[1].x < xs[2]
         assert xs[3] < chart.years[2].x < xs[4]
+
+
+class TestYearChart:
+    def test_no_games_no_chart(self):
+        assert year_chart([], 2025) is None
+
+    def test_starts_at_zero_on_the_first_of_january(self):
+        chart = year_chart(timeline(((2025, 3, 10), 100)), 2025)
+
+        assert parse(chart.points)[0] == (X_PAD, chart.zero_y)
+        assert chart.zero_y == YEAR_BOTTOM
+        assert (chart.height, chart.label_y, chart.years) == (HEIGHT, MONTH_LABEL_Y, [])
+
+    def test_a_single_game_is_one_step(self):
+        chart = year_chart(timeline(((2025, 3, 10), 100)), 2025)
+
+        (x0, y0), (x1, y1), (x2, y2) = parse(chart.points)
+        # Along the zero line to the game's date, then straight up to the total.
+        assert y1 == y0 == YEAR_BOTTOM
+        assert x1 == x2 == chart.last_x
+        assert y2 == chart.last_y == YEAR_TOP
+        assert x0 < x1 < 100 - X_PAD
+
+    def test_steps_follow_the_calendar(self):
+        chart = year_chart(
+            timeline(((2025, 1, 1), 10), ((2025, 1, 3), 20), ((2025, 1, 25), 30)), 2025
+        )
+
+        xs = [x for x, _ in parse(chart.points)]
+        # The last game is in January, so the axis runs from 1 January to 1 February: 31 days.
+        # Gaps of 2 and 22 days: spacing by game index would put the steps evenly apart.
+        expected = [axis_x(offset, 31) for offset in (0, 2, 24)]
+        assert xs[0] == pytest.approx(X_PAD)
+        for step, x in enumerate(expected):
+            # Each game draws two points at its date: along the old total, then to the new one.
+            assert xs[1 + 2 * step] == pytest.approx(x, abs=0.01)
+            assert xs[2 + 2 * step] == pytest.approx(x, abs=0.01)
+        assert chart.last_x == pytest.approx(expected[-1], abs=0.01)
+
+    def test_games_on_one_date_share_their_x(self):
+        chart = year_chart(timeline(((2025, 3, 1), 50), ((2025, 3, 1), 20)), 2025)
+
+        coordinates = parse(chart.points)
+        assert len({x for x, _ in coordinates[1:]}) == 1
+        assert [y for _, y in coordinates[3:]] == [coordinates[2][1], chart.last_y]
+
+    def test_losses_go_below_the_zero_line(self):
+        chart = year_chart(timeline(((2025, 2, 1), 100), ((2025, 2, 8), -300)), 2025)
+
+        assert chart.zero_y == YEAR_TOP + (YEAR_BOTTOM - YEAR_TOP) / 4
+        assert chart.last_y == YEAR_BOTTOM
+
+    def test_months_up_to_the_last_game(self):
+        chart = year_chart(timeline(((2025, 2, 3), 10), ((2025, 4, 30), 20)), 2025)
+
+        assert [(m.label, m.line) for m in chart.months] == [
+            ("ЯНВ", False),
+            ("ФЕВ", True),
+            ("МАР", True),
+            ("АПР", True),
+        ]
+        assert chart.months[0].start == X_PAD
+        assert chart.last_x < 100 - X_PAD
+        # The axis ends with the last game's month (1 January to 1 May 2025: 120 days); each
+        # label sits in the middle of its month, so 28-day February has a narrower band.
+        days = (datetime.date(2025, 5, 1) - datetime.date(2025, 1, 1)).days
+        for number, month in enumerate(chart.months, start=1):
+            begin = (datetime.date(2025, number, 1) - datetime.date(2025, 1, 1)).days
+            end = (datetime.date(2025, number + 1, 1) - datetime.date(2025, 1, 1)).days
+            assert month.start == pytest.approx(axis_x(begin, days), abs=0.1), month.label
+            assert month.x == pytest.approx(axis_x((begin + end) / 2, days), abs=0.1), month.label
+        january, february = chart.months[:2]
+        assert january.x == pytest.approx(axis_x(15.5, days), abs=0.1)
+        assert february.x == pytest.approx(axis_x(45, days), abs=0.1)
+
+    def test_a_december_game_ends_the_axis_with_december(self):
+        chart = year_chart(timeline(((2025, 12, 31), 10)), 2025)
+
+        assert len(chart.months) == 12
+        assert chart.months[-1].label == "ДЕК"
+        assert chart.last_x < 100 - X_PAD
+
+    def test_flat_line_runs_through_the_middle(self):
+        chart = year_chart(timeline(((2025, 5, 1), 0)), 2025)
+
+        assert chart.zero_y == chart.last_y == (YEAR_TOP + YEAR_BOTTOM) / 2
+
+    def test_points_outside_the_year_are_dropped_and_logged_once(self, caplog):
+        points = timeline(((2024, 12, 31), 99), ((2025, 3, 1), 10), ((2026, 1, 1), 99))
+
+        with caplog.at_level(logging.WARNING, logger="club.charts"):
+            chart = year_chart(points, 2025)
+
+        assert len(parse(chart.points)) == 3  # the start and one step
+        assert [m.label for m in chart.months] == ["ЯНВ", "ФЕВ", "МАР"]
+        assert [r.getMessage() for r in caplog.records] == [
+            "year_chart: 2 point(s) outside 2025 dropped"
+        ]
+
+    def test_only_points_outside_the_year_give_no_chart(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="club.charts"):
+            assert year_chart(timeline(((2024, 6, 1), 10)), 2025) is None
+        assert len(caplog.records) == 1

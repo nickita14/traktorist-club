@@ -350,8 +350,10 @@
     text-decoration: underline;
   }
 
-  /* Word labels instead of years (the all-time kind filter). */
-  .segmented-words a {
+  /* Word labels instead of years (the all-time kind filter), or one word cell after the years
+     ("Все годы" on the player pages). */
+  .segmented-words a,
+  .segmented .segmented-word a {
     font-family: var(--font-stack-head);
     letter-spacing: var(--tracking-caps);
     text-transform: uppercase;
@@ -593,6 +595,12 @@
     fill: var(--muted);
     font-family: var(--font-stack-num);
     font-size: var(--text-xs);
+  }
+
+  /* Month labels under the chart of one year are words, not numbers. */
+  .net-chart .chart-month {
+    font-family: var(--font-stack-head);
+    letter-spacing: var(--tracking-label);
   }
 
   /* Section heading with an optional note or control on the right, closed by the same double
