@@ -1,5 +1,6 @@
 """Public pages in a real browser: the section nav on phones, sortable headers (links, the drawn
-arrow, touch targets, the mobile sort row), the year switcher and chart."""
+arrow, the mobile sort row), touch targets of every control, player links, the year switcher
+and chart."""
 
 import re
 
@@ -105,34 +106,82 @@ def test_phone_nav_on_one_line(open_page, season, width):
 HEADER_ROWS = "[...document.querySelectorAll('.ledger thead tr')].map(row => row.offsetHeight)"
 
 
-@pytest.mark.parametrize(
-    ("name", "args", "width"),
-    [
-        ("player_list", [], 360),
-        ("player_list", [], 390),
-        ("season", [2025, "tour"], 360),
-        ("season", [2025, "tour"], 390),
-        ("season", [2025, "tour"], 1280),  # the "1", "2", "3" columns
-    ],
+# Controls these pages still have under 44px, left out on purpose: none is a player link or a
+# sortable header, and each needs its own treatment.
+TARGET_EXCEPTIONS = (
+    # Season pages: the sidebar's game dates and numbers, in compact rows.
+    ".ledger-compact a:not(.player-link)",
+    # Game sheets: the season link in the meta line, a link in running text.
+    ".doc-head > p > a",
 )
-def test_sort_link_targets(open_page, season, name, args, width):
-    page = open_page(reverse(name, args=args), width)
 
-    assert page.locator(".sort-link:visible").count() >= 3
-    assert_touch_targets(page, ".sort-link")
-    # The links fill their cells: the header row keeps its height.
+# Every row's height and every cell's width in the page's tables, in px.
+TABLE_LAYOUT = """() => [...document.querySelectorAll('.ledger tr')].map(row => [
+  row.getBoundingClientRect().height,
+  ...[...row.cells].map(cell => cell.getBoundingClientRect().width),
+])"""
+# Takes the player links' padding and margin away (CSSOM, which the CSP allows).
+PLAIN_PLAYER_LINKS = """() => document.querySelectorAll('.player-link').forEach(link => {
+  link.style.padding = '0';
+  link.style.margin = '0';
+})"""
+
+
+def public_pages(club):
+    year = club["seasons"]["tour"].year
+    return {
+        "tour": reverse("season", args=[year, "tour"]),
+        "cash": reverse("season", args=[year, "cash"]),
+        "all_time": reverse("all_time"),
+        "players": reverse("player_list"),
+        "tour_sheet": reverse("game_detail", args=[club["games"]["t2"].pk]),
+        "cash_sheet": reverse("game_detail", args=[club["games"]["c1"].pk]),
+        "honors": reverse("honors"),
+    }
+
+
+@pytest.mark.parametrize("width", [360, 390, 1280])
+@pytest.mark.parametrize(
+    "name", ["tour", "cash", "all_time", "players", "tour_sheet", "cash_sheet", "honors"]
+)
+def test_touch_targets(open_page, club, award_rules, name, width):
+    page = open_page(public_pages(club)[name], width)
+
+    assert page.locator(".ledger .player-link:visible").count() >= 2
+    assert_touch_targets(page, exceptions=TARGET_EXCEPTIONS)
+    # Sort links fill their cells: the header row keeps its height.
     assert all(height <= 48 for height in page.evaluate(HEADER_ROWS))
+    # Player links change no row height or column width.
+    layout = page.evaluate(TABLE_LAYOUT)
+    page.evaluate(PLAIN_PLAYER_LINKS)
+    assert page.evaluate(TABLE_LAYOUT) == layout
     assert page.evaluate("document.documentElement.scrollWidth") <= width
     assert page.evaluate("window.cspViolations") == []
 
 
-def test_honors_sort_link_targets(open_page, club, award_rules):
-    page = open_page(reverse("honors"), 390)
+def test_player_link_hit_area(open_page, club):
+    # Альфа leads: a nickname after the name and, on a phone, a line of figures under it.
+    page = open_page(reverse("all_time"), 390)
 
-    assert page.locator(".ledger .sort-link-lines").count() >= 3
-    assert_touch_targets(page, ".sort-link")
-    assert page.evaluate("document.documentElement.scrollWidth") <= 390
-    assert page.evaluate("window.cspViolations") == []
+    link = page.locator(".ledger .player-link").first
+    expect(link).to_have_text("Альфа")
+    box = link.bounding_box()
+    middle = box["y"] + box["height"] / 2
+    # The padding is the link's, also where it lies over the nickname and the figures.
+    for x, y in [
+        (box["x"] + box["width"] / 2, box["y"] + 1),
+        (box["x"] + box["width"] / 2, box["y"] + box["height"] - 1),  # over the figures
+        (box["x"] + 1, middle),
+        (box["x"] + box["width"] - 1, middle),  # over the nickname
+    ]:
+        assert page.evaluate("([x, y]) => document.elementFromPoint(x, y).textContent", [x, y]) == (
+            "Альфа"
+        )
+    # Hover still underlines the name.
+    link.hover()
+    assert link.evaluate("el => getComputedStyle(el).textDecorationLine") == "underline"
+    link.click()
+    expect(page).to_have_url(re.compile(r"/players/[\w-]+/$"))
 
 
 def test_header_link_hover_underline(open_page, season):

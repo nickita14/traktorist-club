@@ -20,9 +20,10 @@ MIN_TARGET = 44
 
 CONTROLS = "button, a, input, select"
 
-# Size of every visible element matching a selector (CONTROLS by default), with its label.
-TARGET_SIZES = """selector => [...document.querySelectorAll(selector)]
-  .filter(el => el.offsetParent !== null)
+# Size of every visible element matching a selector (CONTROLS by default) and none of the
+# exceptions (a selector list, or ""), with its label.
+TARGET_SIZES = """([selector, exceptions]) => [...document.querySelectorAll(selector)]
+  .filter(el => el.offsetParent !== null && !(exceptions && el.matches(exceptions)))
   .map(el => {
     const box = el.getBoundingClientRect();
     return {label: el.getAttribute('aria-label') || el.textContent.trim() || el.name,
@@ -63,10 +64,12 @@ def assert_clean(page):
     assert page.evaluate("document.querySelectorAll('style').length") == 0
 
 
-def assert_touch_targets(page, selector=CONTROLS):
+def assert_touch_targets(page, selector=CONTROLS, exceptions=()):
+    """Every control at least MIN_TARGET square, but those matching one of ``exceptions``
+    (selectors; the caller says why each one is left out)."""
     small = [
         target
-        for target in page.evaluate(TARGET_SIZES, selector)
+        for target in page.evaluate(TARGET_SIZES, [selector, ", ".join(exceptions)])
         if target["width"] < MIN_TARGET or target["height"] < MIN_TARGET
     ]
     assert small == []

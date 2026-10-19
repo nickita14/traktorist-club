@@ -151,7 +151,7 @@
             {% for award in reached %}
               <tr>
                 <td><span class="award-kind">{{ award.kind_label }}</span></td>
-                <td><a href="{{ award.player.get_absolute_url }}">{{ award.player.label }}</a> · {{ award.title|figures }}</td>
+                <td><a class="player-link" href="{{ award.player.get_absolute_url }}">{{ award.player.label }}</a> · {{ award.title|figures }}</td>
                 <td class="text-right text-sm text-muted">{{ award.basis|figures }}</td>
               </tr>
             {% endfor %}

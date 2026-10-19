@@ -21,7 +21,7 @@
         <td class="font-num"><a href="{{ game.get_absolute_url }}"><time datetime="{{ game.date|date:'Y-m-d' }}">{% if compact %}{{ game.date|date:"d.m" }}{% else %}{{ game.date|date:"d.m.Y" }}{% endif %}</time></a></td>
         <td class="num"><a href="{{ game.get_absolute_url }}">{{ game.number }}</a></td>
         {% if season.kind == "tour" %}
-          <td>{% for result in game.winners %}<a href="{{ result.player.get_absolute_url }}">{{ result.player.label }}</a>{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">не указан</span>{% endfor %}</td>
+          <td>{% for result in game.winners %}<a class="player-link" href="{{ result.player.get_absolute_url }}">{{ result.player.label }}</a>{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">не указан</span>{% endfor %}</td>
         {% endif %}
         <td class="num">{{ game.players_count }}</td>
         <td class="num">{{ game.buyin_total|money }}</td>

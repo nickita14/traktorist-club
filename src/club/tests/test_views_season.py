@@ -160,7 +160,8 @@ class TestTourStandings:
         html = get_page(client, season.year).content.decode()
 
         assert (
-            '<a href="/players/traktor/">Альфа</a> <span class="text-muted">Трактор</span>' in html
+            '<a class="player-link" href="/players/traktor/">Альфа</a>'
+            ' <span class="text-muted">Трактор</span>' in html
         )
 
     def test_sidebar_links_to_games_and_full_list(self, client, season):
