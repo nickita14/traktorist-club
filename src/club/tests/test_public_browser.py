@@ -1,4 +1,5 @@
-"""Sortable standings in a real browser: header links, the drawn arrow, the mobile sort row."""
+"""Public pages in a real browser: the section nav on phones, sortable headers (links, the drawn
+arrow, touch targets, the mobile sort row), the year switcher and chart."""
 
 import re
 
@@ -7,7 +8,8 @@ from django.urls import reverse
 
 from club.models import SeasonKind
 from club.tests.factories import make_game, make_player, make_result, make_season
-from conftest import COLLECT_CSP_VIOLATIONS
+from conftest import COLLECT_CSP_VIOLATIONS, RECORD_SETTLED, settle_navigation
+from live.tests.test_browser import assert_touch_targets
 
 sync_api = pytest.importorskip("playwright.sync_api")
 expect = sync_api.expect
@@ -32,6 +34,7 @@ def open_page(browser, live_server):
         context = browser.new_context(viewport={"width": width, "height": 900})
         contexts.append(context)
         context.add_init_script(COLLECT_CSP_VIOLATIONS)
+        context.add_init_script(RECORD_SETTLED)
         page = context.new_page()
         page.goto(live_server.url + path)
         page.evaluate("document.fonts.ready")
@@ -62,18 +65,83 @@ def test_desktop_headers(open_page, season):
     assert page.evaluate("window.cspViolations") == []
 
 
-def test_phone_sort_row(open_page, season):
-    page = open_page(reverse("season", args=[2025, "tour"]), 390)
+@pytest.mark.parametrize("width", [360, 390])
+def test_phone_sort_row(open_page, season, width):
+    page = open_page(reverse("season", args=[2025, "tour"]), width)
 
     row = page.locator(".sort-links")
     expect(row).to_be_visible()
-    for index in range(row.locator("a").count()):
-        assert row.locator("a").nth(index).bounding_box()["height"] >= 44
+    assert row.locator("a").count() == 3
+    assert_touch_targets(page, ".sort-links a")
     row.get_by_role("link", name="игры").click()
     expect(page).to_have_url(re.compile(r"\?sort=games$"))
+    # Until its stylesheet applies, the new page's table shows every column (500px wide).
+    settle_navigation(page)
     expect(page.locator(".sort-links a[aria-current]")).to_have_text("игры")
+    assert_touch_targets(page, ".sort-links a")
+    assert page.evaluate("document.documentElement.scrollWidth") <= width
+    assert page.evaluate("window.cspViolations") == []
+
+
+@pytest.mark.parametrize("width", [360, 390])
+def test_phone_nav_on_one_line(open_page, season, width):
+    # A cash game too, so "Кэш" (the shortest label) is a link.
+    cash = make_game(make_season(2025, SeasonKind.CASH), day=8, month=6)
+    make_result(cash, make_player("Чарли"), buyin=50, payout=50)
+    page = open_page(reverse("season", args=[2025, "tour"]), width)
+
+    items = page.locator(".site-nav li > a")
+    assert items.count() == 5
+    tops = {round(items.nth(index).bounding_box()["y"]) for index in range(5)}
+    assert len(tops) == 1
+    assert page.locator(".site-nav").bounding_box()["height"] <= 45
+    expect(page.locator(".site-nav .nav-short")).to_be_visible()
+    assert_touch_targets(page, ".site-nav a")
+    assert page.evaluate("document.documentElement.scrollWidth") <= width
+    assert page.evaluate("window.cspViolations") == []
+
+
+# The header rows (thead) of every sortable table, in px.
+HEADER_ROWS = "[...document.querySelectorAll('.ledger thead tr')].map(row => row.offsetHeight)"
+
+
+@pytest.mark.parametrize(
+    ("name", "args", "width"),
+    [
+        ("player_list", [], 360),
+        ("player_list", [], 390),
+        ("season", [2025, "tour"], 360),
+        ("season", [2025, "tour"], 390),
+        ("season", [2025, "tour"], 1280),  # the "1", "2", "3" columns
+    ],
+)
+def test_sort_link_targets(open_page, season, name, args, width):
+    page = open_page(reverse(name, args=args), width)
+
+    assert page.locator(".sort-link:visible").count() >= 3
+    assert_touch_targets(page, ".sort-link")
+    # The links fill their cells: the header row keeps its height.
+    assert all(height <= 48 for height in page.evaluate(HEADER_ROWS))
+    assert page.evaluate("document.documentElement.scrollWidth") <= width
+    assert page.evaluate("window.cspViolations") == []
+
+
+def test_honors_sort_link_targets(open_page, club, award_rules):
+    page = open_page(reverse("honors"), 390)
+
+    assert page.locator(".ledger .sort-link-lines").count() >= 3
+    assert_touch_targets(page, ".sort-link")
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
     assert page.evaluate("window.cspViolations") == []
+
+
+def test_header_link_hover_underline(open_page, season):
+    page = open_page(reverse("season", args=[2025, "tour"]), 1280)
+
+    link = page.locator(".ledger th .sort-link:not([aria-current])").first
+    assert link.evaluate("el => getComputedStyle(el).textDecorationLine") == "none"
+    link.hover()
+    assert link.evaluate("el => getComputedStyle(el).textDecorationLine") == "underline"
 
 
 def test_favicons_load_without_csp_violations(open_page, season):

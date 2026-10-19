@@ -36,6 +36,7 @@
   --text-3xl: 2.75rem;
   --text-3xl--line-height: 1;
 
+  --tracking-tight: 0.05em;
   --tracking-label: 0.08em;
   --tracking-caps: 0.12em;
 
@@ -64,12 +65,25 @@
 
 @layer components {
   /* Header navigation: uppercase narrow caps, the current section underlined in accent. */
+  .site-nav ul {
+    --nav-gap: calc(var(--spacing) * 3);
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: var(--nav-gap);
+  }
+
+  /* Each item reaches half a gap into its neighbours' gaps, so a short one ("Кэш") is a full
+     touch target without moving the row. */
   .site-nav a,
   .site-nav li > span,
   .site-nav button {
     display: flex;
     align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
     min-height: 2.75rem;
+    margin-inline: calc(var(--nav-gap) / -2);
+    padding-inline: calc(var(--nav-gap) / 2);
     font-family: var(--font-stack-head);
     letter-spacing: var(--tracking-caps);
     text-transform: uppercase;
@@ -83,7 +97,7 @@
 
   /* "Выйти" is a POST form: its button reads as one more nav link. */
   .site-nav button {
-    padding: 0;
+    padding-block: 0;
     border: 0;
     background: none;
     color: inherit;
@@ -172,8 +186,14 @@
     display: none;
   }
 
+  @media (width >= 48rem) {
+    .site-nav ul {
+      --nav-gap: calc(var(--spacing) * 6);
+    }
+  }
+
   @media (width < 48rem) {
-    /* Five items on one line at 390px: a narrower gap (base.html) and letter spacing. */
+    /* Five items on one line on phones: narrower letter spacing (the gap is 12px here). */
     .site-nav a,
     .site-nav li > span,
     .site-nav button {
@@ -186,6 +206,19 @@
 
     .nav-short {
       display: inline;
+    }
+  }
+
+  /* They need 376px so; below 384px (a 360px phone) a tighter gap and spacing fit them in 318. */
+  @media (width < 24rem) {
+    .site-nav ul {
+      --nav-gap: calc(var(--spacing) * 2);
+    }
+
+    .site-nav a,
+    .site-nav li > span,
+    .site-nav button {
+      letter-spacing: var(--tracking-tight);
     }
   }
 
@@ -420,8 +453,17 @@
     white-space: nowrap;
   }
 
+  /* In a header the link fills its cell, padding included: a full touch target however short
+     its label ("1"), with the text where it was. */
   .ledger th .sort-link {
+    display: flex;
     margin-block: -0.5rem -0.375rem;
+    margin-inline: -0.5rem;
+    padding-inline: 0.5rem;
+  }
+
+  .ledger th.num .sort-link {
+    justify-content: flex-end;
   }
 
   .sort-link:hover {
@@ -480,6 +522,15 @@
     font-size: var(--text-sm);
     letter-spacing: var(--tracking-label);
     text-transform: uppercase;
+  }
+
+  /* A full touch target that reaches into the 12px between links (the later link takes a tap
+     there), so the row itself does not move. */
+  .sort-links .sort-link {
+    justify-content: center;
+    min-width: 2.75rem;
+    margin-inline: calc(var(--spacing) * -3);
+    padding-inline: calc(var(--spacing) * 3);
   }
 
   .ledger tfoot td {
