@@ -1,6 +1,7 @@
 """The organizers' login on the public site (club.auth): the same protection as the admin login."""
 
 import re
+from importlib import import_module
 
 import pytest
 from axes.models import AccessAttempt
@@ -58,11 +59,15 @@ def failures(username="test-organizer") -> int:
 
 
 def error_text(response) -> str:
-    return re.search(r'<p class="field-error" role="alert">(.*?)</p>', response.text).group(1)
+    match = re.search(r'<p class="field-error" role="alert">(.*?)</p>', response.text)
+    assert match is not None
+    return match.group(1)
 
 
 def hidden_next(response) -> str:
-    return re.search(r'name="next" value="([^"]*)"', response.text).group(1)
+    match = re.search(r'name="next" value="([^"]*)"', response.text)
+    assert match is not None
+    return match.group(1)
 
 
 class TestPage:
@@ -331,6 +336,9 @@ class TestSafeNextPaths:
 
     @pytest.fixture(autouse=True)
     def admin_url(self, settings):
+        # urls.py reads ADMIN_URL on import: load it with the real one first, or the first test in
+        # a process to reverse a URL here would leave "kontora/" in the URLconf for later tests.
+        import_module(settings.ROOT_URLCONF)
         settings.ADMIN_URL = "kontora/"
 
     def check(self, url):
