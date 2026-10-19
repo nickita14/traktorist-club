@@ -125,6 +125,8 @@ def test_keeps_counting_offline_and_resyncs(laptop, fast_sync):
     expect(page.locator("[data-offline]")).to_be_hidden(timeout=5000)
     expect(page.locator("[data-paused-stamp]")).to_be_visible()
     frozen = page.locator("[data-clock]").text_content()
+    # Not a wait for something to happen but a window in which nothing may: a running clock
+    # shows a new second within 1 s plus one render (every 250 ms).
     page.wait_for_timeout(1500)
     assert page.locator("[data-clock]").text_content() == frozen
     assert_clean(page)
@@ -302,17 +304,19 @@ def test_new_link_asks_first(phone):  # noqa: F811
     game = timed_game()
     page = phone(reverse("live:blinds", args=[game.pk]))
     old = BlindTimer.objects.get(game=game).display_token
-    messages = []
+    messages, resets = [], []
+    reset_url = reverse("live:act", args=[game.pk, "link-reset"])
+    page.on("request", lambda request: request.url.endswith(reset_url) and resets.append(request))
 
     page.once("dialog", lambda dialog: (messages.append(dialog.message), dialog.dismiss()))
     page.get_by_role("button", name="Новая ссылка").click()
-    page.wait_for_timeout(300)
     assert BlindTimer.objects.get(game=game).display_token == old
     assert "Старая перестанет работать на всех открытых табло" in messages[0]
 
     page.once("dialog", lambda dialog: dialog.accept())
     page.get_by_role("button", name="Новая ссылка").click()
     expect(page.locator(".toast")).to_contain_text("Табло: новая ссылка")
+    assert len(resets) == 1  # the dismissed click sent nothing
     new = BlindTimer.objects.get(game=game).display_token
     assert new != old
     assert page.locator("[data-share]").get_attribute("data-share").endswith(f"/tablo/{new}/")

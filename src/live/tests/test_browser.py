@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from club.models import Result, SeasonKind
 from club.tests.factories import make_player
-from conftest import COLLECT_CSP_VIOLATIONS
+from conftest import COLLECT_CSP_VIOLATIONS, COUNT_POLLS
 from live import actions
 from live.tests.conftest import key, lineup_game, live_game, seat
 
@@ -43,6 +43,7 @@ def phone(browser, live_server, admin_user, client):
         contexts.append(context)
         context.add_cookies([{"name": "sessionid", "value": session, "url": live_server.url}])
         context.add_init_script(COLLECT_CSP_VIOLATIONS)
+        context.add_init_script(COUNT_POLLS)
         page = context.new_page()
         page.goto(live_server.url + path)
         page.evaluate("document.fonts.ready")
@@ -157,7 +158,9 @@ def test_polling_shows_other_phones_but_not_while_typing(phone, settings):
     expect(page.locator("#exit-chips")).to_be_focused()
     page.locator("#exit-chips").fill("123")
     actions.top_up(game.pk, key(), None, alpha.pk)
-    page.wait_for_timeout(2500)
+    # A poll comes due while the organizer types (live.js holds it back).
+    polls = page.evaluate("window.polls")
+    page.wait_for_function("polls => window.polls > polls", arg=polls)
 
     expect(page.locator("#exit-chips")).to_have_value("123")
     expect(page.locator("#exit-chips")).to_be_focused()
@@ -183,8 +186,9 @@ def test_lost_connection_shows_an_error_and_retries_once(phone):
     expect(page.locator(".toast")).to_contain_text("Ребай: Альфа +50")
     expect(page.locator("#conn-error")).to_be_hidden()
     assert buyin(alpha) == 100
-    page.locator("[data-retry]").evaluate("el => el.click()")  # a stray retry
-    page.wait_for_timeout(500)
+    # A stray retry has nothing to send again: it reloads the page (live.js retry()).
+    with page.expect_event("load"):
+        page.locator("[data-retry]").evaluate("el => el.click()")
     assert buyin(alpha) == 100
     assert_clean(page)
 
