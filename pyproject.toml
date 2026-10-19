@@ -26,6 +26,7 @@ dev = [
     "pre-commit>=4.0.0",
     "playwright>=1.63.0",
     "coverage>=7.16.2",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.uv]
@@ -35,16 +36,21 @@ package = false
 DJANGO_SETTINGS_MODULE = "traktorist_club.settings"
 pythonpath = ["src"]
 python_files = ["tests.py", "test_*.py"]
-addopts = "-ra --strict-markers"
+# Parallel by default (pytest-xdist, one worker per CPU); `-n 0` runs serially (debugging, pdb, a
+# single file). `--dist load` is required: see the order guard in conftest.py.
+addopts = "-ra --strict-markers -n auto --dist load"
 markers = [
     # Set by conftest.py on every test that uses the `browser` fixture.
     "browser: renders pages in headless Chromium (Playwright); skipped when it is not installed",
 ]
 
-# The unit job's report for Sonar: `coverage run -m pytest -m "not browser"`, then `coverage xml`.
+# The unit job's report for Sonar: `coverage run -m pytest -m "not browser"`, then
+# `coverage combine` (one data file per xdist worker) and `coverage xml`.
 [tool.coverage.run]
 source = ["src"]
 branch = true
+# Measure the xdist workers too (they are subprocesses); implies parallel data files.
+patch = ["subprocess"]
 # Repository-relative paths in coverage.xml: Sonar reads it in another job's checkout.
 relative_files = true
 omit = ["*/tests/*", "*/migrations/*"]

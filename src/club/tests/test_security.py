@@ -127,9 +127,11 @@ def production_setting(name: str, **extra_env) -> str:
     """A setting's value as the production configuration computes it (fresh interpreter)."""
     env = {k: v for k, v in os.environ.items() if k != "ADMIN_REQUIRE_2FA"}
     env |= PRODUCTION_ENV | extra_env | {"DJANGO_SETTINGS_MODULE": "traktorist_club.settings"}
+    # From the repository root, as every other process runs (coverage records paths from there).
+    env["PYTHONPATH"] = str(settings.SRC_DIR)
     result = subprocess.run(
         [sys.executable, "-c", f"from django.conf import settings; print(settings.{name})"],
-        cwd=settings.SRC_DIR,
+        cwd=settings.BASE_DIR,
         env=env,
         capture_output=True,
         text=True,

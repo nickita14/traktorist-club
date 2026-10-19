@@ -5,7 +5,7 @@ from django.contrib.auth.models import Group
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
-from club.models import AchievementSettings, RankLadder
+from club.models import AchievementSettings, RankLadder, RankStep
 
 pytestmark = pytest.mark.django_db
 
@@ -50,7 +50,10 @@ def test_organizer_group_has_exact_permissions():
 
 def test_seeded_achievement_rules():
     ladders = {
-        ladder.code: (ladder.title, list(ladder.steps.values_list("threshold", "title")))
+        ladder.code: (
+            ladder.title,
+            list(RankStep.objects.filter(ladder=ladder).values_list("threshold", "title")),
+        )
         for ladder in RankLadder.objects.all()
     }
     assert ladders["veteran"] == (
@@ -85,8 +88,9 @@ def test_seeded_achievement_rules():
 
 # Rolling a migration back needs real transactions, so the database is flushed afterwards and the
 # seeded rows (the Organizer group, the rules) are gone. pytest-django runs transactional tests
-# after all the others, so no test that reads the seed comes later; the achievement tests create
-# their own rules. (serialized_rollback would clash with the content types that post_migrate
+# after all the others, so no test that reads the seed comes later (in each xdist worker too, with
+# --dist load; conftest.py fails a test that would); the achievement tests create their own
+# rules. (serialized_rollback would clash with the content types that post_migrate
 # recreates after another transactional test's flush.)
 @pytest.mark.django_db(transaction=True)
 def test_achievement_rules_migration_forward_and_backward():
