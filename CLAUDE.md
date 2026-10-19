@@ -193,12 +193,15 @@ Rules:
 - Merging to `main` deploys to production automatically (`deploy` job in `.github/workflows/ci.yml`), so a branch is ready only when the full checklist passes:
   1. `uv run ruff check . && uv run ruff format --check .`
   2. `uv run pre-commit run --all-files`
-  3. `uv run pytest` with Chromium installed, `tailwind build` done and messages compiled (no browser or translation test skipped; CI sets `REQUIRE_BROWSER_TESTS` and `REQUIRE_COMPILED_MESSAGES`). CI runs it as two jobs, `-m "not browser"` and `-m browser`; locally the plain run covers both
+  3. `uv run pytest` with Chromium installed, `tailwind build` done and messages compiled (no browser or translation test skipped; CI sets `REQUIRE_BROWSER_TESTS` and `REQUIRE_COMPILED_MESSAGES`). CI runs it as two jobs, `-m "not browser"` and `-m browser`; locally the plain run covers both. It runs in parallel by default (see below)
   4. `manage.py check --deploy --fail-level WARNING` with production settings, as in CI (which runs it inside the built image)
   5. `docker build --pull` of the production image, when the Dockerfile, dependencies, `deploy/` or the static assets changed
   6. new migrations reviewed: they run on the next deploy (a pre-deploy dump is taken first)
 - Never propose rewriting history (fixup, rebase, amend) for commits that are already pushed. Before suggesting a rebase, run `git fetch` and `git status -sb` and check that the target commits are not on origin. If they are, propose ordinary new commits instead.
 - **Never use the em dash character (U+2014) anywhere**: code, comments, docstrings, templates, docs, commit messages, PR descriptions. Use a comma, colon, parentheses, or a hyphen. En dashes are fine.
+- While iterating, run only the affected test files; run the full suite once at the end for the checklist and at each commit boundary.
+- Tests run in parallel (pytest-xdist, `-n auto --dist load` in the `pyproject.toml` addopts, in CI too). `-n 0` runs serially: for debugging (`pdb`, `-s`) and for a file or two, where starting the workers costs about 2 s more than it saves. Tests use the MD5 password hasher and one Chromium per worker (root `conftest.py`).
+- `--dist load` is required. pytest-django runs every rollback test before the transactional ones, whose flush deletes what the data migrations seed (the Organizer group, the achievement rules), and fixtures and tests rely on that seed. The order holds in each worker only because xdist's `LoadScheduling` hands every worker its tests in collection order (verified on pytest-xdist 3.8); `--dist loadfile` / `loadscope`, `--ff` and `--nf` break it. The order guard in the root `conftest.py` (`pytest_runtest_setup`) fails a rollback test that would run after a flush in its process: it is what catches a change in a future xdist release. A guard failure after a pytest-xdist upgrade means pinning the previous version and revisiting the seed/flush problem, never removing the guard.
 
 ## CI
 
@@ -206,7 +209,7 @@ Three workflows. `.github/workflows/ci.yml` runs on pushes to `main` and on pull
 
 Required (status checks in the `main` ruleset, and `deploy` waits for all of them):
 - `lint`: ruff check, ruff format --check, `pre-commit run --all-files`. No database.
-- `unit`: `pytest -m "not browser"` on Postgres 17 with compiled messages (`REQUIRE_COMPILED_MESSAGES`), under `coverage` (config in `pyproject.toml`); uploads `coverage.xml` (artifact `coverage`) for sonar. First it checks that unit + browser collect exactly the whole suite. No Chromium, no Tailwind.
+- `unit`: `pytest -m "not browser"` on Postgres 17 with compiled messages (`REQUIRE_COMPILED_MESSAGES`), under `coverage` (config in `pyproject.toml`; `patch = ["subprocess"]` measures the xdist workers, `coverage combine` merges them before `coverage xml`); uploads `coverage.xml` (artifact `coverage`) for sonar. First it checks that unit + browser collect exactly the whole suite. No Chromium, no Tailwind.
 - `browser`: `pytest -m browser` on Postgres 17 after `tailwind build`, Chromium cached by Playwright version (`REQUIRE_BROWSER_TESTS`). On failure it uploads `test-results/playwright/` (artifact `playwright-failures`): a screenshot per page and a trace per context (`uv run playwright show-trace <zip>`), written by the root `conftest.py` locally too.
 - `security`: gitleaks over the full history (same release as the pre-commit hook; bump both, and the checksum, together), pip-audit over `uv export --locked --all-groups` (hashes, no resolving), zizmor over the workflows and `dependabot.yml`. No database.
 - `image`: `docker build --pull` of the production image, the refusal to start with `ENVIRONMENT=development`, no pip in the base interpreter (`--entrypoint /usr/local/bin/python`: the venv's `python` never sees `/usr/local` packages), and `check --deploy --fail-level WARNING` run inside the image with production settings. One-off commands against the image bypass the entrypoint (`--entrypoint python`); only the dev-mode refusal goes through it, because that is what it tests.
@@ -232,7 +235,9 @@ uv run python manage.py migrate
 uv run python manage.py tailwind runserver   # dev server with Tailwind watcher
 uv run python manage.py tailwind build       # one-off CSS build (assets/css/tailwind.css, gitignored; browser tests fail without it, CI builds it)
 uv run python manage.py compilemessages --ignore=.venv   # Unfold's Russian strings (needs gettext; .mo gitignored)
-uv run pytest
+uv run pytest                            # parallel (-n auto --dist load from addopts)
+uv run pytest -n 0 src/club/tests/test_stats.py   # serially: debugging, one or two files
+uv run pytest --reuse-db                 # local only, never in CI: keeps each worker's test DB (about 1 s per worker); --create-db after editing a migration
 uv run playwright install chromium      # once, for the browser tests (they skip without it)
 uv run playwright install-deps chromium # once on Linux if Chromium lacks system libraries (sudo)
 uv run ruff check . && uv run ruff format --check .

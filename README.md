@@ -55,7 +55,7 @@ Production runs with Docker Compose (`compose.prod.yaml`: Caddy, gunicorn, Postg
 ## Checks
 
 ```bash
-uv run pytest
+uv run pytest            # in parallel; -n 0 runs serially
 uv run ruff check . && uv run ruff format --check .
 uv run pre-commit run --all-files
 ```
