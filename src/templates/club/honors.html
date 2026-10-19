@@ -56,7 +56,7 @@
                     </td>
                     <td>{{ result.title }}</td>
                     <td>
-                      {% for player, metric in row.holders %}<a href="{{ player.get_absolute_url }}">{{ player.label }}</a>{% if not shared %}, {{ metric|figures }}{% endif %}{% if not forloop.last %}{% if shared %}, {% else %}; {% endif %}{% endif %}{% empty %}{% no_value %}{% endfor %}
+                      {% for player, metric in row.holders %}<a class="player-link" href="{{ player.get_absolute_url }}">{{ player.label }}</a>{% if not shared %}, {{ metric|figures }}{% endif %}{% if not forloop.last %}{% if shared %}, {% else %}; {% endif %}{% endif %}{% empty %}{% no_value %}{% endfor %}
                       {% if not row.holders %}
                         <span class="award-note">{% if result.no_data %}нет данных о фишках{% else %}претендентов нет{% endif %}</span>
                       {% elif result.running %}

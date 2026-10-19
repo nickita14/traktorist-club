@@ -21,7 +21,7 @@
       <a class="site-head-name mr-auto flex min-h-11 items-center py-1 font-display uppercase no-underline sm:text-lg md:basis-full md:text-xl xl:basis-auto xl:pr-7"
          href="{% url 'home' %}">Кочующий Клуб Тракториста</a>
       <nav class="site-nav site-nav-row" aria-label="Разделы">
-        <ul class="flex flex-wrap gap-x-3 md:gap-x-6">
+        <ul>
           <li>
             {% if latest_years.tour %}
               <a href="{% url 'season' latest_years.tour 'tour' %}"{% if nav_section == "tour" %} aria-current="true"{% endif %}>Турниры</a>

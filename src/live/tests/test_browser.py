@@ -18,9 +18,12 @@ pytestmark = pytest.mark.django_db(transaction=True)
 PHONE = {"viewport": {"width": 390, "height": 844}, "is_mobile": True, "has_touch": True}
 MIN_TARGET = 44
 
-# Size of every visible control, as "label: width x height".
-TARGET_SIZES = """() => [...document.querySelectorAll('button, a, input, select')]
-  .filter(el => el.offsetParent !== null)
+CONTROLS = "button, a, input, select"
+
+# Size of every visible element matching a selector (CONTROLS by default) and none of the
+# exceptions (a selector list, or ""), with its label.
+TARGET_SIZES = """([selector, exceptions]) => [...document.querySelectorAll(selector)]
+  .filter(el => el.offsetParent !== null && !(exceptions && el.matches(exceptions)))
   .map(el => {
     const box = el.getBoundingClientRect();
     return {label: el.getAttribute('aria-label') || el.textContent.trim() || el.name,
@@ -61,10 +64,12 @@ def assert_clean(page):
     assert page.evaluate("document.querySelectorAll('style').length") == 0
 
 
-def assert_touch_targets(page):
+def assert_touch_targets(page, selector=CONTROLS, exceptions=()):
+    """Every control at least MIN_TARGET square, but those matching one of ``exceptions``
+    (selectors; the caller says why each one is left out)."""
     small = [
         target
-        for target in page.evaluate(TARGET_SIZES)
+        for target in page.evaluate(TARGET_SIZES, [selector, ", ".join(exceptions)])
         if target["width"] < MIN_TARGET or target["height"] < MIN_TARGET
     ]
     assert small == []

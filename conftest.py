@@ -18,6 +18,30 @@ document.addEventListener('securitypolicyviolation', event => {
 });
 """
 
+# window.pageSettled turns true once the page is revealed and its view transition (if any) has
+# finished. Add it with context.add_init_script() and wait with settle_navigation().
+RECORD_SETTLED = """
+window.pageSettled = false;
+window.addEventListener('pagereveal', event => {
+  const settle = () => { window.pageSettled = true; };
+  if (event.viewTransition) event.viewTransition.finished.then(settle, settle);
+  else settle();
+});
+"""
+
+
+def settle_navigation(page):
+    """After a navigation: wait until the page is styled and its transition has finished.
+
+    Playwright can query the new page's DOM before its stylesheets apply (an unstyled standings
+    table is wider than a phone), and document.getAnimations() does not list a view transition's
+    animations, so this waits for the load event, the fonts and RECORD_SETTLED's flag.
+    """
+    page.wait_for_load_state("load")
+    page.evaluate("document.fonts.ready")
+    page.wait_for_function("() => window.pageSettled === true")  # a function: CSP forbids eval
+
+
 # Traces and screenshots of failed browser tests, one folder per test (CI uploads it).
 BROWSER_ARTIFACTS = Path(__file__).resolve().parent / "test-results" / "playwright"
 FAILED = pytest.StashKey[bool]()
