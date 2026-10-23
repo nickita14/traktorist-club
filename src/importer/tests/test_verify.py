@@ -67,7 +67,7 @@ class TestLeftoverRule:
     def test_unbalanced_tour_game_listed_cash_leftover_not(self, workbook_path):
         reports = run_verify(workbook_path)
 
-        assert reports["ТУР2025"].leftover_games == [
+        assert [str(game) for game in reports["ТУР2025"].leftover_games] == [
             "11.05.2025: Остаток не сходится: в турнире закупки (150) и выплаты (140) "
             "должны совпадать, разница 10."
         ]
