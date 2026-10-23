@@ -1,14 +1,21 @@
+import datetime
+
 from django.core.management.base import BaseCommand, CommandError
 
 from club.models import SeasonKind
 from importer.aliases import AliasError, load_aliases
 from importer.report import DELETED, LIVE_IN_PROGRESS, LIVE_RECORDED, UPDATED, ImportReport
-from importer.service import run_import
+from importer.service import UnknownDates, run_import
 from importer.sources import SheetFetchError, fetch_sheet
 from importer.verify import LABELS
 from importer.workbook import SheetError
 
 REFUSED = "refused: the season is not kept in the sheet (Season.sheet_managed is off)"
+NOTHING_SELECTED = "no selected date on this sheet, left as is"
+PARTIAL = (
+    "partial import: only the selected dates were synced, so differences on the other dates "
+    "are expected"
+)
 SKIPPED = {
     LIVE_RECORDED: "recorded on the live screens, left as is",
     LIVE_IN_PROGRESS: "live game in progress, left as is",
@@ -19,6 +26,19 @@ def sheet_list(value: str | None) -> list[str] | None:
     if not value:
         return None
     return [name.strip() for name in value.split(",") if name.strip()]
+
+
+def date_list(value: str | None) -> list[datetime.date] | None:
+    names = sheet_list(value)
+    if not names:
+        return None
+    dates = set()
+    for name in names:
+        try:
+            dates.add(datetime.date.fromisoformat(name))
+        except ValueError:
+            raise CommandError(f"--dates: {name} is not a date (YYYY-MM-DD)") from None
+    return sorted(dates)
 
 
 class Command(BaseCommand):
@@ -43,6 +63,11 @@ class Command(BaseCommand):
             "--sheets", help="comma-separated sheet names to import (default: all import sheets)"
         )
         parser.add_argument(
+            "--dates",
+            help="comma-separated game dates (YYYY-MM-DD) to import; every other date is left as "
+            "is (default: all dates)",
+        )
+        parser.add_argument(
             "--dry-run", action="store_true", help="show what would change, save nothing"
         )
         parser.add_argument(
@@ -54,6 +79,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if bool(options["path"]) == options["from_google"]:
             raise CommandError("give either a path or --from-google")
+        dates = date_list(options["dates"])
         try:
             alias_map = load_aliases(options["aliases"]) if options["aliases"] else None
             source = fetch_sheet() if options["from_google"] else options["path"]
@@ -65,6 +91,7 @@ class Command(BaseCommand):
                 dry_run=options["dry_run"],
                 create_missing=options["create_missing"],
                 alias_map=alias_map,
+                dates=dates,
             )
         except FileNotFoundError as exc:
             raise CommandError(str(exc)) from exc
@@ -72,6 +99,13 @@ class Command(BaseCommand):
             raise CommandError(str(exc)) from None
         except (SheetError, AliasError) as exc:
             raise CommandError("\n".join(["Nothing imported:", *exc.errors])) from exc
+        except UnknownDates as exc:
+            sheets = ", ".join(exc.sheets)
+            lines = [
+                f"  {date:%d.%m.%Y}: no game on this date in the selected sheets ({sheets})"
+                for date in exc.dates
+            ]
+            raise CommandError("\n".join(["Nothing imported:", *lines])) from None
 
         self._write_parse_notes(report)
         if report.problems is not None:
@@ -93,7 +127,12 @@ class Command(BaseCommand):
                 f"{s.title}: {s.kind} {s.year}, data from column {s.start_letter}, {s.games} games"
                 for s in report.sheets
             ]
-            + [f"{title}: skipped" for title in report.skipped_sheets],
+            + [f"{title}: skipped" for title in report.skipped_sheets]
+            + (
+                ["selected dates: " + ", ".join(f"{d:%d.%m.%Y}" for d in report.dates)]
+                if report.partial
+                else []
+            ),
         )
         self._section("Date fixes", [str(fix) for s in report.sheets for fix in s.date_fixes])
         self._section(
@@ -120,6 +159,9 @@ class Command(BaseCommand):
             if sheet.refused:
                 self._section(f"Changes in {sheet.title}", [REFUSED])
                 continue
+            if sheet.nothing_selected:
+                self._section(f"Changes in {sheet.title}", [NOTHING_SELECTED])
+                continue
             counts = ", ".join(f"{name} {n}" for name, n in sorted(sheet.counts.items()))
             self._section(f"Changes in {sheet.title}", [counts or "nothing"])
             for change in sheet.changes:
@@ -141,6 +183,9 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.WARNING(f"    skipped: {date:%d.%m.%Y} {SKIPPED[reason]}")
                 )
+            if sheet.not_selected:
+                dates = ", ".join(f"{date:%d.%m.%Y}" for date in sheet.not_selected)
+                self.stdout.write(f"    not selected, left as is: {dates}")
             season = f"{SeasonKind(sheet.kind).label} {sheet.year}"
             for date in sheet.db_only_games:
                 self.stdout.write(
@@ -151,7 +196,10 @@ class Command(BaseCommand):
                 )
 
     def _write_verification(self, report: ImportReport) -> None:
-        self.stdout.write(self.style.MIGRATE_HEADING("Verification against the sheet"))
+        heading = "Verification against the sheet"
+        if report.partial:
+            heading += f" ({PARTIAL})"
+        self.stdout.write(self.style.MIGRATE_HEADING(heading))
         for sheet in report.imported:
             verification = sheet.verification
             self.stdout.write(f"  {verification.summary()}")

@@ -68,6 +68,7 @@ class SheetSnapshot(models.Model):
         verbose_name="кто загрузил",
     )
     sheets = models.JSONField("листы", default=list)  # the previewed selection
+    dates = models.JSONField("даты", default=list)  # ISO dates previewed; empty: all
 
     class Meta:
         verbose_name = "таблица клуба"

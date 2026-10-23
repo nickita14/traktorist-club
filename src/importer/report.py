@@ -57,6 +57,10 @@ class SheetReport:
     # The season exists and is not kept in the sheet: nothing of this sheet was imported.
     refused: bool = False
     skipped_games: dict[datetime.date, str] = field(default_factory=dict)  # date -> LIVE_*
+    # A date selection was given (run_import(dates=...)): sheet dates left out of it, and
+    # whether the sheet had no selected date at all (then nothing of it was read or written).
+    not_selected: list[datetime.date] = field(default_factory=list)
+    nothing_selected: bool = False
     counts: Counter = field(default_factory=Counter)
     changes: list[ResultChange] = field(default_factory=list)
     place_changes: list[PlaceChange] = field(default_factory=list)
@@ -105,14 +109,21 @@ class ImportReport:
     upsert: AliasUpsert | None = None
     players_created: list[str] = field(default_factory=list)  # --create-missing
     problems: NameProblems | None = None
+    dates: list[datetime.date] | None = None  # the selection; None: every date
+    # Game dates of the parsed sheets -> their titles (the admin's date list).
+    found_dates: dict[datetime.date, list[str]] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
         return self.problems is None
 
     @property
+    def partial(self) -> bool:
+        return self.dates is not None
+
+    @property
     def imported(self) -> list[SheetReport]:
-        return [sheet for sheet in self.sheets if not sheet.refused]
+        return [sheet for sheet in self.sheets if not sheet.refused and not sheet.nothing_selected]
 
     @property
     def refused(self) -> list[SheetReport]:
@@ -127,6 +138,7 @@ class ImportReport:
             "problems": asdict(self.problems) if self.problems else None,
             "upsert": asdict(self.upsert) if self.upsert else None,
             "players_created": self.players_created,
+            "dates": self.dates,
             "sheets": [
                 {
                     "title": sheet.title,
@@ -136,6 +148,8 @@ class ImportReport:
                     "changes": [asdict(change) for change in sheet.changes],
                     "places": [asdict(change) for change in sheet.place_changes],
                     "db_only": sheet.db_only_games,
+                    "not_selected": sheet.not_selected,
+                    "nothing_selected": sheet.nothing_selected,
                 }
                 for sheet in self.sheets
             ],

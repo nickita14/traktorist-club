@@ -54,9 +54,22 @@
                 <label class="sync-check"><input type="checkbox" name="sheets" value="{{ title }}"{% if checked %} checked{% endif %}> {{ title }}</label>
               {% endfor %}
             </fieldset>
+            {% if date_choices %}
+              <details class="sync-details"{% if report.partial %} open{% endif %}>
+                <summary>Даты: {% if report.partial %}выбрано <span class="admin-num">{{ report.dates|length }}</span>{% else %}все{% endif %}</summary>
+                <fieldset>
+                  <legend>Отметьте даты, чтобы импортировать только их. Ничего не отмечено: все даты.</legend>
+                  {% for date, found, checked in date_choices %}
+                    <label class="sync-check"><input type="checkbox" name="dates" value="{{ date|date:"Y-m-d" }}"{% if checked %} checked{% endif %}> <span class="admin-num">{{ date|date:"d.m.Y" }}</span> · {{ found }}</label>
+                  {% endfor %}
+                </fieldset>
+              </details>
+            {% endif %}
             <button type="submit" name="action" value="recount" class="sync-button">Пересчитать</button>
           </form>
         {% endif %}
+
+        <p><strong>{{ scope_label }}{% if report.partial %} ({% for date in report.dates %}<span class="admin-num">{{ date|date:"d.m.Y" }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}).{% endif %}</strong>{% if scope_rest %} {{ scope_rest }}{% endif %}</p>
 
         {% if report.problems %}
           <div class="sync-problems">
@@ -102,6 +115,8 @@
           <h2>{{ sheet.title }}</h2>
           {% if sheet.refused %}
             <p class="sync-warning">Сезон не ведётся в таблице: лист не импортируется. Чтобы импортировать его, включите «Ведётся в таблице» у сезона.</p>
+          {% elif sheet.nothing_selected %}
+            <p class="sync-note">{{ nothing_selected }}</p>
           {% elif not report.problems %}
             {% if item.counts %}
               <dl class="sync-counts">
@@ -115,6 +130,13 @@
               <h3>Игры с живого экрана</h3>
               <ul class="sync-list">
                 {% for date, label in item.skipped %}<li><span class="admin-num">{{ date|date:"d.m.Y" }}</span>: {{ label }}</li>{% endfor %}
+              </ul>
+            {% endif %}
+
+            {% if sheet.not_selected %}
+              <h3>Не выбрано (не тронуты)</h3>
+              <ul class="sync-list">
+                {% for date in sheet.not_selected %}<li class="admin-num">{{ date|date:"d.m.Y" }}</li>{% endfor %}
               </ul>
             {% endif %}
 
@@ -174,6 +196,7 @@
 
             {% if sheet.verification %}
               <h3>Сверка с итогами таблицы</h3>
+              {% if partial_verification %}<p class="sync-note">{{ partial_verification }}</p>{% endif %}
               <p class="sync-note">
                 Игроков проверено <span class="admin-num">{{ sheet.verification.checked }}</span>,
                 совпало <span class="admin-num">{{ sheet.verification.ok }}</span>.

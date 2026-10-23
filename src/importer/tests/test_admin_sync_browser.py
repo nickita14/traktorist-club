@@ -52,10 +52,26 @@ def test_fetch_preview_apply_without_csp_violations(page):
     assert page.evaluate("window.cspViolations") == []
 
 
+def test_one_date_without_csp_violations(page):
+    page.get_by_role("button", name="Подтянуть из таблицы").click()
+    page.get_by_text("Все даты выбранных листов.").wait_for()
+
+    page.get_by_text("Даты: все").click()
+    page.get_by_role("checkbox", name="01.02.2026").check()
+    page.get_by_role("button", name="Пересчитать").click()
+    page.get_by_text("Частичный импорт: только выбранные даты").wait_for()
+    page.get_by_role("button", name="Применить").click()
+    page.get_by_role("heading", name="Применено").wait_for()
+
+    assert Result.objects.count() == 3
+    assert page.evaluate("window.cspViolations") == []
+
+
 def test_page_never_scrolls_sideways_on_a_phone(page):
     page.set_viewport_size({"width": 390, "height": 800})
     page.get_by_role("button", name="Подтянуть из таблицы").click()
     page.get_by_role("button", name="Пересчитать").wait_for()
+    page.get_by_text("Даты: все").click()  # the date list open too
 
     overflow = page.evaluate(
         "document.documentElement.scrollWidth - document.documentElement.clientWidth"
