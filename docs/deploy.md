@@ -608,7 +608,9 @@ dc run --rm --user "$(id -u):$(id -g)" -v ~/import:/import:ro web \
 shred -u ~/import/* && rmdir ~/import
 ```
 
-**Admin** (superusers only), every time: open "Импорт" > "Таблица клуба", press "Подтянуть из таблицы", read the report (per sheet: new, changed and deleted results, place changes, fixed dates, verification against the sheet's totals), untick sheets if needed and press "Пересчитать", then "Применить". The apply imports the file that was previewed, not a new download, and only if the import still makes exactly the previewed changes; the admin log records who applied what. A preview expires after an hour.
+**Admin** (superusers only), every time: open "Импорт" > "Таблица клуба", press "Подтянуть из таблицы", read the report (per sheet: new, changed and deleted results, place changes, fixed dates, verification against the sheet's totals), untick sheets if needed, tick dates under "Даты" to import only those evenings (none ticked: every date), and press "Пересчитать", then "Применить". The report starts with its scope ("Все даты выбранных листов." or "Частичный импорт: ..."); with a selection the other dates are listed as not selected and left as is, and the verification against the sheet's totals may then show expected differences. The apply imports the file that was previewed, not a new download, and only if the import still makes exactly the previewed changes; the admin log records who applied what. A preview expires after an hour.
+
+The same from the command line, for one evening: `python manage.py import_sheet --from-google --dates 2026-10-17 --dry-run` (comma-separated for several; combines with `--sheets`). A date that is no game in the chosen sheets is an error, and nothing is imported.
 
 Guards, in the importer itself (the command obeys them too), with no override:
 - A season is imported only while "Ведётся в таблице" is on. Seasons that existed before this feature, and seasons the import creates, have it on; seasons created in the admin or on the live screens have it off.

@@ -315,3 +315,88 @@ class TestCleanup:
         page = superuser_client.get(f"{url}?snapshot={snapshot_pk}")
 
         assert "report" not in page.context
+
+
+def recount(client, url, snapshot_pk, sheets, dates):
+    return client.post(
+        url,
+        {"action": "recount", "snapshot": snapshot_pk, "sheets": sheets, "dates": dates},
+        follow=True,
+    )
+
+
+ALL_SHEETS = ["ТУР2026_new", "ТУР2025", "КЭШ2026"]
+
+
+class TestDates:
+    def test_preview_lists_the_dates_and_says_all(self, superuser_client, url, google, aliases):
+        page = fetch(superuser_client, url)
+
+        choices = page.context["date_choices"]
+        assert [date for date, _, _ in choices] == sorted(
+            [date for date, _, _ in choices], reverse=True
+        )
+        assert choices[0] == (datetime.date(2026, 3, 14), "ТУР2026_new", False)
+        assert (datetime.date(2026, 1, 18), "ТУР2026_new, КЭШ2026", False) in choices
+        assert len(choices) == 7
+        assert 'name="dates" value="2026-01-18"' in page.text
+        assert "Все даты выбранных листов." in page.text
+        assert "Частичный импорт" not in page.text
+
+    def test_recount_with_a_date(self, superuser_client, url, google, aliases):
+        snapshot_pk = fetch(superuser_client, url).context["snapshot"].pk
+
+        page = recount(superuser_client, url, snapshot_pk, ALL_SHEETS, ["2026-02-01", "garbage"])
+
+        assert SheetSnapshot.objects.get().dates == ["2026-02-01"]
+        assert page.context["report"].dates == [datetime.date(2026, 2, 1)]
+        assert "Частичный импорт: только выбранные даты" in page.text
+        assert "Все даты выбранных листов" not in page.text
+        assert "Не выбрано (не тронуты)" in page.text
+        assert "Даты этого листа не выбраны: лист не тронут." in page.text  # ТУР2025
+        assert "итоги таблицы считают все даты" in page.text
+        assert 'value="2026-02-01" checked' in page.text
+        assert db_counts() == (0, 0)
+
+    def test_apply_with_a_date_imports_only_it(self, superuser_client, url, google, aliases):
+        snapshot_pk = fetch(superuser_client, url).context["snapshot"].pk
+        page = recount(superuser_client, url, snapshot_pk, ALL_SHEETS, ["2026-02-01"])
+
+        response = apply(superuser_client, url, page)
+
+        assert response.context["applied"]
+        assert list(Game.objects.values_list("date", flat=True)) == [datetime.date(2026, 2, 1)]
+        assert Result.objects.count() == 3
+        assert "только даты: 01.02.2026" in LogEntry.objects.get().change_message
+        assert "Частичный импорт" in response.text
+
+    def test_date_outside_the_chosen_sheets_is_refused(
+        self, superuser_client, url, google, aliases
+    ):
+        snapshot_pk = fetch(superuser_client, url).context["snapshot"].pk
+
+        response = recount(superuser_client, url, snapshot_pk, ["КЭШ2026"], ["2026-02-01"])
+
+        assert "Дата 01.02.2026 не найдена в выбранных листах." in messages_of(response)
+        snapshot = SheetSnapshot.objects.get()
+        assert (snapshot.sheets, snapshot.dates) == (ALL_SHEETS, [])
+
+    def test_ticking_no_date_means_every_date(self, superuser_client, url, google, aliases):
+        snapshot_pk = fetch(superuser_client, url).context["snapshot"].pk
+        recount(superuser_client, url, snapshot_pk, ALL_SHEETS, ["2026-02-01"])
+
+        page = recount(superuser_client, url, snapshot_pk, ALL_SHEETS, [])
+
+        assert SheetSnapshot.objects.get().dates == []
+        assert "Все даты выбранных листов." in page.text
+
+    def test_apply_after_the_selection_changed_is_refused(
+        self, superuser_client, url, google, aliases
+    ):
+        page = fetch(superuser_client, url)  # the preview of every date
+        recount(superuser_client, url, page.context["snapshot"].pk, ALL_SHEETS, ["2026-02-01"])
+
+        response = apply(superuser_client, url, page)
+
+        assert "Данные в базе изменились после просмотра" in messages_of(response)[0]
+        assert db_counts() == (0, 0)

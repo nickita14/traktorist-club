@@ -4,7 +4,8 @@ Superusers only: the section is hidden from everyone else and the page answers 4
 (anonymous visitors go to the admin login). The flow:
 
 1. "Подтянуть из таблицы" fetches the workbook (importer.sources) into a SheetSnapshot, deleting
-   any older one, and shows the dry-run report (importer.service) of the chosen sheets.
+   any older one, and shows the dry-run report (importer.service) of the chosen sheets and dates
+   ("Пересчитать" changes them; no date ticked means every date).
 2. "Применить" imports the stored bytes, never a new fetch, and only while the import makes
    exactly the changes the page showed: the report's digest travels with the form, and a
    different result (the database changed meanwhile) is rolled back. The snapshot is deleted
@@ -13,6 +14,7 @@ Superusers only: the section is hidden from everyone else and the page answers 4
 Snapshots older than SheetSnapshot.TTL are refused and purged on every request to the page.
 """
 
+import datetime
 import hashlib
 from collections import Counter
 
@@ -36,9 +38,9 @@ from importer.report import (
     ImportReport,
     SheetReport,
 )
-from importer.service import ReportChanged, run_import
+from importer.service import ReportChanged, UnknownDates, found_dates, run_import
 from importer.verify import GAP, MISMATCH, TIE
-from importer.workbook import SheetError, import_sheet_titles
+from importer.workbook import SheetError, import_sheet_titles, parse_workbook
 
 SYNC_URL_NAME = "importer_sheetsnapshot_sync"
 
@@ -73,6 +75,16 @@ CHANGED = (
     "Проверьте обновлённый отчёт и примените ещё раз."
 )
 NOT_APPLICABLE = "Этот отчёт нельзя применить: исправьте ошибки в нём."
+DATE_NOT_FOUND = "Дата {} не найдена в выбранных листах."
+DATES_GONE = "Выбранных дат нет в листах снимка. Подтяните таблицу заново."
+ALL_DATES = "Все даты выбранных листов."
+PARTIAL = "Частичный импорт: только выбранные даты"
+PARTIAL_REST = "Остальные даты не тронуты."
+PARTIAL_VERIFICATION = (
+    "Импорт частичный: итоги таблицы считают все даты, поэтому расхождения из-за невыбранных "
+    "дат ожидаемы."
+)
+NOTHING_SELECTED = "Даты этого листа не выбраны: лист не тронут."
 
 
 class SheetSyncView(UnfoldModelAdminViewMixin, TemplateView):
@@ -145,8 +157,18 @@ class SheetSyncView(UnfoldModelAdminViewMixin, TemplateView):
         if not chosen:
             messages.error(self.request, NO_SHEETS)
             return redirect(self.page_url(snapshot))
+        dates = posted_dates(self.request.POST.getlist("dates"))
+        try:
+            found = found_dates(parse_workbook(bytes(snapshot.content), chosen))
+        except SheetError:
+            found = None  # the preview shows the errors
+        missing = [date for date in dates if found is not None and date not in found]
+        if missing:
+            messages.error(self.request, DATE_NOT_FOUND.format(f"{missing[0]:%d.%m.%Y}"))
+            return redirect(self.page_url(snapshot))
         snapshot.sheets = chosen
-        snapshot.save(update_fields=["sheets"])
+        snapshot.dates = [date.isoformat() for date in dates]
+        snapshot.save(update_fields=["sheets", "dates"])
         messages.success(self.request, RECOUNTED)
         return redirect(self.page_url(snapshot))
 
@@ -167,10 +189,16 @@ class SheetSyncView(UnfoldModelAdminViewMixin, TemplateView):
                 return redirect(self.page_url())
             try:
                 report = run_import(
-                    bytes(snapshot.content), sheets=snapshot.sheets, expected_digest=digest
+                    bytes(snapshot.content),
+                    sheets=snapshot.sheets,
+                    dates=snapshot_dates(snapshot),
+                    expected_digest=digest,
                 )
             except ReportChanged:
                 messages.error(self.request, CHANGED)
+                return redirect(self.page_url(snapshot))
+            except UnknownDates:
+                messages.error(self.request, NOT_APPLICABLE)
                 return redirect(self.page_url(snapshot))
             if not report.ok or not report.imported:
                 messages.error(self.request, NOT_APPLICABLE)
@@ -188,17 +216,42 @@ class SheetSyncView(UnfoldModelAdminViewMixin, TemplateView):
         return self.render_to_response(self.get_context_data(**context))
 
 
+def posted_dates(values: list[str]) -> list[datetime.date]:
+    """The ticked dates of the form, sorted; values that are not ISO dates are dropped."""
+    dates = set()
+    for value in values:
+        try:
+            dates.add(datetime.date.fromisoformat(value))
+        except ValueError:
+            continue
+    return sorted(dates)
+
+
+def snapshot_dates(snapshot: SheetSnapshot) -> list[datetime.date] | None:
+    return posted_dates(snapshot.dates) or None
+
+
 def preview(snapshot: SheetSnapshot) -> dict:
-    """Context of a dry run of the snapshot's chosen sheets, with the digest "Применить" sends."""
+    """Context of a dry run of the snapshot's chosen sheets and dates, with the digest
+    "Применить" sends."""
     content = bytes(snapshot.content)
     try:
         titles = import_sheet_titles(content)
-        report = run_import(content, sheets=snapshot.sheets, dry_run=True)
+        report = run_import(
+            content, sheets=snapshot.sheets, dates=snapshot_dates(snapshot), dry_run=True
+        )
     except SheetError as exc:
         return {"snapshot": snapshot, "sheet_errors": exc.errors}
+    except UnknownDates:
+        return {"snapshot": snapshot, "sheet_errors": [DATES_GONE]}
+    selected = set(report.dates or ())
     return {
         "snapshot": snapshot,
         "titles": [(title, title in snapshot.sheets) for title in titles],
+        "date_choices": [
+            (date, ", ".join(found), date in selected)
+            for date, found in reversed(report.found_dates.items())
+        ],
         "digest": report.digest(),
         "can_apply": report.ok and bool(report.imported),
         **present(report),
@@ -209,6 +262,10 @@ def present(report: ImportReport) -> dict:
     """The report in Russian words, ready for the template (it formats nothing itself)."""
     return {
         "report": report,
+        "scope_label": PARTIAL if report.partial else ALL_DATES,
+        "scope_rest": PARTIAL_REST if report.partial else "",
+        "partial_verification": PARTIAL_VERIFICATION if report.partial else "",
+        "nothing_selected": NOTHING_SELECTED,
         "sheets": [present_sheet(sheet) for sheet in report.sheets],
         "totals": count_lines(report.totals()),
     }
@@ -264,6 +321,8 @@ def log_summary(report: ImportReport) -> str:
     ]
     if skipped:
         parts.append("живые игры не тронуты: " + ", ".join(skipped))
+    if report.partial:
+        parts.append("только даты: " + ", ".join(f"{date:%d.%m.%Y}" for date in report.dates))
     return "; ".join(parts) + "."
 
 
