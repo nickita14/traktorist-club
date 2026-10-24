@@ -11,11 +11,13 @@ from django.contrib.auth.models import Group, User
 from django.urls import reverse
 from django.utils import timezone
 
-from club.models import Game, Result
-from club.tests.factories import make_game, make_season
+from club.models import Game, Result, SeasonKind
+from club.tests.factories import make_game, make_player, make_result, make_season
 from importer import sources
+from importer.admin import NOTHING_TO_APPLY, PARTIAL_VERIFICATION, ChangeRow
 from importer.aliases import build_alias_map, upsert_aliases
 from importer.models import SheetSnapshot
+from importer.service import run_import
 from importer.tests.sheet_builder import build_workbook, fixture_aliases
 
 pytestmark = pytest.mark.django_db
@@ -174,7 +176,8 @@ class TestPreview:
         )
 
         assert SheetSnapshot.objects.get().sheets == ["КЭШ2026"]
-        assert [item["sheet"].title for item in response.context["sheets"]] == ["КЭШ2026"]
+        assert [item["sheet"].title for item in response.context["sections"]] == ["КЭШ2026"]
+        assert response.context["quiet_sheets"] == []
         assert google == [1]  # recounting never fetches
 
     def test_recount_needs_a_sheet(self, superuser_client, url, google, aliases):
@@ -332,13 +335,20 @@ class TestDates:
     def test_preview_lists_the_dates_and_says_all(self, superuser_client, url, google, aliases):
         page = fetch(superuser_client, url)
 
-        choices = page.context["date_choices"]
-        assert [date for date, _, _ in choices] == sorted(
-            [date for date, _, _ in choices], reverse=True
-        )
-        assert choices[0] == (datetime.date(2026, 3, 14), "ТУР2026_new", False)
-        assert (datetime.date(2026, 1, 18), "ТУР2026_new, КЭШ2026", False) in choices
-        assert len(choices) == 7
+        months = page.context["date_months"]
+        assert [label for label, _ in months] == [
+            "Март 2026",
+            "Февраль 2026",
+            "Январь 2026",
+            "Май 2025",
+        ]
+        assert [[choice.short for choice in dates] for _, dates in months] == [
+            ["14.03"],
+            ["01.02"],
+            ["25.01", "18.01"],
+            ["18.05", "11.05", "04.05"],
+        ]
+        assert not any(choice.checked for _, dates in months for choice in dates)
         assert 'name="dates" value="2026-01-18"' in page.text
         assert "Все даты выбранных листов." in page.text
         assert "Частичный импорт" not in page.text
@@ -350,12 +360,13 @@ class TestDates:
 
         assert SheetSnapshot.objects.get().dates == ["2026-02-01"]
         assert page.context["report"].dates == [datetime.date(2026, 2, 1)]
-        assert "Частичный импорт: только выбранные даты" in page.text
+        assert page.context["scope_label"] == "Частичный импорт: только 01.02.2026."
         assert "Все даты выбранных листов" not in page.text
-        assert "Не выбрано (не тронуты)" in page.text
-        assert "Даты этого листа не выбраны: лист не тронут." in page.text  # ТУР2025
+        assert "Не выбрано: " in page.text
+        quiet = {row["title"]: row["note"] for row in page.context["quiet_sheets"]}
+        assert quiet == {"ТУР2025": "даты не выбраны", "КЭШ2026": "даты не выбраны"}
         assert "итоги таблицы считают все даты" in page.text
-        assert 'value="2026-02-01" checked' in page.text
+        assert 'value="2026-02-01" aria-label="01.02.2026" checked' in page.text
         assert db_counts() == (0, 0)
 
     def test_apply_with_a_date_imports_only_it(self, superuser_client, url, google, aliases):
@@ -369,6 +380,7 @@ class TestDates:
         assert Result.objects.count() == 3
         assert "только даты: 01.02.2026" in LogEntry.objects.get().change_message
         assert "Частичный импорт" in response.text
+        assert response.context["scope_label"] == "Частичный импорт: только 01.02.2026."
 
     def test_date_outside_the_chosen_sheets_is_refused(
         self, superuser_client, url, google, aliases
@@ -400,3 +412,292 @@ class TestDates:
 
         assert "Данные в базе изменились после просмотра" in messages_of(response)[0]
         assert db_counts() == (0, 0)
+
+
+def applied_then_fetched(client, url):
+    """Import the fixture, then fetch again: the report of what changed since."""
+    apply(client, url, fetch(client, url))
+    return lambda: fetch(client, url)
+
+
+def tour_result(day: int, month: int, name: str, year: int = 2026) -> Result:
+    return Result.objects.get(
+        game__season__kind=SeasonKind.TOUR,
+        game__date=datetime.date(year, month, day),
+        player__name=name,
+    )
+
+
+def section(page, title: str) -> dict:
+    return next(item for item in page.context["sections"] if item["sheet"].title == title)
+
+
+def strip(page) -> dict:
+    return dict(page.context["strip"])
+
+
+class TestSummary:
+    def test_strip_on_the_first_import(self, superuser_client, url, google, aliases):
+        page = fetch(superuser_client, url)
+
+        assert page.context["strip"] == [
+            ("игр создано", 8),
+            ("игр изменено", 0),
+            ("результатов создано", 22),
+            ("результатов изменено", 0),
+            ("мест изменено", 0),
+        ]
+        # The three zeros are the faint dot, read out as 0.
+        assert page.text.count('<dd class="admin-num"><span class="val-zero">') == 3
+        assert page.context["unchanged_line"] == ""
+        assert page.context["apply_note"] == "Запишет ровно этот отчёт, из того же снимка."
+        assert page.context["bottom_line"] == "Создано 22 результата."
+
+    def test_unchanged_line_and_live_dates(self, superuser_client, url, google, aliases):
+        again = applied_then_fetched(superuser_client, url)
+        Game.objects.filter(season__kind=SeasonKind.CASH, date=datetime.date(2026, 1, 18)).update(
+            live_stage="cash", started_at=timezone.now()
+        )
+
+        page = again()
+
+        # 8 games and 22 results imported; the live cash game (3 results) is left out.
+        assert page.context["unchanged_line"] == (
+            "Без изменений: 7 игр, 19 результатов. С живого экрана не тронуты: 18.01."
+        )
+
+    def test_warnings_line_links_to_the_sections(self, superuser_client, url, google, aliases):
+        page = fetch(superuser_client, url)
+
+        [alert] = page.context["alerts"]
+        assert alert.lead == "Предупреждения: "
+        assert [text for text, _ in alert.links] == ["1 расхождение", "1 остаток не сходится"]
+        assert alert.tail == ". Импорт их не исправляет, их правят в таблице."
+        for _, anchor in alert.links:
+            assert f'href="#{anchor}"' in page.text
+            assert f'id="{anchor}"' in page.text
+        assert [anchor for _, anchor in alert.links] == [
+            section(page, "ТУР2025")["anchor"] + "-verification",
+            section(page, "ТУР2025")["anchor"] + "-leftover",
+        ]
+
+
+class TestEmptyImport:
+    def test_nothing_to_apply(self, superuser_client, url, google, aliases):
+        again = applied_then_fetched(superuser_client, url)
+        page = again()
+
+        assert not page.context["report"].has_changes
+        assert not page.context["can_apply"]
+        assert page.context["apply_note"] == "Нет изменений."
+        assert page.context["bottom_line"] == "Нет изменений."
+        assert (
+            page.text.count('value="apply" class="sync-button sync-button-primary" disabled') == 2
+        )
+
+    def test_apply_refused_server_side(self, superuser_client, url, google, aliases):
+        again = applied_then_fetched(superuser_client, url)
+        page = again()
+        before = db_counts()
+
+        response = apply(superuser_client, url, page)
+
+        assert NOTHING_TO_APPLY in messages_of(response)
+        assert LogEntry.objects.count() == 1  # the first import only
+        assert SheetSnapshot.objects.exists()
+        assert db_counts() == before
+
+    def test_place_changes_only_are_applied(self, superuser_client, url, google, aliases):
+        again = applied_then_fetched(superuser_client, url)
+        Result.objects.filter(pk=tour_result(18, 1, "Иван Тестов").pk).update(place=None)
+
+        page = again()
+
+        report = page.context["report"]
+        assert report.has_changes
+        assert sum(len(sheet.place_changes) for sheet in report.sheets) == 1
+        assert strip(page)["мест изменено"] == 1
+        assert strip(page)["игр изменено"] == 1
+        assert page.context["can_apply"]
+
+        response = apply(superuser_client, url, page)
+
+        assert response.context["applied"]
+        assert LogEntry.objects.count() == 2
+        assert tour_result(18, 1, "Иван Тестов").place == 1
+
+    def test_deletions_only_are_applied(self, superuser_client, url, google, aliases):
+        again = applied_then_fetched(superuser_client, url)
+        game = Game.objects.get(season__kind=SeasonKind.TOUR, date=datetime.date(2025, 5, 4))
+        make_result(game, make_player("Лишний Игрок"), buyin=50)
+
+        page = again()
+
+        assert page.context["report"].has_changes
+        assert strip(page)["игр изменено"] == 1  # a date whose results are only deleted
+        assert page.context["bottom_line"] == "Удалено 1 результат."
+        deletion = page.context["alerts"][-1]
+        assert deletion.lead == "Будут удалены результаты, которых нет в таблице: "
+        assert deletion.links == [("1", section(page, "ТУР2025")["anchor"] + "-changes")]
+        [row] = section(page, "ТУР2025")["changes"]
+        assert (row.name, row.what) == ("Лишний Игрок", "результат удалён")
+
+        response = apply(superuser_client, url, page)
+
+        assert response.context["applied"]
+        assert not Result.objects.filter(player__name="Лишний Игрок").exists()
+
+
+class TestSections:
+    def test_only_sheets_with_changes_or_warnings(self, superuser_client, url, google, aliases):
+        page = applied_then_fetched(superuser_client, url)()
+
+        # ТУР2025 keeps its mismatch and its leftover; the others are quiet.
+        assert [item["sheet"].title for item in page.context["sections"]] == ["ТУР2025"]
+        assert page.context["quiet_sheets"] == [
+            {
+                "title": "ТУР2026_new",
+                "note": "",
+                "games": 3,
+                "results": 10,
+                "verification": "2 из 4",
+            },
+            {"title": "КЭШ2026", "note": "", "games": 2, "results": 5, "verification": "3 из 3"},
+        ]
+        assert "Листы без изменений" in page.text
+
+    def test_changes_table(self, superuser_client, url, google, aliases):
+        again = applied_then_fetched(superuser_client, url)
+        Result.objects.filter(pk=tour_result(1, 2, "Пётр Примеров").pk).update(buyin=150, place=3)
+        Result.objects.filter(pk=tour_result(18, 1, "Иван Тестов").pk).update(place=None)
+
+        page = again()
+
+        tour = section(page, "ТУР2026_new")
+        assert tour["changes"] == [
+            ChangeRow(datetime.date(2026, 1, 18), "Иван Тестов", "Трактор", "место", None, "1"),
+            ChangeRow(datetime.date(2026, 2, 1), "Пётр Примеров", "Сеялка", "место", "3", "1"),
+            ChangeRow(
+                datetime.date(2026, 2, 1), "Пётр Примеров", "Сеялка", "закупка", "150", "100"
+            ),
+        ]
+        assert tour["head_line"] == "изменено 2 · без изменений 1 игра, 8 результатов"
+        assert tour["places_note"]
+        assert page.context["bottom_line"] == "Изменено 2 результата."
+        assert strip(page)["игр изменено"] == 2
+        assert '<span class="sync-nick">Трактор</span>' in page.text
+
+    def test_new_results_in_the_changes_table(self, superuser_client, url, google, aliases):
+        page = fetch(superuser_client, url)
+
+        rows = section(page, "КЭШ2026")["changes"]
+        assert [(row.date.day, row.name, row.what) for row in rows] == [
+            (18, "Иван Тестов", "новый результат"),
+            (18, "Мария Образцова", "новый результат"),
+            (18, "Олег Пробный", "новый результат"),
+            (25, "Мария Образцова", "новый результат"),
+            (25, "Олег Пробный", "новый результат"),
+        ]
+        assert {(row.old, row.new) for row in rows} == {(None, None)}
+
+    def test_verification_groups(self, superuser_client, url, google, aliases):
+        page = fetch(superuser_client, url)
+
+        groups = section(page, "ТУР2025")["findings"]
+        assert [(title, alert) for title, alert, _ in groups] == [
+            ("Ожидаемо: пробел в формулах таблицы", False),
+            ("Расхождения", True),
+        ]
+        [mismatch] = groups[1][2]
+        assert (mismatch.name, mismatch.header, mismatch.ours, mismatch.sheet) == (
+            "Пётр Примеров",
+            "Итого",
+            "0",
+            "20",
+        )
+        assert mismatch.difference == "−20"
+        assert section(page, "ТУР2025")["verification_line"] == "проверено 3, совпало 1"
+        assert "sync-group-alert" in page.text
+        leftover = section(page, "ТУР2025")["leftovers"]
+        assert [
+            (game.date, game.buyin_total, game.payout_total, diff) for game, _, diff in leftover
+        ] == [(datetime.date(2025, 5, 11), 150, 140, "+10")]
+
+    def test_footer_details(self, superuser_client, url, google, aliases):
+        again = applied_then_fetched(superuser_client, url)
+        Game.objects.filter(season__kind=SeasonKind.CASH, date=datetime.date(2026, 1, 18)).update(
+            live_stage="cash", started_at=timezone.now()
+        )
+        Result.objects.filter(
+            game__date=datetime.date(2026, 1, 25), player__name="Олег Пробный"
+        ).update(buyin=90)
+
+        page = again()
+
+        assert len(section(page, "КЭШ2026")["skipped"]) == 1
+        assert "Игры с живого экрана: " in page.text
+
+    def test_date_fixes_and_not_selected(self, superuser_client, url, google, aliases):
+        snapshot_pk = fetch(superuser_client, url).context["snapshot"].pk
+
+        page = recount(superuser_client, url, snapshot_pk, ALL_SHEETS, ["2026-02-01"])
+
+        tour = section(page, "ТУР2026_new")
+        assert len(tour["date_fixes"]) == 2
+        assert tour["not_selected"] == "2 даты"
+        assert tour["not_selected_dates"] == "18.01.2026, 14.03.2026"
+
+
+class TestPartial:
+    def test_verification_hidden(self, superuser_client, url, google, aliases):
+        snapshot_pk = fetch(superuser_client, url).context["snapshot"].pk
+
+        page = recount(superuser_client, url, snapshot_pk, ALL_SHEETS, ["2025-05-04"])
+
+        tour = section(page, "ТУР2025")
+        assert tour["verification"] is None
+        assert tour["findings"] == []
+        assert tour["partial_verification"] == PARTIAL_VERIFICATION
+        assert "-verification" not in page.text
+        assert page.context["alerts"] == []  # the mismatch and the 11.05 leftover not counted
+
+    def test_leftover_of_a_selected_date_counts(self, superuser_client, url, google, aliases):
+        snapshot_pk = fetch(superuser_client, url).context["snapshot"].pk
+
+        page = recount(superuser_client, url, snapshot_pk, ALL_SHEETS, ["2025-05-11"])
+
+        [alert] = page.context["alerts"]
+        assert [text for text, _ in alert.links] == ["1 остаток не сходится"]
+
+
+class TestDateTags:
+    def test_tags_for_a_date_in_several_sheets(self, superuser_client, url, google, aliases):
+        page = fetch(superuser_client, url)
+
+        january = dict(page.context["date_months"])["Январь 2026"]
+        both = next(choice for choice in january if choice.short == "18.01")
+        assert (both.tags, both.spoken) == (["Т", "К"], "18.01.2026, ТУР2026_new, КЭШ2026")
+        assert [choice.tags for choice in january if choice.short == "25.01"] == [[]]
+        assert 'aria-label="18.01.2026, ТУР2026_new, КЭШ2026"' in page.text
+        assert 'aria-label="25.01.2026"' in page.text
+
+    def test_no_tags_with_one_sheet(self, superuser_client, url, google, aliases):
+        snapshot_pk = fetch(superuser_client, url).context["snapshot"].pk
+
+        page = recount(superuser_client, url, snapshot_pk, ["КЭШ2026"], [])
+
+        months = page.context["date_months"]
+        assert [choice.tags for _, dates in months for choice in dates] == [[], []]
+        assert "sync-tags" not in page.text
+
+
+def test_digest_ignores_display_fields(workbook_bytes, aliases):
+    report = run_import(workbook_bytes, dry_run=True)
+    digest = report.digest()
+
+    for sheet in report.sheets:
+        sheet.created_games = []
+        for change in sheet.changes + sheet.place_changes:
+            change.name, change.nickname = "Другое Имя", "другой ник"
+
+    assert report.digest() == digest

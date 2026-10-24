@@ -24,6 +24,18 @@ LIVE_IN_PROGRESS = "live in progress"
 # Result changes (ResultChange.action).
 CREATED, UPDATED, DELETED = "created", "updated", "deleted"
 
+# Counters that mean the import writes something (ImportReport.has_changes).
+CHANGE_COUNTS = (
+    "seasons created",
+    "games created",
+    "results created",
+    "results updated",
+    "results deleted",
+)
+# Fields kept for display only: the digest is built without them, so it fingerprints the same
+# changes whatever way the page shows the player.
+DISPLAY_FIELDS = ("name", "nickname")
+
 
 @dataclass
 class ResultChange:
@@ -33,6 +45,8 @@ class ResultChange:
     player: str
     action: str
     diff: dict[str, tuple[int, int]] = field(default_factory=dict)  # field -> (old, new)
+    name: str = ""  # the player's name and nickname apart, for display
+    nickname: str = ""
 
 
 @dataclass
@@ -43,6 +57,8 @@ class PlaceChange:
     player: str
     old: int | None
     new: int | None
+    name: str = ""
+    nickname: str = ""
 
 
 @dataclass
@@ -52,6 +68,7 @@ class SheetReport:
     year: int
     start_letter: str
     games: int  # date columns with results
+    created_games: list[datetime.date] = field(default_factory=list)  # "games created" dates
     date_fixes: list[DateFix] = field(default_factory=list)
     empty_columns: list[str] = field(default_factory=list)
     # The season exists and is not kept in the sheet: nothing of this sheet was imported.
@@ -132,6 +149,17 @@ class ImportReport:
     def totals(self) -> Counter:
         return sum((sheet.counts for sheet in self.sheets), Counter())
 
+    @property
+    def has_changes(self) -> bool:
+        """Whether the import writes anything: an empty one is not applied (sheet sync)."""
+        totals = self.totals()
+        return (
+            any(totals[key] for key in CHANGE_COUNTS)
+            or any(sheet.place_changes for sheet in self.sheets)
+            or bool(self.players_created)
+            or bool(self.upsert and self.upsert.players_created)
+        )
+
     def digest(self) -> str:
         """Fingerprint of every change; equal digests mean the same import (sheet sync apply)."""
         data = {
@@ -145,8 +173,8 @@ class ImportReport:
                     "refused": sheet.refused,
                     "skipped": sorted(sheet.skipped_games.items()),
                     "counts": sorted(sheet.counts.items()),
-                    "changes": [asdict(change) for change in sheet.changes],
-                    "places": [asdict(change) for change in sheet.place_changes],
+                    "changes": [_fingerprint(change) for change in sheet.changes],
+                    "places": [_fingerprint(change) for change in sheet.place_changes],
                     "db_only": sheet.db_only_games,
                     "not_selected": sheet.not_selected,
                     "nothing_selected": sheet.nothing_selected,
@@ -156,3 +184,7 @@ class ImportReport:
         }
         encoded = json.dumps(data, default=str, ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _fingerprint(change: ResultChange | PlaceChange) -> dict:
+    return {key: value for key, value in asdict(change).items() if key not in DISPLAY_FIELDS}

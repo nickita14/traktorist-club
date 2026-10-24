@@ -256,6 +256,7 @@ def _sync_sheet(plan: SheetPlan, player_by_row: dict[RowKey, Player]):
             game.full_clean()
             game.save()
             changes.counts["games created"] += 1
+            changes.created_games.append(column.date)
         else:
             changes.counts["games unchanged"] += 1
         _sync_results(game, season, entries_by_date[column.date], changes)
@@ -283,7 +284,7 @@ def _sync_results(game: Game, season: Season, entries: dict, changes: SheetRepor
             result.full_clean()
             result.save()
             changes.counts["results created"] += 1
-            changes.changes.append(ResultChange(game.date, str(player), CREATED))
+            changes.changes.append(ResultChange(game.date, str(player), CREATED, **_names(player)))
             continue
         diff = {
             name: (getattr(result, name), value)
@@ -300,14 +301,24 @@ def _sync_results(game: Game, season: Season, entries: dict, changes: SheetRepor
         changes.counts["results updated"] += 1
         if "place" in diff:
             old, new = diff.pop("place")
-            changes.place_changes.append(PlaceChange(game.date, str(player), old, new))
+            changes.place_changes.append(
+                PlaceChange(game.date, str(player), old, new, **_names(player))
+            )
         if diff:
-            changes.changes.append(ResultChange(game.date, str(player), UPDATED, diff))
+            changes.changes.append(
+                ResultChange(game.date, str(player), UPDATED, diff, **_names(player))
+            )
 
     for result in existing.values():
-        changes.changes.append(ResultChange(game.date, str(result.player), DELETED))
+        changes.changes.append(
+            ResultChange(game.date, str(result.player), DELETED, **_names(result.player))
+        )
         result.delete()
         changes.counts["results deleted"] += 1
+
+
+def _names(player: Player) -> dict[str, str]:
+    return {"name": player.name, "nickname": player.nickname}
 
 
 def _backfilled_place(result: Result, suggested: int | None, season: Season) -> bool:

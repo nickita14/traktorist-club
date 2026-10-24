@@ -8,6 +8,7 @@ Every difference gets one label:
 - "MISMATCH": anything else.
 """
 
+import datetime
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
@@ -40,9 +41,26 @@ class Finding:
     ours: int
     sheet: int
     label: str
+    name: str = ""  # the player's name and nickname apart, for display
+    nickname: str = ""
 
     def __str__(self) -> str:
         return f"{self.player}: {self.header} ours {self.ours}, sheet {self.sheet}"
+
+
+@dataclass
+class Leftover:
+    """A game whose buy-ins and payouts do not add up (club.stats.LEFTOVER_MISMATCH)."""
+
+    date: datetime.date
+    kind: str  # SeasonKind
+    buyin_total: int
+    payout_total: int
+    leftover: int  # buy-ins minus payouts
+    warning: str  # club.stats.leftover_warning
+
+    def __str__(self) -> str:
+        return f"{self.date:%d.%m.%Y}: {self.warning}"
 
 
 @dataclass
@@ -51,7 +69,7 @@ class SeasonReport:
     checked: int = 0
     ok: int = 0
     findings: list[Finding] = field(default_factory=list)
-    leftover_games: list[str] = field(default_factory=list)
+    leftover_games: list[Leftover] = field(default_factory=list)
 
     def count(self, label: str) -> int:
         return sum(1 for finding in self.findings if finding.label == label)
@@ -104,13 +122,24 @@ def _verify_sheet(sheet: ParsedSheet, result: ImportResult) -> SeasonReport:
             if cached == ours:
                 continue
             label = _label(key, ours, cached, rows, sheet_places[player.pk], player.pk in tied)
-            findings.append(Finding(str(player), header, ours, cached, label))
+            findings.append(
+                Finding(str(player), header, ours, cached, label, player.name, player.nickname)
+            )
         report.findings += findings
         report.ok += not findings
 
     games = annotate_leftover_check(Game.objects.filter(season=season).select_related("season"))
     for game in games.filter(leftover_mismatch=True).order_by("date"):
-        report.leftover_games.append(f"{game.date:%d.%m.%Y}: {leftover_warning(game)}")
+        report.leftover_games.append(
+            Leftover(
+                game.date,
+                game.season.kind,
+                game.buyin_total,
+                game.payout_total,
+                game.leftover,
+                leftover_warning(game),
+            )
+        )
     return report
 
 
