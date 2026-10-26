@@ -245,13 +245,9 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       - name: Install Chromium
-        if: steps.chromium-cache.outputs.cache-hit != 'true'
-        run: uv run playwright install --with-deps chromium
-
-      - name: Install Chromium's system libraries
-        # The browser comes from the cache; its apt packages do not.
-        if: steps.chromium-cache.outputs.cache-hit == 'true'
-        run: uv run playwright install-deps chromium
+        # A no-op on a cache hit, a repair on a stale cache. The runner image already has Chromium's
+        # system libraries; if Chromium ever fails to launch with a missing .so, bring install-deps back.
+        run: uv run playwright install chromium
 
       - name: Run pytest
         env:
