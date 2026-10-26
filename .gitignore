@@ -247,3 +247,6 @@ claude/
 
 # Playwright traces and screenshots of failed browser tests
 test-results/
+
+# Claude Code personal settings
+.claude/settings.local.json

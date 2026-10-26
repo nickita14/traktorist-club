@@ -33,7 +33,8 @@ Newest first. Dates are local (Europe/Chisinau), from the merge commits. Dependa
 
 | Item | Branch | Merged | PR |
 | --- | --- | --- | --- |
-| One tracked backlog (this file) | `backlog` | | |
+| Stop tracking local Claude Code settings; deny git writes in `.claude/settings.json` | `claude-settings` | | |
+| One tracked backlog (this file) | `backlog` | 2026-10-27 | #40 |
 | Group codeql-action updates in Dependabot | `dependabot-codeql-group` | 2026-10-27 | #37 |
 | Faster browser CI job (no apt installs for Chromium) | `ci-browser-speed` | 2026-10-27 | #36 |
 | Skip the test jobs on pull requests that cannot affect them (`changes` job) | `ci-path-filter` | 2026-10-27 | #35 |
