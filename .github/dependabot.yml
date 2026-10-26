@@ -14,6 +14,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    # CodeQL refuses mixed versions of its sub-actions in one workflow, so they move together.
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
   # Version pins in the Dockerfile (uv image). python:3.13-slim, postgres:17 and caddy:2-alpine
   # follow their tags: deploy/server-deploy.sh pulls them on every deploy.
   - package-ecosystem: "docker"
