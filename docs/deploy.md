@@ -845,7 +845,7 @@ shred -u ~/.config/traktorist/ci_key
 ### 12.6 Turn it on
 
 Merge the pull request that adds the `deploy` job to `ci.yml`. Its own merge into `main` is the first automatic deploy. In the repository's **Actions** tab, that run shows:
-1. `lint`, `unit`, `browser`, `security`, `image` and `sonar` (`image-scan` and CodeQL run in their own workflows).
+1. `changes`, `lint`, `unit`, `browser`, `security`, `image` and `sonar` (`image-scan` and CodeQL run in their own workflows).
 2. Then `deploy`, in the `production` environment. Its log shows:
    - `==> At <sha> <subject>` for the commit the merge put on `main`
    - the build
@@ -885,3 +885,18 @@ Then delete the secret. **Local:** `gh secret delete DEPLOY_SSH_KEY --env produc
 4. **Server:** remove the old line by its comment: `sed -i '/ traktorist-ci-2026-09$/d' ~/.ssh/authorized_keys` (with the old month).
 
 **New server or new host key** (section 7.4): repeat 12.3 to 12.5 on the new server. The old `DEPLOY_KNOWN_HOSTS` then fails with "Host key verification failed", which is the pinning doing its job.
+
+### 12.8 Pull requests that skip the tests
+
+On a pull request, the first job, `changes`, decides whether `unit` and `browser` run. It lists the changed files (`git diff --name-only` from the base commit) and says "skip" only when every one of them is on this allowlist:
+
+- `Dockerfile`, `.dockerignore` (the `image` job still builds and checks them)
+- `compose.prod.yaml`
+- `docs/**`, `README.md`
+- `.github/dependabot.yml` (zizmor in `security` still checks it)
+
+No test, conftest or test job reads these files. `deploy/` is not on the list: `deploy/tests/` runs `deploy/ci-deploy.sh`. `.github/workflows/` never goes on it. A rename lists both paths, so moving a file out of `src/` into `docs/` still runs the tests. Whenever the job is unsure (no base commit, a fetch or diff error, an empty list), the tests run, and the log says why. The log also lists the changed files and the decision.
+
+Skipped jobs still report: `unit` and `browser` show "skipped", which counts as passing, so the merge button turns green. `sonar` is skipped with them: it analyzes only `src/`, which such a pull request does not touch. `lint`, `security` and `image` always run. Pushes to `main` always run everything, so the `deploy` job waits for the same tested jobs as before.
+
+Because a skipped check passes, a broken `changes` job would let a pull request merge untested. **GitHub:** add `changes` to the required status checks of the `main` ruleset (**Settings > Rules > Rulesets > main**), next to `lint`, `unit`, `browser`, `security` and `image`.

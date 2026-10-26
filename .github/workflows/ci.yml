@@ -1,8 +1,8 @@
 name: CI
 
 # Independent jobs, one kind of problem each. Required for merging and deploying: lint, unit,
-# browser, security, image. Advisory: sonar here, image-scan (image-scan.yml) and CodeQL
-# (codeql.yml).
+# browser, security, image (and changes for merging, which decides whether unit and browser run).
+# Advisory: sonar here, image-scan (image-scan.yml) and CodeQL (codeql.yml).
 
 on:
   push:
@@ -19,6 +19,58 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    # Whether the test jobs (unit, browser) must run. Always on pushes; on a pull request, false
+    # only when every changed file is on the allowlist below: files that no test, conftest or test
+    # job reads (deploy/ is not: deploy/tests/ runs deploy/ci-deploy.sh). Any doubt (no base
+    # commit, fetch or diff error, empty list) means true. A skipped required check counts as
+    # passed, so this job must be required too. docs/deploy.md, section 12.8.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tests: ${{ steps.decide.outputs.tests }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+
+      - name: Decide
+        id: decide
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          decide() {
+            echo "tests=$1" >> "$GITHUB_OUTPUT"
+            echo "Run the tests: $1 ($2)"
+            exit 0
+          }
+          if [[ $GITHUB_EVENT_NAME != pull_request ]]; then
+            decide true "$GITHUB_EVENT_NAME, not a pull request"
+          fi
+          if [[ ! $BASE_SHA =~ ^[0-9a-f]{40}$ ]]; then
+            decide true "no base commit in the event"
+          fi
+          if ! git fetch --no-tags --depth=1 origin "$BASE_SHA"; then
+            decide true "could not fetch the base commit"
+          fi
+          # --no-renames: a move lists both paths, so src/x.py -> docs/x.py is not docs only.
+          if ! files=$(git diff --no-renames --name-only "$BASE_SHA" HEAD); then
+            decide true "git diff failed"
+          fi
+          if [[ -z $files ]]; then
+            decide true "no changed files"
+          fi
+          echo "Changed files:"
+          printf '%s\n' "$files" | sed 's/^/  /'
+          while IFS= read -r file; do
+            case $file in
+              Dockerfile | .dockerignore | compose.prod.yaml | docs/* | README.md | .github/dependabot.yml) ;;
+              *) decide true "$file is not on the allowlist" ;;
+            esac
+          done <<< "$files"
+          decide false "every changed file is on the allowlist"
+
   lint:
     # Ruff and every pre-commit hook (whitespace, YAML/TOML, large files, no em dash, gitleaks on
     # the staged tree). No database, no project dependencies beyond the dev group.
@@ -55,7 +107,10 @@ jobs:
   unit:
     # Every test that does not need Chromium (pytest -m "not browser"), with the compiled
     # messages, and the coverage report the sonar job reads. Both test jobs run in parallel
-    # (pyproject.toml addopts: -n auto --dist load, one worker per vCPU).
+    # (pyproject.toml addopts: -n auto --dist load, one worker per vCPU). Skipped on pull requests
+    # that only touch files the tests never read (changes job).
+    needs: changes
+    if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -134,7 +189,10 @@ jobs:
 
   browser:
     # Every test that uses the browser fixture (pytest -m browser), in headless Chromium against
-    # the built Tailwind CSS. A failure uploads traces and screenshots (conftest.py).
+    # the built Tailwind CSS. A failure uploads traces and screenshots (conftest.py). Skipped
+    # like unit (changes job).
+    needs: changes
+    if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
@@ -309,7 +367,9 @@ jobs:
 
   sonar:
     # Advisory: SonarQube Cloud analysis with the unit job's coverage. Skipped (green, with a
-    # notice) when SONAR_TOKEN is not available: pull requests from forks and Dependabot.
+    # notice) when SONAR_TOKEN is not available: pull requests from forks and Dependabot. Skipped
+    # with unit (a job whose need is skipped is skipped): such a pull request touches nothing in
+    # src/, the only code Sonar analyzes, and without coverage it would report a misleading 0%.
     needs: unit
     runs-on: ubuntu-24.04
     timeout-minutes: 15
