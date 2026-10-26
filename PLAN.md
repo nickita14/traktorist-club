@@ -1,5 +1,7 @@
 # PLAN.md
 
+Work after the stages below is tracked in `docs/backlog.md`; the stages stay here as history.
+
 Roadmap. Work one stage at a time, in order. Each stage ends with passing tests, ruff clean, and ticked checkboxes. Rules and domain definitions are in `CLAUDE.md`.
 
 ## Stage 1. Skeleton
