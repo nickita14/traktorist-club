@@ -54,7 +54,8 @@ jobs:
 
   unit:
     # Every test that does not need Chromium (pytest -m "not browser"), with the compiled
-    # messages, and the coverage report the sonar job reads.
+    # messages, and the coverage report the sonar job reads. Both test jobs run in parallel
+    # (pyproject.toml addopts: -n auto --dist load, one worker per vCPU).
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -101,7 +102,7 @@ jobs:
         # conftest.py marks every test that uses the browser fixture; this job and the browser
         # job must split the suite without losing a test.
         run: |
-          collected() { uv run pytest --collect-only -q -p no:warnings "$@" | grep -c '::'; }
+          collected() { uv run pytest --collect-only -q -p no:warnings -n 0 "$@" | grep -c '::'; }
           all=$(collected)
           unit=$(collected -m "not browser")
           browser=$(collected -m browser)
@@ -118,7 +119,10 @@ jobs:
         run: uv run coverage run -m pytest -v -m "not browser"
 
       - name: Coverage report
-        run: uv run coverage xml
+        # One data file per xdist worker (pyproject.toml: patch = ["subprocess"]).
+        run: |
+          uv run coverage combine
+          uv run coverage xml
 
       - name: Upload the coverage report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

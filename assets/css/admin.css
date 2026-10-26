@@ -75,39 +75,59 @@ td.field-kind select {
   color: var(--ink);
 }
 
-/* The sheet sync page (templates/importer/sync.html): a report in ruled sections, no cards. */
+/* Checkboxes and radios in ink, never the browser's default blue or Unfold's primary. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--ink);
+}
+
+/* A zero count or a missing value: the faint middle dot of {% count_value %} / {% no_value %}. */
+.val-zero {
+  color: var(--faint);
+}
+
+/* The sheet sync page (templates/importer/sync.html): a document read top to bottom, ruled
+   like the ledger. The summary carries the decision; sections follow only where something
+   happens. */
 .sheet-sync {
-  max-width: 60rem;
-}
-
-.sheet-sync h1.sync-title {
-  font-size: 1.75rem;
-  margin-bottom: 1rem;
-}
-
-.sheet-sync h2 {
-  border-bottom: 3px double var(--rule);
-  font-family: var(--font-stack-head);
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin: 1.5rem 0 0.75rem;
-  padding-bottom: 0.25rem;
-}
-
-.sheet-sync h3 {
-  font-family: var(--font-stack-head);
-  font-size: 1.05rem;
-  font-weight: 700;
-  margin: 1rem 0 0.25rem;
+  max-width: 72rem;
 }
 
 .sheet-sync p {
   margin: 0.25rem 0;
 }
 
+/* Figures inside a text line (|figures): the number face, words keep the UI face. */
+.sheet-sync .num-run {
+  font-family: var(--font-stack-num);
+  font-style: normal;
+  word-spacing: var(--number-word-spacing);
+}
+
+.sync-head {
+  align-items: flex-start;
+  border-bottom: 3px double var(--ink);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  justify-content: space-between;
+  padding-bottom: 0.75rem;
+}
+
+.sheet-sync h1.sync-title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
 .sync-note,
 .sync-meta {
   color: var(--muted);
+}
+
+.sync-meta {
+  margin-top: 0.25rem;
+  max-width: 48rem;
 }
 
 .sync-warning {
@@ -119,17 +139,206 @@ td.field-kind select {
   margin: 0.25rem 0 0.5rem 1.25rem;
 }
 
-.sync-actions {
+/* Selection form: sheets on one line, the dates in a <details>, "Пересчитать". */
+.sync-select {
+  align-items: center;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  padding: 0.75rem 0;
+}
+
+.sync-sheets {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.25rem 1.25rem;
+}
+
+/* A legend does not join the flex row, so it floats in it. */
+.sync-sheets legend.sync-label {
+  float: left;
+  margin-right: 0.25rem;
+}
+
+.sync-label {
+  color: var(--muted);
+  font-family: var(--font-stack-head);
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sync-check,
+.sync-date {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.35rem;
+  min-height: 2rem;
+}
+
+.sync-dates {
+  flex-basis: 100%;
+  order: 1;
+}
+
+.sync-dates > summary {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+  list-style: none;
+}
+
+.sync-dates > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sync-dates > summary::before {
+  content: "▸";
+  margin-right: -0.6rem;
+  width: 1rem;
+}
+
+.sync-dates[open] > summary::before {
+  content: "▾";
+}
+
+.sync-hint {
+  color: var(--muted);
+}
+
+.sync-months {
+  margin-top: 0.5rem;
+}
+
+.sheet-sync .sync-months th.sync-month {
+  color: var(--muted);
+  font-family: var(--font-stack-head);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  padding-right: 1.5rem;
+  line-height: 2rem;
+  text-transform: uppercase;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.sync-day-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+}
+
+.sync-date:has(:checked) {
+  font-weight: 700;
+}
+
+.sync-tags {
+  color: var(--muted);
+  font-family: var(--font-stack-head);
+  font-weight: 400;
+}
+
+/* The decision: scope, the figures, what is left alone, warnings, "Применить". */
+.sync-summary {
+  border-bottom: 3px double var(--ink);
+  padding: 1rem 0;
+}
+
+.sheet-sync h2 {
+  font-family: var(--font-stack-head);
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sync-summary > h2 {
+  margin-bottom: 0.5rem;
+}
+
+.sync-strip {
+  border-bottom: 1px solid var(--rule);
+  border-top: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0.75rem 0;
 }
 
+.sync-strip > div {
+  border-left: 1px solid var(--rule);
+  padding: 0.5rem 0.75rem;
+}
+
+.sync-strip > div:nth-child(odd) {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.sync-strip dt {
+  color: var(--muted);
+  font-family: var(--font-stack-head);
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sync-strip dd {
+  font-size: 1.625rem;
+  line-height: 1.2;
+}
+
+@media (min-width: 40rem) {
+  .sync-strip {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .sync-strip > div:nth-child(odd) {
+    border-left: 1px solid var(--rule);
+    padding-left: 0.75rem;
+  }
+
+  .sync-strip > div:first-child {
+    border-left: 0;
+    padding-left: 0;
+  }
+}
+
+.sync-alert {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.sync-square {
+  background: var(--accent);
+  flex: none;
+  height: 0.5rem;
+  width: 0.5rem;
+}
+
+.sync-alert a,
+.sync-scope a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 2px;
+}
+
 .sync-apply {
-  border-top: 3px double var(--rule);
-  margin-top: 1.5rem;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 1rem;
+}
+
+.sync-bottom {
+  border-top: 3px double var(--ink);
+  margin-top: 2rem;
   padding-top: 1rem;
 }
 
@@ -140,8 +349,8 @@ td.field-kind select {
   color: var(--ink);
   cursor: pointer;
   font-weight: 700;
-  min-height: 2.5rem;
-  padding: 0.5rem 1rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 1.25rem;
 }
 
 .sync-button-primary {
@@ -151,60 +360,45 @@ td.field-kind select {
 
 .sync-button:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
-.sync-sheets {
-  margin: 0.75rem 0;
+/* One sheet: h2 with its counts on the right, then the tables. */
+.sync-sheet {
+  margin-top: 2rem;
 }
 
-.sync-sheets fieldset {
+.sync-section-head {
+  align-items: baseline;
+  border-bottom: 3px double var(--ink);
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 1.25rem;
-  margin-bottom: 0.5rem;
+  gap: 0.25rem 1.5rem;
+  justify-content: space-between;
+  padding-bottom: 0.25rem;
 }
 
-.sync-sheets legend {
+.sheet-sync h3 {
+  font-family: var(--font-stack-head);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  margin: 1.25rem 0 0.25rem;
+}
+
+.sheet-sync h3 .sync-note {
+  font-weight: 400;
+}
+
+.sync-nick {
   color: var(--muted);
-  margin-bottom: 0.25rem;
 }
 
-.sync-check {
-  align-items: center;
-  display: inline-flex;
-  gap: 0.35rem;
-}
-
-.sync-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0;
-  margin: 0.5rem 0;
-}
-
-.sync-counts > div {
-  border-left: 1px solid var(--rule);
-  padding: 0.25rem 0.75rem;
-}
-
-.sync-counts > div:first-child {
-  border-left: 0;
-  padding-left: 0;
-}
-
-.sync-counts dt {
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
-.sync-counts dd {
-  font-size: 1.1rem;
-}
-
+/* Positioned, so the absolute .sr-only labels of far cells are clipped with the table instead
+   of widening the page (as .ledger-scroll on public pages). */
 .sync-scroll {
   max-width: 100%;
   overflow-x: auto;
+  position: relative;
 }
 
 .sync-table {
@@ -212,18 +406,68 @@ td.field-kind select {
   margin: 0.25rem 0 0.5rem;
 }
 
+.sheet-sync .sync-table thead th {
+  border-bottom: 1px solid var(--ink);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
 .sync-table th,
 .sync-table td {
   border-bottom: 1px solid var(--rule);
-  padding: 0.25rem 0.75rem 0.25rem 0;
+  padding: 0.3rem 1.5rem 0.3rem 0;
   text-align: left;
+  vertical-align: baseline;
+  white-space: nowrap; /* a narrow screen scrolls the table, rows stay one line */
+}
+
+.sync-table th:last-child,
+.sync-table td:last-child {
+  padding-right: 0;
 }
 
 .sync-table .num {
   text-align: right;
 }
 
-.sync-details summary {
+.sync-months th,
+.sync-months td {
+  border-bottom: 0;
+}
+
+.sheet-sync .sync-group th {
+  font-family: var(--font-stack-ui);
+  letter-spacing: 0;
+  padding-top: 0.6rem;
+  text-transform: none;
+}
+
+.sync-group-expected,
+.sync-group-expected .sync-nick {
+  color: var(--muted);
+}
+
+.sync-group-expected .sync-group th {
+  font-style: italic;
+  font-weight: 400;
+}
+
+.sync-group-alert .sync-group th {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.sync-foot {
+  border-top: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+}
+
+.sync-foot summary {
+  color: var(--muted);
   cursor: pointer;
-  margin: 0.75rem 0 0.25rem;
 }

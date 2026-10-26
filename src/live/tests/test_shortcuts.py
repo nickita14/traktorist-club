@@ -52,9 +52,10 @@ def public_urls(season):
     ]
 
 
-def start_live(season, day, kind=SeasonKind.TOUR, minutes_ago=0):
+def start_live(season, day, kind=SeasonKind.TOUR, minutes_ago=0, stage=None):
     target = season if kind == SeasonKind.TOUR else Season.objects.get(year=2026, kind=kind)
-    stage = Game.Stage.REBUYS if kind == SeasonKind.TOUR else Game.Stage.CASH
+    if stage is None:
+        stage = Game.Stage.REBUYS if kind == SeasonKind.TOUR else Game.Stage.CASH
     started = timezone.now() - timezone.timedelta(minutes=minutes_ago)
     return make_game(target, day=day, month=9, live_stage=stage, started_at=started)
 
@@ -76,6 +77,9 @@ class TestEveryoneElse:
             assert "Живая игра" not in text and "Админка" not in text
             assert "Идёт турнир" not in text
             assert 'rel="manifest"' not in text
+            if url != reverse("robots_txt"):
+                # The pass to the login is there for anonymous visitors, and still no ADMIN_URL.
+                assert ("site-nav-login" in text) == (who == "anonymous"), url
 
     def test_manifest_is_404(self, client, organizer):
         url = reverse("live:manifest")
@@ -92,7 +96,16 @@ class TestOrganizers:
         assert f'<a href="{reverse("live:index")}">Живая игра</a>' in text
         assert f'<a href="{reverse("admin:index")}">Админка</a>' in text
         assert text.index("Игроки</a>") < text.index("Живая игра")
+        assert "site-nav-login" not in text and "Проходная</a>" not in text
         assert f'<link rel="manifest" href="{reverse("live:manifest")}">' in text
+
+    def test_strip_for_a_game_still_collecting(self, client, season, organizer):
+        game = start_live(season, day=28, stage=Game.Stage.COLLECT)
+
+        text = organizer_client(client, organizer).get(reverse("all_time")).text
+
+        assert text.count('class="live-strip"') == 1
+        assert f'href="{reverse("live:board", args=[game.pk])}"' in text
 
     def test_no_strip_without_live_games(self, client, season, organizer):
         text = organizer_client(client, organizer).get(reverse("all_time")).text

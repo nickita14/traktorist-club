@@ -1,9 +1,11 @@
+import datetime
+
 import pytest
 from django.contrib.auth.models import Group
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
-from club.models import AchievementSettings, RankLadder
+from club.models import AchievementSettings, RankLadder, RankStep
 
 pytestmark = pytest.mark.django_db
 
@@ -48,7 +50,10 @@ def test_organizer_group_has_exact_permissions():
 
 def test_seeded_achievement_rules():
     ladders = {
-        ladder.code: (ladder.title, list(ladder.steps.values_list("threshold", "title")))
+        ladder.code: (
+            ladder.title,
+            list(RankStep.objects.filter(ladder=ladder).values_list("threshold", "title")),
+        )
         for ladder in RankLadder.objects.all()
     }
     assert ladders["veteran"] == (
@@ -83,8 +88,9 @@ def test_seeded_achievement_rules():
 
 # Rolling a migration back needs real transactions, so the database is flushed afterwards and the
 # seeded rows (the Organizer group, the rules) are gone. pytest-django runs transactional tests
-# after all the others, so no test that reads the seed comes later; the achievement tests create
-# their own rules. (serialized_rollback would clash with the content types that post_migrate
+# after all the others, so no test that reads the seed comes later (in each xdist worker too, with
+# --dist load; conftest.py fails a test that would); the achievement tests create their own
+# rules. (serialized_rollback would clash with the content types that post_migrate
 # recreates after another transactional test's flush.)
 @pytest.mark.django_db(transaction=True)
 def test_achievement_rules_migration_forward_and_backward():
@@ -136,6 +142,70 @@ def test_existing_seasons_become_sheet_managed():
         assert list(apps.get_model("club", "Season").objects.values_list("sheet_managed")) == [
             (True,)
         ]
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_existing_results_become_paid():
+    before = ("club", "0012_season_sheet_managed")
+    after = ("club", "0013_lineup_entry_paid")
+
+    def migrate(target):
+        executor = MigrationExecutor(connection)
+        executor.migrate([target])
+        executor.loader.build_graph()
+        return executor.loader.project_state([target]).apps
+
+    try:
+        apps = migrate(before)
+        season = apps.get_model("club", "Season").objects.create(year=2025, kind="tour")
+        game = apps.get_model("club", "Game").objects.create(
+            season=season, date=datetime.date(2025, 3, 14)
+        )
+        player = apps.get_model("club", "Player").objects.create(name="Альфа", slug="alfa")
+        apps.get_model("club", "Result").objects.create(game=game, player=player, buyin=50)
+
+        apps = migrate(after)
+        assert list(apps.get_model("club", "Result").objects.values_list("entry_paid")) == [(True,)]
+        # The longer stage names fit and pass the check constraint.
+        games = apps.get_model("club", "Game").objects
+        games.filter(pk=game.pk).update(
+            live_stage="collect", started_at=datetime.datetime.now(datetime.UTC)
+        )
+        assert games.get(pk=game.pk).live_stage == "collect"
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rows_inserted_without_entry_paid_are_paid():
+    # The previous image (after a rollback) does not know entry_paid: its INSERT leaves it out,
+    # so the column must keep its database default.
+    after = ("club", "0013_lineup_entry_paid")
+
+    def migrate(target):
+        executor = MigrationExecutor(connection)
+        executor.migrate([target])
+        executor.loader.build_graph()
+        return executor.loader.project_state([target]).apps
+
+    try:
+        apps = migrate(after)
+        season = apps.get_model("club", "Season").objects.create(year=2025, kind="tour")
+        game = apps.get_model("club", "Game").objects.create(
+            season=season, date=datetime.date(2025, 3, 14)
+        )
+        player = apps.get_model("club", "Player").objects.create(name="Альфа", slug="alfa")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO club_result (game_id, player_id, buyin, payout)"
+                " VALUES (%s, %s, 50, 0) RETURNING entry_paid",
+                [game.pk, player.pk],
+            )
+            assert cursor.fetchone() == (True,)
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())

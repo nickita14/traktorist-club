@@ -10,6 +10,9 @@ from club.models import LevelFields
 
 class ActionKind(models.TextChoices):
     SEAT = "seat", "за стол"
+    UNSEAT = "unseat", "не садился"
+    PAID_ON = "paid_on", "вход принят"
+    PAID_OFF = "paid_off", "вход: отметка снята"
     REBUY = "rebuy", "ребай"
     ADDON_ON = "addon_on", "аддон"
     ADDON_OFF = "addon_off", "аддон снят"
@@ -48,9 +51,13 @@ TIMER_KINDS = {
 }
 
 
-# Undo restores a result row (or deletes a seated one) or the game's stage; the rest is final.
+# Undo restores a result row (deletes a seated one, recreates an unseated one) or the game's
+# stage; the rest is final.
 UNDOABLE = {
     ActionKind.SEAT,
+    ActionKind.UNSEAT,
+    ActionKind.PAID_ON,
+    ActionKind.PAID_OFF,
     ActionKind.REBUY,
     ActionKind.ADDON_ON,
     ActionKind.ADDON_OFF,

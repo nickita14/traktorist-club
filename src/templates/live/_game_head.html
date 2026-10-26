@@ -1,0 +1,5 @@
+{# The game's heading on the steps before play: season, weekday, date and place; then its number. #}
+<div class="mt-3">
+  <p class="live-label">{% if season.kind == "cash" %}Кэш{% else %}Турниры{% endif %} <span class="font-num">{{ season.year }}</span> · {{ game.date|date:"D" }}, <span class="font-num">{{ game.date|date:"d.m.Y" }}</span>{% if game.location %} · {{ game.location }}{% endif %}</p>
+  <h1 class="live-title mt-0">{% if season.kind == "cash" %}Вечер{% else %}Турнир{% endif %} № <span class="font-num">{{ number }}</span></h1>
+</div>

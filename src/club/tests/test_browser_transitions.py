@@ -8,7 +8,7 @@ from django.urls import reverse
 
 from club.models import SeasonKind
 from club.tests.factories import make_game, make_player, make_result, make_season
-from conftest import COLLECT_CSP_VIOLATIONS
+from conftest import COLLECT_CSP_VIOLATIONS, COUNT_POLLS
 from live.tests.conftest import live_game, seat
 
 sync_api = pytest.importorskip("playwright.sync_api")
@@ -49,7 +49,9 @@ VIEW_TRANSITION_RULES = """() => {
 
 
 def test_css_declares_the_transitions(browser):
-    css = open(finders.find(settings.TAILWIND_CLI_DIST_CSS)).read()
+    css_path = finders.find(settings.TAILWIND_CLI_DIST_CSS)
+    assert isinstance(css_path, str)
+    css = open(css_path).read()
     page = browser.new_page()
     page.set_content(f"<style>{css}</style>")
 
@@ -86,6 +88,7 @@ def open_page(browser, live_server):
         context.add_init_script(COLLECT_CSP_VIOLATIONS)
         context.add_init_script(RECORD_REVEAL)
         context.add_init_script(COUNT_TRANSITIONS)
+        context.add_init_script(COUNT_POLLS)
         page = context.new_page()
         page.goto(live_server.url + path)
         return page
@@ -127,7 +130,7 @@ def test_board_buttons_fade_but_polling_does_not(open_page, admin_user, client, 
         reverse("live:board", args=[game.pk]), session=client.cookies["sessionid"].value
     )
 
-    page.wait_for_timeout(2500)  # at least one poll
+    page.wait_for_function("() => window.pollSwaps >= 1")  # a function: CSP forbids eval
     assert page.evaluate("window.transitions") == 0
 
     page.get_by_label("Ребай: Альфа").click()

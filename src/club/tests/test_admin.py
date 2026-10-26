@@ -68,7 +68,11 @@ def inline_data(game, row_overrides=None):
             "chips_out": "" if result.chips_out is None else result.chips_out,
             "rebuys": "" if result.rebuys is None else result.rebuys,
             "addon": {None: "unknown", True: "true", False: "false"}[result.addon],
-        } | (row_overrides or {}).get(i, {})
+        }
+        # An unchecked checkbox is simply missing from the POST.
+        if result.entry_paid:
+            row["entry_paid"] = "on"
+        row |= (row_overrides or {}).get(i, {})
         data |= {f"results-{i}-{key}": value for key, value in row.items()}
     return data
 
@@ -315,6 +319,26 @@ class TestSheetManaged:
         assert "ведётся в таблице" in response.text.lower()
 
 
+class TestSeasonYear:
+    def test_year_of_a_season_with_games_cannot_change(self, admin_client):
+        season = make_season(2025, SeasonKind.CASH)
+        make_game(season)
+        url = reverse("admin:club_season_change", args=[season.pk])
+        form = admin_client.get(url).context["adminform"].form
+        data = {
+            name: value
+            for name, value in form.initial.items()
+            if value is not None and name in form.fields
+        }
+
+        response = admin_client.post(url, data | {"year": 2026})
+
+        assert response.status_code == 200
+        assert "В сезоне есть игры другого года" in response.text
+        season.refresh_from_db()
+        assert season.year == 2025
+
+
 def inline_form_fields(response):
     formset = response.context["inline_admin_formsets"][0].formset
     return set(formset.empty_form.fields)
@@ -438,6 +462,43 @@ class TestGameLiveFields:
         assert response.status_code == 302
         game.refresh_from_db()
         assert game.live_stage == ""
+
+
+class TestEntryPaid:
+    @pytest.fixture
+    def games(self, cash_game):
+        unpaid = make_game(make_season(2025, SeasonKind.TOUR), day=15, month=3)
+        make_result(unpaid, make_player("Дельта"), buyin=50, payout=50, place=1)
+        make_result(unpaid, make_player("Эхо"), buyin=50, entry_paid=False)
+        return cash_game, unpaid
+
+    @pytest.mark.parametrize(("value", "expected"), [("yes", "unpaid"), ("no", "settled")])
+    def test_filter(self, admin_client, games, value, expected):
+        settled, unpaid = games
+        response = admin_client.get(reverse("admin:club_game_changelist"), {"entry_unpaid": value})
+        shown = {game.pk for game in response.context["cl"].result_list}
+        assert shown == {"unpaid": {unpaid.pk}, "settled": {settled.pk}}[expected]
+
+    def test_filter_is_offered(self, admin_client, games):
+        response = admin_client.get(reverse("admin:club_game_changelist"))
+        assert "вход не сдан" in response.text
+
+    def test_editable_in_the_inline(self, admin_client, games):
+        _, unpaid = games
+        assert "entry_paid" in inline_form_fields(
+            admin_client.get(reverse("admin:club_game_change", args=[unpaid.pk]))
+        )
+        data = inline_data(unpaid)
+        data["results-1-entry_paid"] = "on"
+
+        response = admin_client.post(reverse("admin:club_game_change", args=[unpaid.pk]), data)
+
+        assert response.status_code == 302
+        assert all(unpaid.results.values_list("entry_paid", flat=True))
+
+    def test_new_rows_are_settled(self, games):
+        settled, _ = games
+        assert all(settled.results.values_list("entry_paid", flat=True))
 
 
 class TestLeftoverWarning:

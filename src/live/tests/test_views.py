@@ -312,8 +312,8 @@ class TestStart:
         season = make_season(2026, SeasonKind.TOUR)
         response = self.post(org, season=str(season.pk))
         game = Game.objects.get()
-        assert response["Location"] == reverse("live:seating", args=[game.pk])
-        assert (game.season, game.live_stage, game.location) == (season, "rebuys", "Гараж")
+        assert response["Location"] == reverse("live:board", args=[game.pk])
+        assert (game.season, game.live_stage, game.location) == (season, "lineup", "Гараж")
 
     def test_start_in_a_new_season(self, org, settings):
         make_season(2025, SeasonKind.CASH, chips_per_lei=10, cash_step=20)
@@ -372,12 +372,24 @@ class TestSeating:
         assert response.text.lstrip().startswith('<div id="player-list">')
         assert [p.name for p in response.context["candidates"]] == ["Дмитрий"]
 
+    def test_search_in_any_alphabet_keeps_the_order(self, org, tour):
+        game, _ = tour
+        old = make_player("Ion Ceban")
+        make_result(make_game(make_season(2020)), old)
+        recent = make_player("Ионел")
+        make_result(make_game(make_season(2025)), recent)
+        never = make_player("Ionuț")
+        make_player("Ivan")
+        url = reverse("live:seating", args=[game.pk])
+        candidates = list(org.get(url, {"q": "ио"}).context["candidates"])
+        assert candidates == [recent, old, never]
+
     def test_seat_from_the_list(self, org, tour):
         game, _ = tour
         player = make_player("Дельта")
         response = org.post(
             reverse("live:seat", args=[game.pk]),
-            {"key": str(uuid.uuid4()), "player": player.pk, "q": ""},
+            {"key": str(uuid.uuid4()), "player": player.pk, "q": "", "paid": "0"},
             HTTP_HX_REQUEST="true",
             HTTP_HX_TARGET="player-list",
         )
@@ -390,7 +402,7 @@ class TestSeating:
         game, _ = cash
         response = org.post(
             reverse("live:seat_new", args=[game.pk]),
-            {"key": str(uuid.uuid4()), "name": "Евгений", "nickname": "Женя"},
+            {"key": str(uuid.uuid4()), "name": "Евгений", "nickname": "Женя", "paid": "1"},
             HTTP_HX_REQUEST="true",
             HTTP_HX_TARGET="player-list",
         )

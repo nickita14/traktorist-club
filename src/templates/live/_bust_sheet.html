@@ -1,0 +1,20 @@
+{% load ledger live %}
+{# "ВЫБЫЛ" near the money: the place this bust gives, confirmed first. #}
+<div class="sheet-backdrop" data-close-sheet></div>
+<section class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  <p class="sheet-label">Подтвердите выбывание</p>
+  <h2 id="sheet-title" class="sheet-name">{{ result.player.name }}{% if result.player.nickname %} <span class="text-muted">{{ result.player.nickname }}</span>{% endif %}</h2>
+  <div class="bust-place">
+    <span class="bust-place-number">{{ place }}</span>
+    <p>{{ line }}{% if note %}<span class="block text-sm text-muted">{{ note|figures }}</span>{% endif %}</p>
+  </div>
+  <div class="sheet-actions">
+    <button type="button" class="btn" data-close-sheet>Отмена</button>
+    <form class="flex" hx-post="{% url 'live:act' game.pk 'eliminate' %}" hx-target="#board" hx-swap="outerHTML transition:true" hx-disabled-elt="find button">
+      <input type="hidden" name="key" value="{% new_key %}">
+      <input type="hidden" name="result" value="{{ result.pk }}">
+      <input type="hidden" name="place" value="{{ place }}">
+      <button type="submit" class="btn btn-accent-fill w-full"><span>Выбыл · <span class="font-num">{{ place }}</span>-е место</span></button>
+    </form>
+  </div>
+</section>

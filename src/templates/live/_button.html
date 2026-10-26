@@ -3,5 +3,7 @@
 <form hx-post="{% url 'live:act' game.pk action %}" hx-target="#board" hx-swap="outerHTML transition:true" hx-disabled-elt="find button">
   <input type="hidden" name="key" value="{% new_key %}">
   <input type="hidden" name="result" value="{{ result.pk }}">
+  {% if guard_stage %}<input type="hidden" name="stage" value="{{ game.live_stage }}">{% endif %}
+  {% if expect_place %}<input type="hidden" name="place" value="{{ expect_place }}">{% endif %}
   <button type="submit" class="{{ css }}" aria-label="{{ label }}"{% if pressed %} aria-pressed="{{ pressed }}"{% endif %}>{{ prefix }}{{ text }}</button>
 </form>

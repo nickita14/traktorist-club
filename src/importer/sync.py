@@ -9,6 +9,9 @@ rebuys and addon are never touched; games that exist only in the database are ke
 Guards (no override): a season whose ``sheet_managed`` is off is refused as a whole, and inside a
 managed season a game recorded on the live screens (it has LiveAction rows) or still in progress
 (non-empty ``live_stage``) is left as is, whatever the sheet says about that date.
+
+A date selection (``dates``) applies after the guards: the other sheet dates are left as is and
+reported as not selected, and a sheet with no selected date is not touched at all.
 """
 
 import dataclasses
@@ -60,30 +63,40 @@ class ImportResult:
 
 @dataclass
 class SheetPlan:
-    sheet: ParsedSheet  # without the skipped dates
+    sheet: ParsedSheet  # without the skipped and the not selected dates
     season: Season | None
     refused: bool = False
     skipped: dict[datetime.date, str] = field(default_factory=dict)
+    not_selected: list[datetime.date] = field(default_factory=list)
+    # A selection was given and none of it is on this sheet: the sheet is left as is.
+    nothing_selected: bool = False
 
 
-def plan_sheet(sheet: ParsedSheet) -> SheetPlan:
-    """Apply the guards to one sheet before anything is resolved or written."""
+def plan_sheet(sheet: ParsedSheet, dates: set[datetime.date] | None = None) -> SheetPlan:
+    """Apply the guards, then the date selection, to one sheet before anything is written."""
     season = Season.objects.filter(year=sheet.year, kind=sheet.kind).first()
-    if season is None:
-        return SheetPlan(sheet, None)
-    if not season.sheet_managed:
+    if season is not None and not season.sheet_managed:
         return SheetPlan(sheet, season, refused=True)
     sheet_dates = {column.date for column in sheet.games}
-    games = Game.objects.filter(season=season, date__in=sheet_dates).annotate(
-        recorded=Exists(LiveAction.objects.filter(game=OuterRef("pk")))
-    )
     skipped = {}
-    for game in games:
-        if game.live_stage:
-            skipped[game.date] = LIVE_IN_PROGRESS
-        elif game.recorded:
-            skipped[game.date] = LIVE_RECORDED
-    return SheetPlan(_without_dates(sheet, set(skipped)), season, skipped=skipped)
+    if season is not None:
+        games = Game.objects.filter(season=season, date__in=sheet_dates).annotate(
+            recorded=Exists(LiveAction.objects.filter(game=OuterRef("pk")))
+        )
+        for game in games:
+            if game.live_stage:
+                skipped[game.date] = LIVE_IN_PROGRESS
+            elif game.recorded:
+                skipped[game.date] = LIVE_RECORDED
+    not_selected = [] if dates is None else sorted(sheet_dates - dates - set(skipped))
+    synced = _without_dates(sheet, set(skipped) | set(not_selected))
+    return SheetPlan(
+        synced,
+        season,
+        skipped=skipped,
+        not_selected=not_selected,
+        nothing_selected=dates is not None and not synced.games and not skipped,
+    )
 
 
 def _without_dates(sheet: ParsedSheet, dates: set[datetime.date]) -> ParsedSheet:
@@ -167,12 +180,18 @@ def resolve_names(
     return resolved
 
 
-def import_workbook(parsed: ParsedWorkbook, *, create_missing: bool = False) -> ImportResult:
-    """Sync every parsed sheet the guards allow; call inside a transaction (the command does).
+def import_workbook(
+    parsed: ParsedWorkbook,
+    *,
+    create_missing: bool = False,
+    dates: set[datetime.date] | None = None,
+) -> ImportResult:
+    """Sync every parsed sheet the guards allow, only on ``dates`` when given; call inside a
+    transaction (the command does).
 
     Names resolve through the aliases in the database (importer.aliases.DbAliasMap).
     """
-    plans = {sheet.title: plan_sheet(sheet) for sheet in parsed.sheets}
+    plans = {sheet.title: plan_sheet(sheet, dates) for sheet in parsed.sheets}
     synced = [plan.sheet for plan in plans.values() if not plan.refused]
     resolved = resolve_names(synced, DbAliasMap(), create_missing=create_missing)
 
@@ -198,6 +217,15 @@ def import_workbook(parsed: ParsedWorkbook, *, create_missing: bool = False) -> 
         if plan.refused:
             result.sheets.append(dataclasses.replace(SheetReport.of(plan.sheet), refused=True))
             continue
+        if plan.nothing_selected:
+            result.sheets.append(
+                dataclasses.replace(
+                    SheetReport.of(plan.sheet),
+                    not_selected=plan.not_selected,
+                    nothing_selected=True,
+                )
+            )
+            continue
         changes, season = _sync_sheet(plan, result.player_by_row)
         result.sheets.append(changes)
         result.season_by_sheet[plan.sheet.title] = season
@@ -209,6 +237,7 @@ def _sync_sheet(plan: SheetPlan, player_by_row: dict[RowKey, Player]):
     sheet, season = plan.sheet, plan.season
     changes = SheetReport.of(sheet)
     changes.skipped_games = plan.skipped
+    changes.not_selected = plan.not_selected
     if season is None:
         season = Season(year=sheet.year, kind=sheet.kind, sheet_managed=True)
         season.full_clean()
@@ -227,11 +256,12 @@ def _sync_sheet(plan: SheetPlan, player_by_row: dict[RowKey, Player]):
             game.full_clean()
             game.save()
             changes.counts["games created"] += 1
+            changes.created_games.append(column.date)
         else:
             changes.counts["games unchanged"] += 1
         _sync_results(game, season, entries_by_date[column.date], changes)
 
-    sheet_dates = [column.date for column in sheet.games] + list(plan.skipped)
+    sheet_dates = [column.date for column in sheet.games] + list(plan.skipped) + plan.not_selected
     db_only = Game.objects.filter(season=season).exclude(date__in=sheet_dates).order_by("date")
     changes.db_only_games = list(db_only.values_list("date", flat=True))
     return changes, season
@@ -254,7 +284,7 @@ def _sync_results(game: Game, season: Season, entries: dict, changes: SheetRepor
             result.full_clean()
             result.save()
             changes.counts["results created"] += 1
-            changes.changes.append(ResultChange(game.date, str(player), CREATED))
+            changes.changes.append(ResultChange(game.date, str(player), CREATED, **_names(player)))
             continue
         diff = {
             name: (getattr(result, name), value)
@@ -271,14 +301,24 @@ def _sync_results(game: Game, season: Season, entries: dict, changes: SheetRepor
         changes.counts["results updated"] += 1
         if "place" in diff:
             old, new = diff.pop("place")
-            changes.place_changes.append(PlaceChange(game.date, str(player), old, new))
+            changes.place_changes.append(
+                PlaceChange(game.date, str(player), old, new, **_names(player))
+            )
         if diff:
-            changes.changes.append(ResultChange(game.date, str(player), UPDATED, diff))
+            changes.changes.append(
+                ResultChange(game.date, str(player), UPDATED, diff, **_names(player))
+            )
 
     for result in existing.values():
-        changes.changes.append(ResultChange(game.date, str(result.player), DELETED))
+        changes.changes.append(
+            ResultChange(game.date, str(result.player), DELETED, **_names(result.player))
+        )
         result.delete()
         changes.counts["results deleted"] += 1
+
+
+def _names(player: Player) -> dict[str, str]:
+    return {"name": player.name, "nickname": player.nickname}
 
 
 def _backfilled_place(result: Result, suggested: int | None, season: Season) -> bool:

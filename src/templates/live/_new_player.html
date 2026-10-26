@@ -1,7 +1,9 @@
-{# Create a player and seat them at once. After a success the view sends a fresh copy out of band. #}
-<form id="new-player" class="live-form"{% if oob %} hx-swap-oob="true"{% endif %} hx-post="{% url 'live:seat_new' game.pk %}" hx-target="#player-list" hx-swap="outerHTML" hx-include="#search" hx-disabled-elt="find button">
-  <h2 class="live-heading">Новый игрок</h2>
+{% load ledger %}
+{# Create a player and seat them at once. On the seating page the view sends a fresh copy out of band after a success; in the lineup it lives in a sheet. After the start the organizer says whether the entry is paid. #}
+<form id="new-player" class="live-form"{% if oob %} hx-swap-oob="true"{% endif %} hx-post="{% url 'live:seat_new' game.pk %}" hx-target="#{{ target|default:'player-list' }}" hx-swap="outerHTML" hx-include="#search" hx-disabled-elt="find button">
+  {% if not sheet %}<h2 class="live-heading">Новый игрок</h2>{% endif %}
   {{ new_player.key }}
+  <input type="hidden" name="stage" value="{{ game.live_stage }}">
   {% for error in new_player.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
   <label class="field">
     <span class="field-label">Имя</span>
@@ -12,5 +14,10 @@
     <span class="field-label">Ник</span>
     <input class="live-input live-input-text" type="text" name="nickname" maxlength="100" value="{{ new_player.nickname.value|default:'' }}" autocomplete="off">
   </label>
-  <button type="submit" class="btn w-full">Создать и посадить</button>
+  {% if late %}
+    <button type="submit" name="paid" value="1" class="btn btn-primary w-full"><span>Посадить · внёс <span class="font-num">{{ entry|money }}</span></span></button>
+    <button type="submit" name="paid" value="0" class="btn w-full">Посадить · не сдал</button>
+  {% else %}
+    <button type="submit" class="btn w-full">Создать и посадить</button>
+  {% endif %}
 </form>

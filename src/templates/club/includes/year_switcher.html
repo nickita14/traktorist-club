@@ -1,0 +1,9 @@
+{# Year switcher of the player pages, in the heading row: right of the name, under it on phones. #}
+<nav class="flex items-center gap-3 max-md:w-full md:ml-auto" aria-label="{{ label }}">
+  <span class="font-head text-sm tracking-label text-muted uppercase">Год</span>
+  <ul class="segmented">
+    {% for link in links %}
+      <li{% if link.words %} class="segmented-word"{% endif %}><a href="{{ link.url }}"{% if link.current %} aria-current="page"{% endif %}>{{ link.label }}</a></li>
+    {% endfor %}
+  </ul>
+</nav>

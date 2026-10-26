@@ -134,6 +134,48 @@ class TestSeason:
         season.kind = SeasonKind.CASH
         season.full_clean()
 
+    def test_year_change_rejected_when_the_season_has_games(self):
+        season = make_season(2025)
+        make_game(season)
+        season.year = 2026
+        with pytest.raises(ValidationError) as exc:
+            season.full_clean()
+        assert exc.value.message_dict["year"] == [
+            "В сезоне есть игры другого года: год сезона не меняется."
+        ]
+
+    def test_year_change_rejected_even_when_the_dates_match_the_new_year(self):
+        season = make_season(2025)
+        # Written past Game.clean: the dates already lie in the year the season would move to.
+        Game.objects.create(season=season, date=datetime.date(2026, 3, 1))
+        season.year = 2026
+        with pytest.raises(ValidationError) as exc:
+            season.full_clean()
+        assert exc.value.message_dict["year"] == [
+            "В сезоне есть игры другого года: год сезона не меняется."
+        ]
+
+    def test_year_change_allowed_without_games(self):
+        season = make_season(2025)
+        season.year = 2026
+        season.full_clean()
+        season.save()
+        season.refresh_from_db()
+        assert season.year == 2026
+
+    def test_new_season_sets_its_year(self):
+        Season(year=2026, kind=SeasonKind.TOUR).full_clean()
+
+    def test_saving_a_season_with_games_keeps_working(self):
+        season = make_season(2025)
+        make_game(season)
+        season.paid_places = 2
+        season.payout_weights = "3,2"
+        season.full_clean()
+        season.save()
+        season.refresh_from_db()
+        assert (season.year, season.paid_places) == (2025, 2)
+
 
 class TestPlayerSlug:
     def test_transliterate(self):
@@ -264,6 +306,19 @@ class TestGame:
         with pytest.raises(ValidationError) as exc:
             game.full_clean()
         assert "live_stage" in exc.value.message_dict
+
+    @pytest.mark.parametrize("kind", [SeasonKind.TOUR, SeasonKind.CASH])
+    @pytest.mark.parametrize("stage", [Game.Stage.LINEUP, Game.Stage.COLLECT])
+    def test_every_game_has_the_pre_game_steps(self, kind, stage):
+        game = Game(
+            season=make_season(2026, kind),
+            date=datetime.date(2026, 3, 14),
+            live_stage=stage,
+            started_at=timezone.now(),
+        )
+        game.full_clean()
+        game.save()
+        assert list(Game.objects.live()) == [game]
 
     def test_clean_asks_for_start_time(self):
         game = Game(season=make_season(2026), date=datetime.date(2026, 3, 14), live_stage="rebuys")

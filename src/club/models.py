@@ -236,6 +236,13 @@ class Season(models.Model):
         self._clean_payout_weights()
         if self.pk is None:
             return
+        # The other side of Game.clean: a game's date lies in its season's year, so the year of
+        # a season with games stays put (pages filter a player's year by the season year). The
+        # stored year decides, not the games' dates: moving a season is never an edit.
+        if Season.objects.filter(pk=self.pk, games__isnull=False).exclude(year=self.year).exists():
+            raise ValidationError(
+                {"year": "В сезоне есть игры другого года: год сезона не меняется."}
+            )
         results = Result.objects.filter(game__season=self)
         if self.kind == self.Kind.CASH and results.filter(place__isnull=False).exists():
             raise ValidationError(
@@ -378,8 +385,14 @@ class BlindLevel(LevelFields):
 
 
 class LiveStage(models.TextChoices):
-    """Where a game recorded at the table is; empty for a finished or historical game."""
+    """Where a game recorded at the table is; empty for a finished or historical game.
 
+    Every game starts with the lineup (who sits down) and the entry collection (who handed over
+    the cash); play starts after them. Like every non-empty stage, they count nowhere.
+    """
+
+    LINEUP = "lineup", "Состав"
+    COLLECT = "collect", "Сбор входа"
     REBUYS = "rebuys", "Этап 1: ребаи"
     ADDON = "addon", "Перерыв на аддон"
     FINAL = "final", "Финальный этап"
@@ -388,8 +401,14 @@ class LiveStage(models.TextChoices):
 
 # Which live stages a season kind can have.
 LIVE_STAGES_BY_KIND = {
-    SeasonKind.TOUR: {LiveStage.REBUYS, LiveStage.ADDON, LiveStage.FINAL},
-    SeasonKind.CASH: {LiveStage.CASH},
+    SeasonKind.TOUR: {
+        LiveStage.LINEUP,
+        LiveStage.COLLECT,
+        LiveStage.REBUYS,
+        LiveStage.ADDON,
+        LiveStage.FINAL,
+    },
+    SeasonKind.CASH: {LiveStage.LINEUP, LiveStage.COLLECT, LiveStage.CASH},
 }
 
 
@@ -412,7 +431,7 @@ class Game(models.Model):
     location = models.CharField("место проведения", max_length=100, blank=True, default="")
     live_stage = models.CharField(
         "идёт сейчас",
-        max_length=6,
+        max_length=10,
         choices=LiveStage,
         blank=True,
         default="",
@@ -482,6 +501,15 @@ class Result(models.Model):
         null=True,
         blank=True,
         help_text="Кто когда вышел из-за стола: 1 = первым. Пусто: ещё играет.",
+    )
+    # Whether the entry fee is in the cash box. Only a live game seats a player as unpaid: rows
+    # entered afterwards (admin, import) are settled games. db_default keeps DEFAULT true in the
+    # database, so code that does not know the field (a rolled-back image) can still insert rows.
+    entry_paid = models.BooleanField(
+        "вход сдан",
+        default=True,
+        db_default=True,
+        help_text="Снимите, пока игрок не отдал деньги за вход. Закупку это не меняет.",
     )
 
     class Meta:

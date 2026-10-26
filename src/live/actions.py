@@ -18,16 +18,34 @@ from dataclasses import dataclass
 
 from django.contrib.admin.models import DELETION, LogEntry
 from django.db import IntegrityError, transaction
-from django.db.models import F, Max, OuterRef, Subquery
+from django.db.models import F, Max, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from club.models import BlindStructure, Game, LiveStage, Player, Result, Season, SeasonKind
+from club.models import (
+    LIVE_STAGES_BY_KIND,
+    BlindStructure,
+    Game,
+    LiveStage,
+    Player,
+    Result,
+    Season,
+    SeasonKind,
+)
 from live import clock
 from live.models import TIMER_KINDS, ActionKind, BlindTimer, LiveAction, TimerLevel, display_token
 
 # Result fields an action may touch; undo compares and restores all of them.
-SNAPSHOT_FIELDS = ("buyin", "payout", "place", "chips_out", "rebuys", "addon", "out_order")
+SNAPSHOT_FIELDS = (
+    "buyin",
+    "payout",
+    "place",
+    "chips_out",
+    "rebuys",
+    "addon",
+    "out_order",
+    "entry_paid",
+)
 
 # The toast shows "отменить" for a few seconds; the server accepts it a little longer, for a
 # slow network.
@@ -161,6 +179,15 @@ def _require_kind(game: Game, kind: str) -> None:
 # Starting and seating.
 
 
+def entry_amount(season: Season) -> int:
+    """What a seat costs: the tournament entry, or one cash step."""
+    return season.entry_price if season.kind == SeasonKind.TOUR else season.cash_step
+
+
+# The steps before play: who sits down, then who handed over the entry.
+PRE_GAME = (LiveStage.LINEUP, LiveStage.COLLECT)
+
+
 def next_season(kind: str, year: int) -> Season:
     """The season of ``kind`` for ``year``, created with the rules of the latest one if missing."""
     season = Season.objects.filter(kind=kind, year=year).first()
@@ -201,7 +228,8 @@ def start_game(
     """Create a live game, or return the one this key already created.
 
     Without ``season``, the season of ``kind`` for the date's year is created if needed. A
-    finished game on the same season and date is refused; a live one is resumed.
+    finished game on the same season and date is refused; a live one is resumed. A new game
+    starts with its lineup; play starts after the entry collection (change_stage).
 
     ``blinds`` gives a tournament its blind timer: a BlindStructure pk, SEASON_BLINDS for the
     season's default, or None for no timer. The game gets its own copy, paused at level 1.
@@ -214,7 +242,6 @@ def start_game(
             season = next_season(kind, date.year)
         if date.year != season.year:
             raise RuleError(f"Дата должна быть в {season.year} году.")
-        stage = LiveStage.REBUYS if season.kind == SeasonKind.TOUR else LiveStage.CASH
         game = Game.objects.filter(season=season, date=date).first()
         if game is not None and not game.is_live:
             raise RuleError("В этот день игра этого сезона уже записана.")
@@ -225,7 +252,7 @@ def start_game(
                         season=season,
                         date=date,
                         location=location,
-                        live_stage=stage,
+                        live_stage=LiveStage.LINEUP,
                         started_at=timezone.now(),
                     )
             except IntegrityError:
@@ -244,49 +271,158 @@ def start_game(
         return Outcome(action)
 
 
-def seat(game_pk: int, key: uuid.UUID, user, player_pk: int) -> Outcome:
-    """Seat an existing player with the entry price (tour) or one cash step."""
+STAGE_CHANGED = "Пока вы смотрели, этап сменился."
+LATE_ENTRY_UNPAID_UNKNOWN = "Укажите, внёс ли игрок деньги за вход."
+
+
+def _require_seen_stage(game: Game, stage: str | None) -> None:
+    """``stage`` is the stage the form was rendered in (like ``from_stage`` and ``place``): a
+    control left on a screen from an earlier stage must not act in the new one."""
+    if stage is not None and stage != game.live_stage:
+        raise RuleError(STAGE_CHANGED)
+
+
+def seat(
+    game_pk: int,
+    key: uuid.UUID,
+    user,
+    player_pk: int,
+    *,
+    paid: bool | None = None,
+    stage: str | None = None,
+) -> Outcome:
+    """Seat an existing player with the entry price (tour) or one cash step.
+
+    In the lineup nobody has paid yet (the collection step marks it), so ``paid`` is ignored. A
+    late entry (after the start) must say whether the entry is in the cash box: ``paid`` True or
+    False, never left out. ``stage``: see _require_seen_stage.
+    """
 
     def operation(game: Game) -> Change:
+        _require_seen_stage(game, stage)
         player = Player.objects.filter(pk=player_pk).first()
         if player is None:
             raise RuleError("Такого игрока нет.")
-        return _seat(game, player)
+        return _seat(game, player, paid)
 
     return perform(game_pk, key, user, operation)
 
 
-def seat_new(game_pk: int, key: uuid.UUID, user, name: str, nickname: str) -> Outcome:
+def seat_new(
+    game_pk: int,
+    key: uuid.UUID,
+    user,
+    name: str,
+    nickname: str,
+    *,
+    paid: bool | None = None,
+    stage: str | None = None,
+) -> Outcome:
     """Create a player (validated like the admin form) and seat them in one action."""
 
     def operation(game: Game) -> Change:
+        _require_seen_stage(game, stage)
         player = Player(name=name, nickname=nickname)
         player.full_clean()  # ValidationError goes back to the form
         player.save()
-        return _seat(game, player)
+        return _seat(game, player, paid)
 
     return perform(game_pk, key, user, operation)
 
 
-def _seat(game: Game, player: Player) -> Change:
+def can_seat(game: Game) -> bool:
+    """New players sit down in the lineup, and later while a tournament's rebuys are open or at
+    any time of a cash game. Not during the collection: the lineup is confirmed there."""
+    return game.live_stage in (LiveStage.LINEUP, LiveStage.REBUYS, LiveStage.CASH)
+
+
+def _seat(game: Game, player: Player, paid: bool | None) -> Change:
     season = game.season
-    if season.kind == SeasonKind.TOUR:
-        _require_stage(
-            game, LiveStage.REBUYS, message="Новых игроков можно сажать только на этапе 1."
-        )
-        fields = {"buyin": season.entry_price, "rebuys": 0, "addon": False}
-    else:
-        fields = {"buyin": season.cash_step}
+    if not can_seat(game):
+        if game.live_stage == LiveStage.COLLECT:
+            raise RuleError("Состав уже утверждён: вернитесь к составу, чтобы добавить игрока.")
+        raise RuleError("Новых игроков можно сажать только на этапе 1.")
+    lineup = game.live_stage == LiveStage.LINEUP
     if Result.objects.filter(game=game, player=player).exists():
         raise RuleError(f"{player.label} уже за столом.")
+    if not lineup and paid is None:
+        raise RuleError(LATE_ENTRY_UNPAID_UNKNOWN)
+    fields = {"buyin": entry_amount(season), "entry_paid": bool(paid) and not lineup}
+    if season.kind == SeasonKind.TOUR:
+        fields |= {"rebuys": 0, "addon": False}
     result = Result.objects.create(game=game, player=player, **fields)
-    return Change(
-        ActionKind.SEAT,
-        f"За стол: {player.label}, {fields['buyin']}",
-        result.pk,
-        None,
-        _snapshot(result),
+    summary = f"За стол: {player.label}, {fields['buyin']}"
+    if not lineup:
+        summary += " · внёс" if paid else " · не сдал"
+    # The player in the snapshot lets undoing an earlier unseat of them see it was superseded.
+    after = _snapshot(result) | {"player_id": player.pk}
+    return Change(ActionKind.SEAT, summary, result.pk, None, after)
+
+
+def unseat_allowed(result: Result, game: Game) -> bool:
+    """Whether a seated player can be taken off the list as if they never sat down.
+
+    In the lineup anyone can. During the collection nobody: the lineup is confirmed (go back to
+    it). From the start on only a player nothing has happened to yet: no rebuy or add-on, still
+    in, nothing paid out, no chips counted, and the single entry as the buy-in.
+    """
+    if game.live_stage == LiveStage.LINEUP:
+        return True
+    if game.live_stage == LiveStage.COLLECT:
+        return False
+    return (
+        not result.rebuys
+        and not result.addon
+        and result.out_order is None
+        and result.payout == 0
+        and result.chips_out is None
+        and result.buyin == entry_amount(game.season)
     )
+
+
+def unseat(
+    game_pk: int, key: uuid.UUID, user, result_pk: int, *, stage: str | None = None
+) -> Outcome:
+    """Remove a player who never played: the row is deleted, nothing is left behind.
+
+    The snapshot keeps the row and the actions that pointed at it (deleting the row clears
+    their link), so undo puts both back exactly. ``stage``: see _require_seen_stage.
+    """
+
+    def operation(game: Game) -> Change:
+        _require_seen_stage(game, stage)
+        if game.live_stage == LiveStage.COLLECT:
+            raise RuleError("Состав утверждён: вернитесь к составу, чтобы убрать игрока.")
+        result = _row(game, result_pk)
+        if not unseat_allowed(result, game):
+            raise RuleError(f"{result.player.label} уже в игре: убрать нельзя.")
+        before = {"id": result.pk, "player_id": result.player_id} | _snapshot(result)
+        before["action_ids"] = list(
+            LiveAction.objects.filter(result=result).order_by("pk").values_list("pk", flat=True)
+        )
+        result.delete()
+        return Change(ActionKind.UNSEAT, f"Убран из состава: {result.player.label}", before=before)
+
+    return perform(game_pk, key, user, operation)
+
+
+def set_paid(game_pk: int, key: uuid.UUID, user, result_pk: int, paid: bool) -> Outcome:
+    """Mark the entry as handed over, or clear the mark. Only the mark: the buy-in is recorded
+    at seating either way. The target state is explicit, so a stale screen cannot flip it."""
+
+    def operation(game: Game) -> Change:
+        result = _row(game, result_pk)
+        label = result.player.label
+        if result.entry_paid == paid:
+            raise RuleError(f"У {label} вход уже {'принят' if paid else 'не отмечен'}.")
+        amount = entry_amount(game.season)
+        if paid:
+            return _update(
+                result, ActionKind.PAID_ON, f"Вход принят: {label}, {amount}", entry_paid=True
+            )
+        return _update(result, ActionKind.PAID_OFF, f"Вход не сдан: {label}", entry_paid=False)
+
+    return perform(game_pk, key, user, operation)
 
 
 # Tournament.
@@ -342,7 +478,12 @@ def set_addon(game_pk: int, key: uuid.UUID, user, result_pk: int, on: bool) -> O
     return perform(game_pk, key, user, operation)
 
 
-def eliminate(game_pk: int, key: uuid.UUID, user, result_pk: int) -> Outcome:
+def eliminate(
+    game_pk: int, key: uuid.UUID, user, result_pk: int, place: int | None = None
+) -> Outcome:
+    """A tournament player busts. ``place`` is the place the organizer was shown: if someone
+    else busted in between, the place would differ, so the tap is refused."""
+
     def operation(game: Game) -> Change:
         _require_kind(game, SeasonKind.TOUR)
         _require_stage(
@@ -350,8 +491,11 @@ def eliminate(game_pk: int, key: uuid.UUID, user, result_pk: int) -> Outcome:
         )
         result = _row(game, result_pk)
         _require_in(result)
-        if game.results.filter(out_order__isnull=True).count() <= 1:
+        in_game = game.results.filter(out_order__isnull=True).count()
+        if in_game <= 1:
             raise RuleError(f"{result.player.label} остался один: это победитель.")
+        if place is not None and place != in_game:
+            raise RuleError("Пока вы подтверждали, выбыл кто-то ещё: проверьте место.")
         return _update(
             result,
             ActionKind.ELIMINATE,
@@ -379,27 +523,62 @@ def restore(game_pk: int, key: uuid.UUID, user, result_pk: int) -> Outcome:
     return perform(game_pk, key, user, operation)
 
 
-STAGE_STEPS = {
-    LiveStage.REBUYS: (LiveStage.ADDON, "Ребаи закрыты, перерыв на аддон"),
-    LiveStage.ADDON: (LiveStage.FINAL, "Начат финальный этап"),
+# Every stage change there is: (from, to) -> summary. The first step from a stage is its
+# forward step. Starting play also restarts the game's clock (see change_stage).
+STAGE_CHANGES = {
+    (LiveStage.LINEUP, LiveStage.COLLECT): "Состав верен, сбор входа",
+    (LiveStage.COLLECT, LiveStage.LINEUP): "Назад к составу",
+    (LiveStage.COLLECT, LiveStage.REBUYS): "Игра начата",
+    (LiveStage.COLLECT, LiveStage.CASH): "Игра начата",
+    (LiveStage.REBUYS, LiveStage.ADDON): "Ребаи закрыты, перерыв на аддон",
+    (LiveStage.ADDON, LiveStage.FINAL): "Начат финальный этап",
 }
 
+# The forward step of a stage where it does not depend on the season kind.
+NEXT_STAGE = {
+    LiveStage.LINEUP: LiveStage.COLLECT,
+    LiveStage.REBUYS: LiveStage.ADDON,
+    LiveStage.ADDON: LiveStage.FINAL,
+}
 
-def advance_stage(game_pk: int, key: uuid.UUID, user, from_stage: str) -> Outcome:
-    """Move a tournament to its next stage. ``from_stage`` is what the organizer saw, so a second
-    phone pressing the same button does not skip a stage."""
+MIN_PLAYERS = 2
+
+
+def play_stage(season: Season) -> str:
+    """The stage play starts with."""
+    return LiveStage.REBUYS if season.kind == SeasonKind.TOUR else LiveStage.CASH
+
+
+def advance_stage(
+    game_pk: int, key: uuid.UUID, user, from_stage: str, to_stage: str | None = None
+) -> Outcome:
+    """Move a game to another stage. ``from_stage`` is what the organizer saw, so a second phone
+    pressing the same button does not skip a stage. Without ``to_stage``, the forward step
+    (from the collection: play)."""
 
     def operation(game: Game) -> Change:
-        if game.live_stage != from_stage or from_stage not in STAGE_STEPS:
+        if game.live_stage != from_stage:
             raise RuleError("Этап уже сменился.")
-        to_stage, summary = STAGE_STEPS[from_stage]
-        Game.objects.filter(pk=game.pk).update(live_stage=to_stage)
-        return Change(
-            ActionKind.STAGE,
-            summary,
-            before={"live_stage": from_stage},
-            after={"live_stage": to_stage},
-        )
+        target = to_stage
+        if target is None:
+            target = (
+                play_stage(game.season)
+                if from_stage == LiveStage.COLLECT
+                else NEXT_STAGE.get(from_stage)
+            )
+        summary = STAGE_CHANGES.get((from_stage, target))
+        if summary is None or target not in LIVE_STAGES_BY_KIND[game.season.kind]:
+            raise RuleError("Такой смены этапа нет.")
+        if target == LiveStage.COLLECT and game.results.count() < MIN_PLAYERS:
+            raise RuleError(f"Для игры нужно хотя бы {MIN_PLAYERS} игрока.")
+        before = {"live_stage": from_stage}
+        after = {"live_stage": target}
+        if from_stage == LiveStage.COLLECT and target == play_stage(game.season):
+            # The game clock ("идёт 1:17") counts play, not the lineup and the collection.
+            before["started_at"] = game.started_at.isoformat()
+            after["started_at"] = timezone.now().isoformat()
+        Game.objects.filter(pk=game.pk).update(**after)
+        return Change(ActionKind.STAGE, summary, before=before, after=after)
 
     return perform(game_pk, key, user, operation)
 
@@ -503,7 +682,8 @@ def close_cash(game_pk: int, key: uuid.UUID, user) -> Outcome:
 
 
 def cancel_game(game_pk: int, user) -> None:
-    """Delete a live game started by mistake. Only while nobody is seated.
+    """Delete a live game started by mistake: before play starts (the lineup and the collection,
+    whoever is seated), or later while nobody is seated.
 
     The game's action log goes with it, so the deletion is recorded like an admin deletion: a
     LogEntry with the game and the user. Idempotent by nature: a repeated request finds no game
@@ -511,7 +691,7 @@ def cancel_game(game_pk: int, user) -> None:
     """
     with transaction.atomic():
         game = _lock(game_pk)
-        if game.results.exists():
+        if game.live_stage not in PRE_GAME and game.results.exists():
             raise RuleError("Игроки уже за столом: такую игру отменить нельзя.")
         LogEntry.objects.log_actions(
             user.pk,
@@ -885,6 +1065,32 @@ def undo(action_pk: int, user) -> Outcome:
 CHANGED_SINCE = "Отменить нельзя: после этого запись уже изменили."
 
 
+def _superseded(game: Game, action: LiveAction) -> bool:
+    """Whether the player of an unseat was seated or unseated again afterwards (and that was not
+    undone): putting the old row back would then undo more than this action. Older SEAT
+    snapshots have no player and never match."""
+    player_id = action.before.get("player_id")
+    later = game.live_actions.filter(pk__gt=action.pk, undone_at__isnull=True)
+    return later.filter(
+        Q(kind=ActionKind.SEAT, after__player_id=player_id)
+        | Q(kind=ActionKind.UNSEAT, before__player_id=player_id)
+    ).exists()
+
+
+def _reseat(game: Game, before: dict) -> int:
+    """Put an unseated row back with its pk and values, and relink its actions."""
+    fields = {field: before[field] for field in SNAPSHOT_FIELDS if field in before}
+    try:
+        with transaction.atomic():
+            Result.objects.create(
+                pk=before["id"], game=game, player_id=before["player_id"], **fields
+            )
+    except IntegrityError:
+        return 0  # the player was seated again meanwhile
+    LiveAction.objects.filter(pk__in=before["action_ids"]).update(result_id=before["id"])
+    return 1
+
+
 def _undo_change(game: Game, action: LiveAction) -> None:
     if action.kind == ActionKind.STAGE:
         # Timer presses in between do not touch the stage.
@@ -901,6 +1107,8 @@ def _undo_change(game: Game, action: LiveAction) -> None:
         changed = BlindTimer.objects.filter(game=game, **action.after).update(**action.before)
     elif action.kind == ActionKind.SEAT:
         changed, _ = Result.objects.filter(pk=action.result_id, **action.after).delete()
+    elif action.kind == ActionKind.UNSEAT:
+        changed = 0 if _superseded(game, action) else _reseat(game, action.before)
     else:
         try:
             with transaction.atomic():

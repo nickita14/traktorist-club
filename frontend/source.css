@@ -36,6 +36,7 @@
   --text-3xl: 2.75rem;
   --text-3xl--line-height: 1;
 
+  --tracking-tight: 0.05em;
   --tracking-label: 0.08em;
   --tracking-caps: 0.12em;
 
@@ -64,12 +65,25 @@
 
 @layer components {
   /* Header navigation: uppercase narrow caps, the current section underlined in accent. */
+  .site-nav ul {
+    --nav-gap: calc(var(--spacing) * 3);
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: var(--nav-gap);
+  }
+
+  /* Each item reaches half a gap into its neighbours' gaps, so a short one ("Кэш") is a full
+     touch target without moving the row. */
   .site-nav a,
   .site-nav li > span,
   .site-nav button {
     display: flex;
     align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
     min-height: 2.75rem;
+    margin-inline: calc(var(--nav-gap) / -2);
+    padding-inline: calc(var(--nav-gap) / 2);
     font-family: var(--font-stack-head);
     letter-spacing: var(--tracking-caps);
     text-transform: uppercase;
@@ -83,7 +97,7 @@
 
   /* "Выйти" is a POST form: its button reads as one more nav link. */
   .site-nav button {
-    padding: 0;
+    padding-block: 0;
     border: 0;
     background: none;
     color: inherit;
@@ -91,19 +105,76 @@
     cursor: pointer;
   }
 
-  /* The organizers' way in, in the footer: as quiet as the rest of it, but a full touch target. */
-  .footer-login {
-    display: inline-flex;
+  /* The club name on phones. Ruslan Display is 337px wide at text-lg, 270px at 15px: only with
+     "Проходная" (69px) beside it does it drop to 15px, so both fit in the 358px of a 390px screen.
+     Organizers and the login page keep text-lg. From sm (40rem) sm:text-lg and md:text-xl size it;
+     the 15px rule stays under sm so it never competes with them, whatever the layer order. */
+  .site-head-name {
+    font-size: var(--text-lg);
+    line-height: var(--text-lg--line-height);
+  }
+
+  @media (width < 40rem) {
+    .site-head:has(.site-nav-login) .site-head-name {
+      font-size: 0.9375rem;
+    }
+  }
+
+  /* Phones: the nav is a row of its own under the name line (base.html). */
+  .site-nav-row {
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  /* The organizers' way in ("Проходная"): one step smaller than the sections and muted, but a
+     full touch target. On phones it sits at the right end of the name line, or on a line of its
+     own under the name when both do not fit (below about 382px). */
+  .site-nav-login {
+    display: flex;
     align-items: center;
     justify-content: center;
     min-width: 2.75rem;
     min-height: 2.75rem;
+    margin-left: auto;
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
     text-decoration: none;
   }
 
-  .footer-login:hover {
+  .site-nav-login:hover {
     color: var(--ink);
-    text-decoration: underline;
+    text-decoration: underline 2px var(--accent);
+    text-underline-offset: 0.35em;
+  }
+
+  @media (width >= 48rem) {
+    .site-nav-row {
+      order: 0;
+      flex-basis: auto;
+    }
+
+    /* After the last section, behind a short rule. */
+    .site-nav-login {
+      position: relative;
+      margin-left: 0.75rem;
+      padding-left: 1.5rem;
+      letter-spacing: var(--tracking-caps);
+    }
+
+    .site-nav-login::before {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 1px;
+      height: 1.375rem;
+      translate: 0 -50%;
+      background: var(--rule);
+      content: "";
+    }
   }
 
   .site-nav li > span {
@@ -115,8 +186,14 @@
     display: none;
   }
 
+  @media (width >= 48rem) {
+    .site-nav ul {
+      --nav-gap: calc(var(--spacing) * 6);
+    }
+  }
+
   @media (width < 48rem) {
-    /* Five items on one line at 390px: a narrower gap (base.html) and letter spacing. */
+    /* Five items on one line on phones: narrower letter spacing (the gap is 12px here). */
     .site-nav a,
     .site-nav li > span,
     .site-nav button {
@@ -129,6 +206,19 @@
 
     .nav-short {
       display: inline;
+    }
+  }
+
+  /* They need 376px so; below 384px (a 360px phone) a tighter gap and spacing fit them in 318. */
+  @media (width < 24rem) {
+    .site-nav ul {
+      --nav-gap: calc(var(--spacing) * 2);
+    }
+
+    .site-nav a,
+    .site-nav li > span,
+    .site-nav button {
+      letter-spacing: var(--tracking-tight);
     }
   }
 
@@ -293,8 +383,10 @@
     text-decoration: underline;
   }
 
-  /* Word labels instead of years (the all-time kind filter). */
-  .segmented-words a {
+  /* Word labels instead of years (the all-time kind filter), or one word cell after the years
+     ("Все годы" on the player pages). */
+  .segmented-words a,
+  .segmented .segmented-word a {
     font-family: var(--font-stack-head);
     letter-spacing: var(--tracking-caps);
     text-transform: uppercase;
@@ -348,6 +440,18 @@
     text-decoration: underline;
   }
 
+  /* A player's name in a row: a 44x44 touch target that changes no layout. The link stays
+     inline, so a nickname, award marks or a second line keep their place: vertical padding on an
+     inline box never moves a line (the font's box is 1.2-1.4em, so this makes it 45px or more),
+     and the horizontal padding is taken back by a negative margin. Positioned, the padding lies
+     over the nickname and the second line, so a tap there opens the player too. Neighbouring
+     links in one cell (winners, title holders) overlap by the extra width; the later one wins. */
+  .ledger .player-link {
+    position: relative;
+    margin-inline: -0.875rem;
+    padding: calc((2.75rem - 1.125em) / 2) 0.875rem;
+  }
+
   /* Total row, closed off from the body by the same double rule as the document heading. */
   /* Sortable headers (src/club/sorting.py): links that fill the cell's height, so the header row
      stays as it was; the active one is underlined in accent with a drawn triangle (PT Sans
@@ -361,8 +465,17 @@
     white-space: nowrap;
   }
 
+  /* In a header the link fills its cell, padding included: a full touch target however short
+     its label ("1"), with the text where it was. */
   .ledger th .sort-link {
+    display: flex;
     margin-block: -0.5rem -0.375rem;
+    margin-inline: -0.5rem;
+    padding-inline: 0.5rem;
+  }
+
+  .ledger th.num .sort-link {
+    justify-content: flex-end;
   }
 
   .sort-link:hover {
@@ -421,6 +534,15 @@
     font-size: var(--text-sm);
     letter-spacing: var(--tracking-label);
     text-transform: uppercase;
+  }
+
+  /* A full touch target that reaches into the 12px between links (the later link takes a tap
+     there), so the row itself does not move. */
+  .sort-links .sort-link {
+    justify-content: center;
+    min-width: 2.75rem;
+    margin-inline: calc(var(--spacing) * -3);
+    padding-inline: calc(var(--spacing) * 3);
   }
 
   .ledger tfoot td {
@@ -536,6 +658,12 @@
     fill: var(--muted);
     font-family: var(--font-stack-num);
     font-size: var(--text-xs);
+  }
+
+  /* Month labels under the chart of one year are words, not numbers. */
+  .net-chart .chart-month {
+    font-family: var(--font-stack-head);
+    letter-spacing: var(--tracking-label);
   }
 
   /* Section heading with an optional note or control on the right, closed by the same double
@@ -1118,6 +1246,187 @@
 
   .bottom-bar > * {
     flex: 1;
+  }
+
+  .bottom-bar > .bottom-bar-side {
+    flex: none;
+  }
+
+  /* A quiet status in the top bar: "ПОСАДКА" on the steps before play. */
+  .live-status-quiet {
+    color: var(--muted);
+  }
+
+  /* The caps line above a game's heading: season, weekday, date, place. */
+  .live-label {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .live-heading-split {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  /* The steps of a game (1 · СОСТАВ, 2 · СБОР, 3 · ИГРА): the current one filled ink, the
+     others muted, a passed one an underlined way back. */
+  .step-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 0.75rem;
+    border: 1px solid var(--ink);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+
+  .step-strip li + li {
+    border-left: 1px solid var(--ink);
+  }
+
+  .step-strip li > span,
+  .step-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 2.75rem;
+    padding-inline: 0.25rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .step-strip [aria-current="step"] {
+    background: var(--ink);
+  }
+
+  .step-strip [aria-current="step"] > span {
+    color: var(--paper);
+    font-weight: 700;
+  }
+
+  .step-link {
+    border: 0;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    letter-spacing: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-transform: inherit;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
+  }
+
+  /* A player to seat on the lineup: name, nickname, and the one "+" that acts. */
+  .live-row-seat {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .live-nick {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+  }
+
+  .live-seat {
+    width: 2.75rem;
+    padding-inline: 0;
+    font-family: var(--font-stack-num);
+    font-size: var(--text-lg);
+    font-weight: 400;
+  }
+
+  /* The entry toggle on the collection: ПРИНЯТЬ (accent outline) / СДАЛ (filled ink). */
+  .btn-toggle {
+    width: 6.5rem;
+  }
+
+  /* A confirmed bust near the money: the one filled accent button. */
+  .btn-accent-fill {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--paper);
+  }
+
+  .live-quiet {
+    min-width: 2.75rem;
+    color: var(--muted);
+  }
+
+  /* A name that opens the row's sheet (accept the entry, "не садился"); looks like the name. */
+  .live-name-button {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    max-width: 100%;
+    min-height: 2.75rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+
+  .live-unpaid {
+    display: block;
+    color: var(--accent);
+    font-size: var(--text-sm);
+  }
+
+  .sheet-label {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .sheet-name {
+    font-family: var(--font-stack-head);
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    line-height: var(--text-2xl--line-height);
+  }
+
+  .sheet-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+  }
+
+  .sheet-actions > * {
+    flex: 1;
+  }
+
+  .sheet-stack {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  /* The place a bust gives, large, between two rules. */
+  .bust-place {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-block: 0.75rem;
+    border-block: 1px solid var(--rule);
+  }
+
+  .bust-place-number {
+    font-family: var(--font-stack-num);
+    font-size: var(--text-3xl);
+    line-height: var(--text-3xl--line-height);
   }
 
   .live-form {

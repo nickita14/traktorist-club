@@ -336,7 +336,7 @@ class TestGameAwards:
         assert "По итогам игры присвоено" in reached
         alpha = club["players"]["A"]
         assert (
-            f'<a href="{alpha.get_absolute_url()}">Трактор</a> · Бывалый</td>\n'
+            f'<a class="player-link" href="{alpha.get_absolute_url()}">Трактор</a> · Бывалый</td>\n'
             f'                <td class="text-right text-sm text-muted">{NUM}3</span> игры</td>'
         ) in reached
         assert plain_text(reached).count("Серия: 3 вечера подряд") == 2  # Альфа and Браво
