@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Project rules for Claude Code. Read this file fully before any task. The step-by-step roadmap lives in `PLAN.md`: work on one stage at a time and tick its checkboxes when done.
+Project rules for Claude Code. Read this file fully before any task. The step-by-step roadmap lives in `PLAN.md`: work on one stage at a time and tick its checkboxes when done. Everything after its stages is tracked in `docs/backlog.md`.
 
 ## What this is
 
@@ -190,6 +190,7 @@ Rules:
 - Commit messages have no `Co-Authored-By` or any other trailers. This applies to every git commit command proposed in the "Commits" section, including patch-based ones (`git apply --cached ... && git commit`).
 - Never run `git add`, `git commit` or `git push`. The user commits by hand. When a task is done, end the report with a "Commits" section: for each proposed commit, the exact file list and the commit message (short imperative subject in English, optional body). Each commit must leave tests passing. Also give the ready-to-paste commands, for example:
   `git add path/a.py path/b.py && git commit -m "Add player slug generation"`
+- Backlog: when a branch completes or changes an item of `docs/backlog.md`, it updates the file in the same branch: a finished item moves to Done with the branch name, PR number and merge date left empty (nothing waits for a step after the merge). Every branch that edits the file also fills the empty PR numbers and dates in Done from `git log --merges --oneline origin/main` (run `git fetch` first; the date is the merge commit's, Europe/Chisinau). New ideas found during the work go to Queue; "In progress" lists only branches that exist. The end-of-task report closes, before the "Commits" section, with "docs/backlog.md updated" (or why it was not).
 - All work happens on a branch, never directly on `main`. Branch names are short, lowercase, hyphenated: `ci-deploy`, `fix-sorting`. The "Commits" section starts with the branch command (`git switch -c <name>`, or `git switch <name>` if it exists) and ends with `git push -u origin <name>`. The user opens and merges the pull request.
 - Merging to `main` deploys to production automatically (`deploy` job in `.github/workflows/ci.yml`), so a branch is ready only when the full checklist passes:
   1. `uv run ruff check . && uv run ruff format --check .`
