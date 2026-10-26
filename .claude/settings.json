@@ -5,7 +5,10 @@
       "Bash(git commit *)",
       "Bash(git push *)",
       "Bash(git reset --hard*)",
-      "Bash(docker compose down -v*)"
+      "Bash(docker compose down*)",
+      "Bash(docker compose -f * down*)",
+      "Bash(docker volume rm*)",
+      "Bash(docker volume prune*)"
     ]
   }
 }
