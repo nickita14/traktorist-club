@@ -6,7 +6,7 @@ from django.urls import reverse
 from club import achievements
 from club.models import RankLadder
 from club.tests.conftest import NUM, PAST_YEAR, plain_text
-from club.tests.factories import make_game, make_result
+from club.tests.factories import make_game, make_player, make_result
 
 pytestmark = pytest.mark.django_db
 
@@ -225,6 +225,34 @@ class TestCashGame:
             'Курс: <span class="font-num num-run not-italic">5 000</span> фишек = '
             '<span class="font-num num-run not-italic">50</span> лей.'
         ) in html
+
+    @staticmethod
+    def leftover_cell(client, season, results):
+        """The "Остаток, лей" stat cell of a finished cash game with these (buy-in, payout)."""
+        game = make_game(season, day=5, month=6)
+        for buyin, payout in results:
+            make_result(game, make_player(), buyin, payout)
+        html = html_of(client, game)
+        return html.split("<dt>Остаток, лей</dt>")[1].split("</div>")[0]
+
+    def test_positive_leftover_burned_at_the_end(self, client, club):
+        cell = self.leftover_cell(client, club["seasons"]["cash"], [(100, 60), (50, 85)])
+
+        assert '<dd class="stat-value">5</dd>' in cell
+        assert '<dd class="stat-caption">сгорело в конце вечера</dd>' in cell
+
+    def test_zero_leftover_has_no_caption(self, client, club):
+        cell = self.leftover_cell(client, club["seasons"]["cash"], [(100, 60), (50, 90)])
+
+        assert '<dd class="stat-value"><span class="val-zero">0</span></dd>' in cell
+        assert "stat-caption" not in cell
+
+    def test_negative_leftover_says_more_was_paid_out(self, client, club):
+        cell = self.leftover_cell(client, club["seasons"]["cash"], [(100, 70), (50, 95)])
+
+        assert f'<dd class="stat-value"><span class="val-neg">{MINUS}15</span></dd>' in cell
+        assert '<dd class="stat-caption">выдано больше, чем собрано</dd>' in cell
+        assert "сгорело" not in cell
 
     def test_chip_rate_comes_from_the_season(self, client, club):
         season = club["seasons"]["cash"]

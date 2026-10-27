@@ -61,7 +61,11 @@
       <div>
         <dt>Остаток, лей</dt>
         <dd class="stat-value">{% pot_value game.leftover %}</dd>
-        <dd class="stat-caption">сгорело в конце вечера</dd>
+        {% if game.leftover > 0 %}
+          <dd class="stat-caption">сгорело в конце вечера</dd>
+        {% elif game.leftover < 0 %}
+          <dd class="stat-caption">выдано больше, чем собрано</dd>
+        {% endif %}
       </div>
     {% else %}
       <div>
