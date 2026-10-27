@@ -7,7 +7,7 @@ The default content (``fixture_sheets()``) reproduces every known data problem:
 - ТУР2025: marker in column D, "Имя (ник)" style names (aliases of the ТУР2026 players), an
   orphan net formula (sheet counts a game that was not played), a wrong cached Итого, and one
   game whose payouts are 10 short of its buy-ins (leftover rule).
-- КЭШ2026: cash sheet, text date, a fund block below the marker that must be ignored.
+- КЭШ2026: cash sheet, text date, summary rows below the marker that must be ignored.
 - ТУР2026_old version: must be skipped.
 
 Summary cells hold plain numbers: they stand in for the cached formula values that openpyxl

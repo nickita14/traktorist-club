@@ -87,7 +87,7 @@ class TestTourGame:
         assert (game.players_count, game.buyin_total, game.payout_total) == (2, 150, 150)
         assert "Призовой фонд, лей" in html
         assert "3 призовых места" in html
-        assert "В котёл" not in html
+        assert "Остаток, лей" not in html and "На столе" not in html
 
     def test_results_in_place_order_then_by_net(self, client, club):
         # 1st place bought in three times, so 2nd has the better net; the sheet follows places.
@@ -218,8 +218,8 @@ class TestCashGame:
     def test_stat_strip_and_note(self, client, club):
         html = html_of(client, club["games"]["c1"])
 
-        assert "В котёл, лей" in html
-        assert "сдача при обмене фишек" in html
+        assert "Остаток, лей" in html
+        assert "сгорело в конце вечера" in html
         assert "Призовой фонд" not in html
         assert (
             'Курс: <span class="font-num num-run not-italic">5 000</span> фишек = '
@@ -248,8 +248,8 @@ class TestCashGame:
 
         assert response.context["show_chips"] is True
         assert ">Фишек на выходе</th>" in html
-        assert ">В котёл</th>" in html
-        assert "В котёл уходит сдача" in html
+        assert ">На столе</th>" in html
+        assert "На столе: что игрок оставил другим" in html
 
     def test_no_stacks_hides_chip_and_pot_columns(self, client, club):
         response = get_game(client, club["games"]["c2"])
@@ -258,14 +258,14 @@ class TestCashGame:
 
         assert response.context["show_chips"] is False
         assert "Фишек на выходе" not in html
-        assert ">В котёл</th>" not in html
-        assert "в котёл" not in html.split("<tbody>")[1].split("</tbody>")[0]
+        assert ">На столе</th>" not in html
+        assert "на столе" not in html.split("<tbody>")[1].split("</tbody>")[0]
         # Rank, name, buy-ins, payouts, net: no chip or pot cells in the total row.
         assert tfoot.count("<td") == 5
         # The note keeps only the chip rate.
-        assert "В котёл уходит сдача" not in html
+        assert "На столе: что игрок оставил" not in html
         assert "Курс: " in html
-        # The stat strip still shows the game's pot.
+        # The stat strip still shows the game's remainder.
         assert f'<dd class="stat-value"><span class="val-neg">{MINUS}20</span></dd>' in html
 
     def test_cash_keeps_the_row_number_and_net_order(self, client, club):

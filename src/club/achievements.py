@@ -7,7 +7,7 @@ views and the admin only call the methods of the returned ClubAwards.
 
 A game recorded at the table counts nowhere until its results are saved (Game.live_stage empty
 again), as in club.stats. Unknown values never count: a NULL add-on is not an add-on, a NULL
-place is not ITM (and not a bubble), a NULL chips_out leaves the result out of the pot.
+place is not ITM (and not a bubble), a NULL chips_out leaves the result out of the patron title.
 """
 
 import calendar
@@ -283,7 +283,7 @@ class TitleResult:
     ``holders``: the winners once the period has ended, the current leaders while it runs
     (``running``); ties share it. Empty holders mean "претендентов нет", unless ``no_data``:
     nothing in the period can decide it (a cash season without a single known chip stack).
-    ``value`` is the winning figure (evenings, tournaments, pot in lei as a Fraction);
+    ``value`` is the winning figure (evenings, tournaments, lei left on the table as a Fraction);
     ``holder_values`` is each holder's own figure, in the order of ``holders`` (they differ only
     for "Всегда в деньгах", where holders may have played a different number of tournaments).
     """
@@ -307,8 +307,8 @@ class TitleResult:
 
     @property
     def contest(self) -> bool:
-        """A title with one winner by definition (most evenings, largest pot): several holders
-        are a tie. The others are a bar several players can clear, so no tie."""
+        """A title with one winner by definition (most evenings, most left on the table): several
+        holders are a tie. The others are a bar several players can clear, so no tie."""
         return self.code in ("udarnik", "patron")
 
     @property
@@ -776,7 +776,7 @@ class ClubAwards:
         return results
 
     def _patron(self) -> list[TitleResult]:
-        """The largest pot (chip value minus payout, exact) over results with a known stack."""
+        """Most left on the table (chip value minus payout, exact), known stacks only."""
         results = []
         for year, rows in self._by_season(SeasonKind.CASH).items():
             period = _year_period("patron", year, SeasonKind.CASH)

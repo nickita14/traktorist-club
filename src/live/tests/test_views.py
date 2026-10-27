@@ -150,7 +150,8 @@ class TestBoard:
 
         assert "За столом" in page and "Вышли" in page
         assert "Выход</button>" in page and "Вернулся +50" in page
-        assert "0,70" in page  # in the pot: 45,70 - 45
+        assert "<dt>Оставили</dt>" in page
+        assert "0,70" in page  # left on the table: 45,70 - 45
 
     def test_finished_game_redirects_to_its_public_sheet(self, org):
         game = make_game(make_season(2026))
@@ -445,7 +446,8 @@ class TestExitSheet:
         assert calc.quick == [112, 110, 100]
         assert "11 230</span> = <span" in response.text
         assert "112,30" in response.text
-        assert "2,30" in response.text  # to the pot
+        assert "<dt>На столе</dt>" in response.text
+        assert "2,30" in response.text  # left on the table
         assert "+60" in response.text  # 110 - 50
 
     def test_preview_quick_amounts_are_unique(self, org, cash):
@@ -625,6 +627,7 @@ class TestCloseAndCancel:
         actions.cash_exit(game.pk, key(), None, bravo.pk, 4770, 47)
 
         page = org.get(reverse("live:close", args=[game.pk])).text
+        assert "<dt>Остаток</dt>" in page
         assert "Баланс сверен" in page
 
         response = act(org, game, "close")

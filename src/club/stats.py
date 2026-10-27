@@ -329,8 +329,9 @@ def buyin_warning(game: Game) -> str | None:
 def annotate_season_totals(seasons: QuerySet[Season]) -> QuerySet[Season]:
     """Add games_count, players_count, buyin_total, payout_total, leftover and last_game_date.
 
-    players_count counts distinct players who played at least once; leftover is the season's pot
-    (buy-ins minus payouts over all games); last_game_date is None for a season without games.
+    players_count counts distinct players who played at least once; leftover is the sum of the
+    remainders dropped at the end of each game (buy-ins minus payouts); last_game_date is None
+    for a season without games.
     """
     finished = Q(games__live_stage="")
     return seasons.annotate(
@@ -412,7 +413,7 @@ class LiveTotals:
     addons: int
     # Players whose entry is not in the cash box yet (Result.entry_paid).
     unpaid: int
-    # Cash only: what the players who left put in the pot so far (chip value minus cash paid).
+    # Cash only: what the players who left so far left on the table (chip value minus cash paid).
     pot: Fraction
 
 
@@ -462,8 +463,8 @@ def game_results(game: Game) -> list[Result]:
     """Results of ``game``, player loaded. One query.
 
     A tournament is in place order (1, 2, 3, ...), players without a place after them, best net
-    first; a cash game is best net first. Each result has ``net`` and ``pot``: what it left in
-    the pot, chip value minus payout (a Fraction), or None when chips_out is unknown or the game
+    first; a cash game is best net first. Each result has ``net`` and ``pot``: what it left on
+    the table, chip value minus payout (a Fraction), or None when chips_out is unknown or the game
     is a tournament.
     """
     order = ["-net", "player__name", "player__nickname"]

@@ -14,7 +14,7 @@
     · <span class="whitespace-nowrap"><span class="font-num num-run not-italic">{{ season.players_count|money }}</span> {{ season.players_count|plural:"участник,участника,участников" }}</span>
     · <span class="whitespace-nowrap">закупки на <span class="font-num num-run not-italic">{{ season.buyin_total|money }}</span> лей</span>
     {% if season.kind == "cash" %}
-      · <span class="whitespace-nowrap">в котле <span class="font-num num-run not-italic">{{ season.leftover|money }}</span> {{ season.leftover|plural:"лей,лея,лей" }}</span>
+      · <span class="whitespace-nowrap">остаток <span class="font-num num-run not-italic">{{ season.leftover|money }}</span> {{ season.leftover|plural:"лей,лея,лей" }}</span>
     {% endif %}
   </p>
 {% endblock %}
