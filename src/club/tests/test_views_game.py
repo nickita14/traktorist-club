@@ -6,7 +6,7 @@ from django.urls import reverse
 from club import achievements
 from club.models import RankLadder
 from club.tests.conftest import NUM, PAST_YEAR, plain_text
-from club.tests.factories import make_game, make_result
+from club.tests.factories import make_game, make_player, make_result
 
 pytestmark = pytest.mark.django_db
 
@@ -87,7 +87,7 @@ class TestTourGame:
         assert (game.players_count, game.buyin_total, game.payout_total) == (2, 150, 150)
         assert "Призовой фонд, лей" in html
         assert "3 призовых места" in html
-        assert "В котёл" not in html
+        assert "Остаток, лей" not in html and "На столе" not in html
 
     def test_results_in_place_order_then_by_net(self, client, club):
         # 1st place bought in three times, so 2nd has the better net; the sheet follows places.
@@ -218,13 +218,41 @@ class TestCashGame:
     def test_stat_strip_and_note(self, client, club):
         html = html_of(client, club["games"]["c1"])
 
-        assert "В котёл, лей" in html
-        assert "сдача при обмене фишек" in html
+        assert "Остаток, лей" in html
+        assert "сгорело в конце вечера" in html
         assert "Призовой фонд" not in html
         assert (
             'Курс: <span class="font-num num-run not-italic">5 000</span> фишек = '
             '<span class="font-num num-run not-italic">50</span> лей.'
         ) in html
+
+    @staticmethod
+    def leftover_cell(client, season, results):
+        """The "Остаток, лей" stat cell of a finished cash game with these (buy-in, payout)."""
+        game = make_game(season, day=5, month=6)
+        for buyin, payout in results:
+            make_result(game, make_player(), buyin, payout)
+        html = html_of(client, game)
+        return html.split("<dt>Остаток, лей</dt>")[1].split("</div>")[0]
+
+    def test_positive_leftover_burned_at_the_end(self, client, club):
+        cell = self.leftover_cell(client, club["seasons"]["cash"], [(100, 60), (50, 85)])
+
+        assert '<dd class="stat-value">5</dd>' in cell
+        assert '<dd class="stat-caption">сгорело в конце вечера</dd>' in cell
+
+    def test_zero_leftover_has_no_caption(self, client, club):
+        cell = self.leftover_cell(client, club["seasons"]["cash"], [(100, 60), (50, 90)])
+
+        assert '<dd class="stat-value"><span class="val-zero">0</span></dd>' in cell
+        assert "stat-caption" not in cell
+
+    def test_negative_leftover_says_more_was_paid_out(self, client, club):
+        cell = self.leftover_cell(client, club["seasons"]["cash"], [(100, 70), (50, 95)])
+
+        assert f'<dd class="stat-value"><span class="val-neg">{MINUS}15</span></dd>' in cell
+        assert '<dd class="stat-caption">выдано больше, чем собрано</dd>' in cell
+        assert "сгорело" not in cell
 
     def test_chip_rate_comes_from_the_season(self, client, club):
         season = club["seasons"]["cash"]
@@ -248,8 +276,8 @@ class TestCashGame:
 
         assert response.context["show_chips"] is True
         assert ">Фишек на выходе</th>" in html
-        assert ">В котёл</th>" in html
-        assert "В котёл уходит сдача" in html
+        assert ">На столе</th>" in html
+        assert "На столе: что игрок оставил другим" in html
 
     def test_no_stacks_hides_chip_and_pot_columns(self, client, club):
         response = get_game(client, club["games"]["c2"])
@@ -258,14 +286,14 @@ class TestCashGame:
 
         assert response.context["show_chips"] is False
         assert "Фишек на выходе" not in html
-        assert ">В котёл</th>" not in html
-        assert "в котёл" not in html.split("<tbody>")[1].split("</tbody>")[0]
+        assert ">На столе</th>" not in html
+        assert "на столе" not in html.split("<tbody>")[1].split("</tbody>")[0]
         # Rank, name, buy-ins, payouts, net: no chip or pot cells in the total row.
         assert tfoot.count("<td") == 5
         # The note keeps only the chip rate.
-        assert "В котёл уходит сдача" not in html
+        assert "На столе: что игрок оставил" not in html
         assert "Курс: " in html
-        # The stat strip still shows the game's pot.
+        # The stat strip still shows the game's remainder.
         assert f'<dd class="stat-value"><span class="val-neg">{MINUS}20</span></dd>' in html
 
     def test_cash_keeps_the_row_number_and_net_order(self, client, club):

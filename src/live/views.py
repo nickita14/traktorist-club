@@ -815,7 +815,7 @@ class ExitCalc:
 
 def exit_calc(result: Result, chips: int | None, paid: int | None, chips_per_lei: int) -> ExitCalc:
     """What the exit sheet shows: the stack in lei, quick cash amounts (floor, down to 10, down
-    to 50), this exit's share of the pot and the player's net after it."""
+    to 50), what this exit leaves on the table and the player's net after it."""
     value = stats.chips_value(chips, chips_per_lei) if chips is not None else None
     quick = []
     if value is not None:

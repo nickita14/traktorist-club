@@ -232,11 +232,11 @@ class TestCashStandings:
             "Браво",
         ]
 
-    def test_meta_line_has_the_pot(self, client, cash_season):
+    def test_meta_line_has_the_remainder(self, client, cash_season):
         html = get_page(client, cash_season.year, SeasonKind.CASH).content.decode()
 
         # c1 leaves 10, c2 pays out 20 more than was bought in.
-        assert f'в котле <span class="font-num num-run not-italic">{MINUS}10</span> лей' in html
+        assert f'остаток <span class="font-num num-run not-italic">{MINUS}10</span> лей' in html
 
     def test_player_totals(self, client, cash_season):
         response = get_page(client, cash_season.year, SeasonKind.CASH)
@@ -294,7 +294,7 @@ class TestSeasonGames:
         html = self.get(client, PAST_YEAR, SeasonKind.CASH).content.decode()
 
         assert ">Реестр кэш-вечеров</h1>" in html
-        assert ">В котле</th>" in html
+        assert ">Остаток</th>" in html
         assert ">Победитель</th>" not in html
 
     def test_unknown_season_is_404(self, client, club):

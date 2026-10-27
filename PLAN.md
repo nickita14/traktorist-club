@@ -35,7 +35,7 @@ Source structure (same on all sheets):
 - Row 1: headers. Game dates are in row 1, every second column. Data columns start at `I` on `ТУР2026_new`, `H` on `ТУР2025`, `E` on both `КЭШ` sheets.
 - Each player occupies **two rows**: first row has the name in column `B` and the buy-in under the game's date column (the next column holds a net formula, ignore it); second row has the payout under the same date column.
 - An empty buy-in cell means the player did not play that game.
-- Player rows end at the first row where column `B` or `D` reads `Закупка` (`ТУР2025` has it in `D`, like the cash sheets). Everything below is summaries (including the cash fund entries for Stage 8): ignore it.
+- Player rows end at the first row where column `B` or `D` reads `Закупка` (`ТУР2025` has it in `D`, like the cash sheets). Everything below is summaries: ignore it.
 
 Known data problems to handle:
 - [x] **Dates**: some cells have wrong years (2025 on a 2026 sheet, year `0202`). Always take the year from the sheet name, day and month from the cell. Log every fixed date.
@@ -72,7 +72,7 @@ Behavior:
 
 - [x] `/` redirects to the latest season (tour); an empty site goes to `/all-time/`
 - [x] `/<year>/tour/` and `/<year>/cash/`: standings in net order, recent games sidebar, full list of games at `/<year>/<kind>/games/` (linked as "Все игры сезона")
-- [x] `/games/<id>/`: game sheet with results, prev/next game of the season, stat strip, balance stamp from `LEFTOVER_MISMATCH`; for cash also the per-player pot (exact chip value minus payout, only when `chips_out` is known) and the chip rate note
+- [x] `/games/<id>/`: game sheet with results, prev/next game of the season, stat strip, balance stamp from `LEFTOVER_MISMATCH`; for cash also what each player left on the table (exact chip value minus payout, only when `chips_out` is known) and the chip rate note
 - [x] `/players/<slug>/`: record card: stat strip, cumulative net chart (server-side SVG), per-season totals, last 10 games, full paginated history at `/players/<slug>/games/`. A player without games gets the heading only (no 404: admin "view on site" lands here)
 - [x] `/players/`: players with at least one game, in name order
 - [x] `/all-time/`: standings across all seasons, filter by kind (`?kind=tour|cash`)
@@ -130,7 +130,9 @@ After the first real live game (18.10.2026).
 - [x] "Не садился": remove a seated player who never played, also after the start
 - [x] Bust confirmation near the money (place `<= paid_places + 1`), refused if the place changed meanwhile
 
-## Stage 8. Club fund (blocked: rules not decided)
+## Stage 8. Club fund (cancelled)
+
+Cancelled 2026-10-27: there is no club pot; the cash leftover is a remainder dropped at the end of the evening (`CLAUDE.md`, Core principles). The text below is kept as history.
 
 The cash leftover goes to a common pot; what happens to it is not confirmed yet. Do not start until this section is updated with the rules.
 

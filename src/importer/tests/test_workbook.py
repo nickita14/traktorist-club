@@ -37,7 +37,7 @@ class TestLayout:
             "Нина - Борона",
         ]
         assert len(sheets["ТУР2025"].players) == 3  # marker in D
-        assert len(sheets["КЭШ2026"].players) == 3  # fund block below the marker ignored
+        assert len(sheets["КЭШ2026"].players) == 3  # summary rows below the marker ignored
 
     def test_blank_slot_skipped_and_player_without_games_kept(self, workbook_path):
         tour = by_title(parse_workbook(workbook_path))["ТУР2026_new"]

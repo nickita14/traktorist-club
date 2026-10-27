@@ -21,11 +21,14 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 - Manual game entry in the admin (admin-game-entry): two-step add view (season first), result columns by season kind, a balance block.
 - Backup and uptime monitoring: `deploy/backup.sh` and `deploy/sitecheck.sh` ping healthchecks.io once their URLs are set; the checks are not set up yet (or switch to Cronitor or Better Stack).
 - Excel export.
+- Cash live screen: chips given by the club (a free top-up that does not increase the buy-in), for the rare case when the club gives chips instead of money.
+- Leftover check: warn when a finished cash game's leftover is unusually high (threshold in Season), since normal remainders are 0 to 50 lei.
+- Title rules on `/honors/`: a short visible condition per title, like `badge_rules()` for badges ("Меценат": больше всех оставил на столе за сезон).
+- «Меценат» is both a step of the «Кормилец клуба» rank (sum of buy-ins) and the cash season title (most left on the table): rename one of them (the rank step lives in the database, seeded by migration 0011, so this needs a data migration or an admin edit).
 
 ## Deferred
 
 - Row reorder animation when a table is sorted.
-- Stage 8, club fund: blocked until the pot rules are decided (`PLAN.md`).
 
 ## Done
 
@@ -33,7 +36,8 @@ Newest first. Dates are local (Europe/Chisinau), from the merge commits. Dependa
 
 | Item | Branch | Merged | PR |
 | --- | --- | --- | --- |
-| Stop tracking local Claude Code settings; deny git writes in `.claude/settings.json` | `claude-settings` | | |
+| Cash leftover is a dropped remainder, not a pot: wording, Stage 8 cancelled | `cash-remainder` | | |
+| Stop tracking local Claude Code settings; deny git writes in `.claude/settings.json` | `claude-settings` | 2026-10-27 | #41 |
 | One tracked backlog (this file) | `backlog` | 2026-10-27 | #40 |
 | Group codeql-action updates in Dependabot | `dependabot-codeql-group` | 2026-10-27 | #37 |
 | Faster browser CI job (no apt installs for Chromium) | `ci-browser-speed` | 2026-10-27 | #36 |

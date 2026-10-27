@@ -114,7 +114,7 @@ def optional_count(value: int | None) -> str:
 
 @register.simple_tag
 def pot_value(value) -> str:
-    """What a cash result left in the pot (maybe fractional lei); faint dot when unknown."""
+    """What a cash result left on the table (maybe fractional lei); faint dot when unknown."""
     if value is None:
         return no_value()
     if value < 0:

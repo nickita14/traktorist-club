@@ -627,7 +627,7 @@ def cash_exit(game_pk: int, key: uuid.UUID, user, result_pk: int, chips: int, pa
     """A player leaves the cash table with ``chips`` and is paid ``paid`` lei.
 
     A player who comes back and leaves again adds to chips_out and payout, so chip value minus
-    payout (the pot share) and the net stay right.
+    payout (what was left on the table) and the net stay right.
     """
 
     def operation(game: Game) -> Change:

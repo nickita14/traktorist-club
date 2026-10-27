@@ -1,4 +1,5 @@
 import datetime
+import re
 import uuid
 
 import pytest
@@ -36,6 +37,12 @@ def act(client, game, name, *, result=None, same_key=None, **extra):
 def fresh(result) -> Result:
     result.refresh_from_db()
     return result
+
+
+def figure(page: str, label: str) -> str | None:
+    """The content of the <dd> right after <dt>label</dt>; None when there is no such pair."""
+    found = re.search(rf"<dt>{re.escape(label)}</dt>\s*<dd[^>]*>(.*?)</dd>", page, re.S)
+    return found.group(1).strip() if found else None
 
 
 def page_urls(game, result):
@@ -150,7 +157,7 @@ class TestBoard:
 
         assert "За столом" in page and "Вышли" in page
         assert "Выход</button>" in page and "Вернулся +50" in page
-        assert "0,70" in page  # in the pot: 45,70 - 45
+        assert figure(page, "Оставили") == "0,70"  # left on the table: 45,70 - 45
 
     def test_finished_game_redirects_to_its_public_sheet(self, org):
         game = make_game(make_season(2026))
@@ -445,7 +452,7 @@ class TestExitSheet:
         assert calc.quick == [112, 110, 100]
         assert "11 230</span> = <span" in response.text
         assert "112,30" in response.text
-        assert "2,30" in response.text  # to the pot
+        assert figure(response.text, "На столе") == "2,30"  # left on the table: 112,30 - 110
         assert "+60" in response.text  # 110 - 50
 
     def test_preview_quick_amounts_are_unique(self, org, cash):
@@ -625,6 +632,7 @@ class TestCloseAndCancel:
         actions.cash_exit(game.pk, key(), None, bravo.pk, 4770, 47)
 
         page = org.get(reverse("live:close", args=[game.pk])).text
+        assert "<dt>Остаток</dt>" in page
         assert "Баланс сверен" in page
 
         response = act(org, game, "close")

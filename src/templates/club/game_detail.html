@@ -59,9 +59,13 @@
     </div>
     {% if season.kind == "cash" %}
       <div>
-        <dt>В котёл, лей</dt>
+        <dt>Остаток, лей</dt>
         <dd class="stat-value">{% pot_value game.leftover %}</dd>
-        <dd class="stat-caption">сдача при обмене фишек</dd>
+        {% if game.leftover > 0 %}
+          <dd class="stat-caption">сгорело в конце вечера</dd>
+        {% elif game.leftover < 0 %}
+          <dd class="stat-caption">выдано больше, чем собрано</dd>
+        {% endif %}
       </div>
     {% else %}
       <div>
@@ -84,7 +88,7 @@
             <th scope="col" class="num max-md:hidden">Закупка</th>
             {% if show_chips %}<th scope="col" class="num max-md:hidden">Фишек на выходе</th>{% endif %}
             <th scope="col" class="num max-md:hidden">Выплата</th>
-            {% if show_chips %}<th scope="col" class="num max-md:hidden">В котёл</th>{% endif %}
+            {% if show_chips %}<th scope="col" class="num max-md:hidden">На столе</th>{% endif %}
             <th scope="col" class="num">Итог, лей</th>
           </tr>
         </thead>
@@ -95,7 +99,7 @@
               <td class="col-player">
                 {% include "club/includes/player_name.html" with player=result.player %}{% for badge in result.badges %}<span class="award-mark" data-badge="{{ badge.code }}"><span class="sr-only">знак </span>{{ badge.title }}</span>{% endfor %}
                 {% if season.kind == "tour" %}{% include "club/includes/rebuy_note.html" %}{% endif %}
-                <span class="block font-num text-xs text-muted md:hidden">{{ result.buyin|money }} → {{ result.payout|money }}{% if result.chips_out is not None %} · фишек {{ result.chips_out|money }} · в котёл {% pot_value result.pot %}{% endif %}</span>
+                <span class="block font-num text-xs text-muted md:hidden">{{ result.buyin|money }} → {{ result.payout|money }}{% if result.chips_out is not None %} · фишек {{ result.chips_out|money }} · на столе {% pot_value result.pot %}{% endif %}</span>
               </td>
               <td class="num max-md:hidden">{{ result.buyin|money }}</td>
               {% if show_chips %}<td class="num max-md:hidden">{% optional_count result.chips_out %}</td>{% endif %}
@@ -127,8 +131,8 @@
     {% if season.kind == "cash" %}
       <p class="mt-3 max-w-prose text-sm text-muted italic">
         {% if show_chips %}
-          В котёл уходит сдача при обмене фишек: стоимость фишек на выходе минус выплата.
-          Где фишки на выходе не записаны, стоит точка; итог котла по вечеру считается по закупкам и выплатам.
+          На столе: что игрок оставил другим, стоимость фишек на выходе минус выплата.
+          Где фишки на выходе не записаны, стоит точка. Внизу остаток вечера: закупки минус выплаты, он сгорает в конце.
         {% endif %}
         <span class="whitespace-nowrap">Курс: <span class="font-num num-run not-italic">{{ rate_example.chips|money }}</span> фишек = <span class="font-num num-run not-italic">{{ rate_example.lei|money }}</span> лей.</span>
       </p>

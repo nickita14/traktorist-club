@@ -40,7 +40,7 @@
     {% if cash %}
       <div><dt>Закупки</dt><dd class="stat-value">{{ totals.bank|money }}</dd></div>
       <div><dt>Выдано</dt><dd class="stat-value">{{ totals.paid_out|money }}</dd></div>
-      <div><dt>В котле</dt><dd class="stat-value">{% pot_value totals.pot %}</dd></div>
+      <div><dt>Оставили</dt><dd class="stat-value">{% pot_value totals.pot %}</dd></div>
     {% else %}
       <div><dt>Банк</dt><dd class="stat-value">{{ totals.bank|money }}</dd></div>
       <div><dt>В игре</dt><dd class="stat-value">{{ totals.in_game }}<span class="stat-of"> из {{ totals.players }}</span></dd></div>

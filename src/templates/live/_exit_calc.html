@@ -9,7 +9,7 @@
     </div>
   {% endif %}
   <dl class="exit-figures">
-    <div><dt>В котёл</dt><dd class="font-num">{% pot_value calc.pot %}</dd></div>
+    <div><dt>На столе</dt><dd class="font-num">{% pot_value calc.pot %}</dd></div>
     <div><dt>Итог игрока</dt><dd class="font-num">{% if calc.net is not None %}{% net_value calc.net %}{% else %}{% no_value %}{% endif %}</dd></div>
   </dl>
   {% if calc.pot is not None and calc.pot < 0 %}<p class="field-error">Выдано больше, чем стоят фишки.</p>{% endif %}
