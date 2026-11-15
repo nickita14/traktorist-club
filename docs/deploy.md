@@ -10,7 +10,7 @@ This guide takes the site from a fresh VPS to production, then covers routine wo
 | Settings on the server | `/srv/traktorist/.env` (mode 600, template `.env.prod.example`, never committed) |
 | Backups on the server | `/var/backups/traktorist` (mode 700, 14 nightly dumps) |
 | Off-site backups | Backblaze B2 bucket, age-encrypted, kept 30 days |
-| Monitoring | healthchecks.io: nightly backup (and optionally the site) |
+| Monitoring | Cronitor heartbeats: nightly backup (and optionally the site) |
 
 The stack (`compose.prod.yaml`) has three containers:
 - **`caddy`** (ports 80/443): HTTPS with Let's Encrypt, security headers, and `/static/`.
@@ -338,9 +338,9 @@ The nightly job (`deploy/backup.sh`, 03:30 server time) does this:
 2. Verifies that `pg_restore` can read the dump.
 3. Keeps the newest 14 dumps.
 4. Encrypts the dump with your **age** public key and uploads it to **Backblaze B2** with a key that cannot delete anything.
-5. Only then pings **healthchecks.io**.
+5. Only then sends a heartbeat to **Cronitor**.
 
-If a night fails, the job pings the check's `/fail` URL right away. If the timer never runs at all, healthchecks.io emails you 26 hours after the last ping.
+If a night fails, the job sends one failure ping (`state=fail`) right away. If the timer never runs at all, Cronitor alerts you a day and 2 hours after the last heartbeat.
 
 ### 6.1 Encryption key (local)
 
@@ -396,17 +396,26 @@ The upload uses `rclone copyto --no-check-dest`, so rclone never needs to list o
 1. Delete the key.
 2. Create one with the B2 command-line tool and exactly these capabilities: `listBuckets,writeFiles`. If that still fails, use `listBuckets,listFiles,writeFiles`. Never `deleteFiles`.
 
-### 6.3 Dead man's switch (healthchecks.io)
+### 6.3 Dead man's switch (Cronitor)
 
-1. Sign up at https://healthchecks.io (the free plan allows 20 checks). Email alerts go to your account address by default.
-2. **Add Check:**
-   - Name: `traktorist backup`
-   - Schedule: **Simple**
-   - Period: **1 day**
-   - Grace Time: **2 hours**
+1. Sign up at https://cronitor.io. Alerts go to your account email by default.
+2. Create a **Heartbeat** monitor:
+   - Name (its key): `traktorist-backup`
+   - Expected: **every day**
+   - Grace period: **2 hours**
 
-   With these values, no successful ping for 26 hours means an email.
-3. Copy the ping URL (`https://hc-ping.com/<uuid>`) into `.env` as `HEALTHCHECKS_BACKUP_URL`.
+   With these values, no heartbeat for a day plus 2 hours means an alert.
+3. Copy your **telemetry key** (the ping API key in the Cronitor settings). The ping URL is
+
+   ```
+   https://cronitor.link/p/<telemetry-key>/traktorist-backup
+   ```
+
+   Put it into `.env` as `MONITOR_BACKUP_URL`. The key is a secret: it lives only in `.env` (and the password-manager copy), never in the repository, a chat or a shell history.
+
+A bare request to the URL is a heartbeat. The scripts report a failure with the same URL plus the query parameter `state=fail` (`&state=fail` when the URL already has a query). Never add `/fail` to the path: Cronitor reads that as another monitor's name.
+
+The scripts never print the URL. When a ping cannot be sent, curl's error line (in the journal) names at most the host, never the key, and the backup itself still succeeds or fails on its own.
 
 ### 6.4 Tools on the server
 
@@ -434,7 +443,7 @@ Backup complete.
 
 Then check both ends:
 - The file appears under Browse Files in B2.
-- The check turns green ("up") on healthchecks.io.
+- The `traktorist-backup` monitor turns healthy on Cronitor.
 
 Before B2 is set up, `deploy/backup.sh --local-only` does steps 1 to 3 only (no upload, no ping).
 
@@ -456,12 +465,12 @@ The unit files live in the repository. If a deploy changes them, copy them again
 
 ### 6.7 Optional: site uptime check
 
-healthchecks.io only waits for pings; it does not visit the site. `deploy/sitecheck.sh` runs on the server every 5 minutes: when `https://traktorist.duckdns.org/robots.txt` answers 200, it pings a second check. If the app, Caddy, the certificate or the whole server goes down, the pings stop and you get an email.
+A heartbeat monitor only waits for pings; it does not visit the site. `deploy/sitecheck.sh` runs on the server every 5 minutes: when `https://traktorist.duckdns.org/robots.txt` answers 200, it sends a heartbeat to a second monitor, otherwise a failure ping. If the whole server goes down, the heartbeats stop and Cronitor alerts after the grace period.
 
 It can't catch problems that only outside visitors see (DuckDNS resolving elsewhere, the provider's network). For that, add a free external monitor such as UptimeRobot on the same URL.
 
-1. On healthchecks.io, add a check `traktorist site`: Simple, Period **5 minutes**, Grace **10 minutes**.
-2. Put its URL into `.env` as `HEALTHCHECKS_SITE_URL`.
+1. On Cronitor, create a Heartbeat monitor `traktorist-site`: expected **every 5 minutes**, grace period **10 minutes**.
+2. Put its URL (`https://cronitor.link/p/<telemetry-key>/traktorist-site`) into `.env` as `MONITOR_SITE_URL`.
 3. **Server:**
 
    ```bash
@@ -471,7 +480,45 @@ It can't catch problems that only outside visitors see (DuckDNS resolving elsewh
    sudo systemctl enable --now traktorist-sitecheck.timer
    ```
 
-The unattended reboot at 05:00 takes about a minute, well inside the 10-minute grace time.
+The unattended reboot at 05:00 takes about a minute, well inside the 10-minute grace time. A deploy restarts the web container, so a check can fail during one: set the `traktorist-site` monitor to tolerate one or two failed checks in a row before it alerts (a setting on the Cronitor monitor, not in the scripts).
+
+### 6.8 Testing a failure by hand
+
+**Server:** load the settings without printing them, send a failure, then a heartbeat to clear it:
+
+```bash
+set -a; . /srv/traktorist/.env; set +a
+curl -fsS -m 10 -o /dev/null "$MONITOR_BACKUP_URL?state=fail"   # the monitor turns failing, you get an alert
+curl -fsS -m 10 -o /dev/null "$MONITOR_BACKUP_URL"              # healthy again
+```
+
+The same works for `MONITOR_SITE_URL`. Use the variables, never the URL typed out: the key would land in the shell history. Close the shell afterwards (the variables hold every secret in `.env`).
+
+### 6.9 After the switch from healthchecks.io (once)
+
+The settings were renamed: `HEALTHCHECKS_BACKUP_URL` is now `MONITOR_BACKUP_URL` and `HEALTHCHECKS_SITE_URL` is now `MONITOR_SITE_URL`. The old names are no longer read. Until the new ones are set, the scripts send no pings and work as before.
+
+**Server**, after the merge has deployed:
+
+1. Edit `/srv/traktorist/.env`: delete any `HEALTHCHECKS_*` lines, add `MONITOR_BACKUP_URL` and `MONITOR_SITE_URL` (6.3, 6.7). Update the password-manager copy. No `dc up -d` is needed: only the host scripts read these two.
+2. Copy the unit files again (their descriptions changed) and reload:
+
+   ```bash
+   sudo cp /srv/traktorist/deploy/systemd/traktorist-backup.service \
+           /srv/traktorist/deploy/systemd/traktorist-sitecheck.service \
+           /srv/traktorist/deploy/systemd/traktorist-sitecheck.timer /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now traktorist-sitecheck.timer
+   ```
+
+3. Run the backup once through systemd and read its log:
+
+   ```bash
+   sudo systemctl start traktorist-backup.service
+   journalctl -u traktorist-backup.service -n 20 --no-pager   # ends with "Backup complete."
+   ```
+
+4. Watch both monitors on Cronitor: `traktorist-backup` turns healthy after step 3, `traktorist-site` within 5 minutes. Optionally test a failure (6.8).
 
 ## 7. Restore
 
@@ -644,6 +691,7 @@ Other details:
 - **Rotating secrets.**
   - `SECRET_KEY`: edit `.env`, then `dc up -d` (everyone is logged out).
   - B2 key: create a new one, update `.env`, delete the old one in B2.
+  - Cronitor telemetry key: create a new one, update both `MONITOR_*` URLs in `.env`, revoke the old one (no `dc up -d` needed).
   - CI deploy key: section 12.7.
   - `POSTGRES_PASSWORD`: can't be changed through `.env` alone, since Postgres keeps the password it was initialized with. Change it with `dc exec db psql -U traktorist -d traktorist_club -c "ALTER USER traktorist PASSWORD '<new>'"`, then update `.env` and run `dc up -d`.
 

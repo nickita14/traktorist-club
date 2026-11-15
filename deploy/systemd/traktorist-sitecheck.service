@@ -1,5 +1,5 @@
 [Unit]
-Description=Traktorist club: uptime ping to healthchecks.io (optional)
+Description=Traktorist club: uptime heartbeat (optional)
 Wants=network-online.target
 After=network-online.target
 
