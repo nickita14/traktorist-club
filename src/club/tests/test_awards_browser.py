@@ -115,7 +115,7 @@ HEADER_TEXT_BOTTOMS = """() => [...document.querySelectorAll(
   '[aria-labelledby="badges-title"] thead th')].map(th => {
   const range = document.createRange();
   range.selectNodeContents(th.querySelector('.sort-lines') || th);
-  return Math.round(range.getBoundingClientRect().bottom);
+  return range.getBoundingClientRect().bottom;
 })"""
 
 # The height of each body row of the badge matrix.
@@ -136,13 +136,32 @@ def test_badge_matrix_rows_are_one_line_on_desktop(open_page, club, award_rules)
     assert all(height <= 45 for height in heights)  # the ledger's 44px row: one line
     # Every header's text ends on the same line, two-line ones and the plain "№" alike.
     bottoms = page.evaluate(HEADER_TEXT_BOTTOMS)
-    assert max(bottoms) - min(bottoms) <= 1  # "№" has a taller line box: a pixel of rounding
+    # "№" has a taller line box and ends about 1.6px higher; unrounded, so the table's position
+    # on the page (text above it) cannot tip the check over a rounding boundary.
+    assert max(bottoms) - min(bottoms) < 2
     head = page.locator('[aria-labelledby="badges-title"] thead')
     # And they keep sorting.
     head.get_by_role("link", name="Ни одного прогула").click()
     active = page.locator('[aria-labelledby="badges-title"] thead a[aria-current]')
     expect(active).to_have_class("sort-link sort-link-lines sort-desc")
     assert page.url.endswith("/honors/?sort=no_skip")
+    assert page.evaluate("window.cspViolations") == []
+
+
+def test_rules_fit_on_phones(open_page, club, award_rules):
+    """The title and badge rules wrap inside the page at 390px, the unearned badges' notes too;
+    the matrix keeps only the earned columns."""
+    page = open_page(reverse("honors"), PHONE)
+    for title_id in ("titles-title", "badges-title"):
+        caption = page.locator(f'[aria-labelledby="{title_id}"] p.max-w-prose').first
+        expect(caption).to_be_visible()
+        box = caption.bounding_box()
+        assert box["x"] >= 0 and box["x"] + box["width"] <= PHONE, title_id
+    expect(page.get_by_text("Меценат: больше всех оставил на столе за кэш-сезон")).to_be_visible()
+    expect(page.get_by_text("ещё никем не получен").first).to_be_visible()
+    headers = page.locator('[aria-labelledby="badges-title"] thead th')
+    assert headers.count() == 7  # №, Участник, four earned badges, Всего
+    assert page.evaluate("document.documentElement.scrollWidth") <= PHONE
     assert page.evaluate("window.cspViolations") == []
 
 

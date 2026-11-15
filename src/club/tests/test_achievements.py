@@ -608,7 +608,9 @@ class TestViews:
         # The badge matrix is all-time: both years.
         matrix = {player.name: counts for player, counts in board.badge_matrix}
         assert matrix == {"Альфа": {"one_buyin": 2}, "Дельта": {"bubble": 2}}
-        assert board.badge_codes == list(achievements.BADGES)
+        # Columns only for earned badges, in the order of BADGES.
+        assert board.badge_codes == ["bubble", "one_buyin"]
+        assert [row.counts for row in board.badge_rows] == [[0, 2], [2, 0]]
         assert [(p.name, ranks[0].value) for p, ranks in board.rank_table][:2] == [
             ("Альфа", 2),
             ("Дельта", 2),
@@ -788,6 +790,24 @@ class TestDisplay:
         assert found["one_buyin"] == "победа в турнире без докупок"
         assert list(found) == list(achievements.BADGES)
 
+    def test_title_rules_follow_the_settings(self, rules):
+        rules.always_itm_min_tournaments = 1
+        rules.save()
+        found = achievements.load(TODAY).title_rules()
+        assert found["always_itm"] == "в деньгах в каждом своём турнире сезона, если их 1 и больше"
+        rules.always_itm_min_tournaments = 8
+        rules.save()
+        found = achievements.load(TODAY).title_rules()
+        assert found["always_itm"] == "в деньгах в каждом своём турнире сезона, если их 8 и больше"
+        assert found["patron"] == "больше всех оставил на столе за кэш-сезон"
+        assert list(found) == list(achievements.TITLES)
+
+    def test_no_badges_no_columns(self, tour25, players):
+        a, b, *_ = players
+        tour(tour25, 3, 1, [(a, 1, 100), (b, 2)])  # a win with a rebuy: no badge
+        board = achievements.load(TODAY).honors(2025)
+        assert (board.badge_codes, board.badge_rows) == ([], [])
+
 
 class TestHonorsBoardYears:
     def test_running_winter_is_on_the_default_page_only(self, tour25, players):
@@ -841,13 +861,17 @@ class TestSortBadgeRows:
         tour(tour25, 3, 1, [(a, 1), (b, 2), (c, 3), (d, 4)])
         tour(tour25, 3, 8, [(b, 1), (a, 4)])
         tour(tour25, 3, 15, [(c, 1), (a, 4)])
-        return achievements.load(TODAY).honors(2025).badge_rows
+        board = achievements.load(TODAY).honors(2025)
+        assert board.badge_codes == ["bubble", "one_buyin", "no_skip"]  # no cashier, comeback...
+        return board.badge_rows, board.badge_codes
 
     def sort(self, rows, key, descending):
-        return [row.player.name for row in achievements.sort_badge_rows(rows, key, descending)]
+        rows, codes = rows
+        found = achievements.sort_badge_rows(rows, key, descending, codes=codes)
+        return [row.player.name for row in found]
 
     def test_default_total(self, rows):
-        assert [(row.player.name, row.total) for row in rows] == [
+        assert [(row.player.name, row.total) for row in rows[0]] == [
             ("Альфа", 4),  # with March's "Ни одного прогула"
             ("Браво", 1),
             ("Дельта", 1),

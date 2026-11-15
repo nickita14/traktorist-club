@@ -516,10 +516,10 @@ class TestPlayerAwards:
         assert '<span class="rank-title">Старожил</span>' in ranks
         assert '<span class="rank-of">III из III</span>' in ranks
         assert "высшая ступень" in ranks
-        # Middle step: progress from Пайщик (100) to Меценат (1000).
+        # Middle step: progress from Пайщик (100) to Вкладчик (1000).
         assert '<span class="rank-of">I из II</span>' in ranks
         assert '<progress class="rank-progress" value="300" max="900"></progress>' in ranks
-        assert 'до звания «Меценат» ещё <span class="font-num num-run">600</span>' in ranks
+        assert 'до звания «Вкладчик» ещё <span class="font-num num-run">600</span>' in ranks
         assert '<span class="font-num num-run">400</span> лей' in ranks
         # No step yet: a faint dot, an empty bar, the way to the first step.
         assert 'value="0" max="1"' in ranks
@@ -530,7 +530,7 @@ class TestPlayerAwards:
             '<span class="rank-step-passed">Бывалый</span> · '
             '<span class="rank-step-current">Старожил</span>'
         ) in ranks
-        assert '<span class="rank-step-future">Меценат</span>' in ranks
+        assert '<span class="rank-step-future">Вкладчик</span>' in ranks
 
     def test_badge_grid(self, card):
         badges = section(card, "badges-title")

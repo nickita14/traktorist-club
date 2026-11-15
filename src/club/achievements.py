@@ -382,7 +382,7 @@ class HonorTitle:
 
 @dataclass(frozen=True)
 class BadgeRow:
-    """A row of the badge matrix: counts in the order of BADGES."""
+    """A row of the badge matrix: counts in the order of HonorsBoard.badge_codes."""
 
     player: Player
     counts: list[int]
@@ -399,6 +399,7 @@ class HonorsBoard:
 
     year: int
     titles: list[TitleResult]
+    # The matrix's columns: the badges at least one player has earned, in the order of BADGES.
     badge_codes: list[str]
     badge_matrix: list[tuple[Player, dict[str, int]]]
     rank_table: list[tuple[Player, list[RankProgress]]]
@@ -848,6 +849,17 @@ class ClubAwards:
             ),
         }
 
+    def title_rules(self) -> dict[str, str]:
+        """One short rule per title, in the order of TITLES, with the numbers of the current
+        settings."""
+        minimum = self.settings.always_itm_min_tournaments
+        return {
+            "udarnik": "больше всех клубных вечеров за время года",
+            # Over the player's own tournaments of the season, at least the minimum of them.
+            "always_itm": f"в деньгах в каждом своём турнире сезона, если их {minimum} и больше",
+            "patron": "больше всех оставил на столе за кэш-сезон",
+        }
+
     def player(self, player_id: int) -> PlayerAwards:
         mine = [award for award in self.awards if award.player_id == player_id]
         rules = self.badge_rules()
@@ -927,10 +939,12 @@ class ClubAwards:
             key=lambda r: (not r.running, -r.period.end.toordinal(), list(TITLES).index(r.code)),
         )
         kinds = Counter(award.kind for award in self.awards)
+        # A badge nobody has earned gets no column (its rule is still listed under the matrix).
+        codes = [code for code in BADGES if any(code in count for count in counts.values())]
         return HonorsBoard(
             year=year,
             titles=titles,
-            badge_codes=list(BADGES),
+            badge_codes=codes,
             badge_matrix=matrix,
             rank_table=[(self.players[pk], self.rank_progress(pk)) for pk in ranked],
             title_rows=[
@@ -938,8 +952,7 @@ class ClubAwards:
                 for r in ordered
             ],
             badge_rows=[
-                BadgeRow(player, [count.get(code, 0) for code in BADGES])
-                for player, count in matrix
+                BadgeRow(player, [count.get(code, 0) for code in codes]) for player, count in matrix
             ],
             participants=len({row.player_id for row in self._rows}),
             badge_total=kinds[Kind.BADGE],
@@ -966,14 +979,17 @@ class ClubAwards:
         )
 
 
-def sort_badge_rows(rows: list[BadgeRow], key: str, descending: bool) -> list[BadgeRow]:
-    """The badge matrix by ``key``: "name", "total" or a badge code. Ties stay by name."""
+def sort_badge_rows(
+    rows: list[BadgeRow], key: str, descending: bool, *, codes: list[str]
+) -> list[BadgeRow]:
+    """The badge matrix by ``key``: "name", "total" or one of ``codes`` (the board's columns,
+    the order of BadgeRow.counts). Ties stay by name."""
     by_name = sorted(rows, key=lambda row: (row.player.name, row.player.nickname))
     if key == "name":
         return by_name[::-1] if descending else by_name
     if key == "total":
         return sorted(by_name, key=lambda row: row.total, reverse=descending)
-    index = list(BADGES).index(key)
+    index = codes.index(key)
     return sorted(by_name, key=lambda row: row.counts[index], reverse=descending)
 
 
