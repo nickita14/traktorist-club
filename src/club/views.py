@@ -281,22 +281,35 @@ def honors(request):
             raise Http404("Нет такого года.") from None
         if year not in years:
             raise Http404("Нет такого года.")
-    sort = parse_sort(request.GET, BADGES)
     board = awards.honors(year, running=requested is None) if year is not None else None
+    columns = board.badge_codes if board else []
+    sort = parse_sort(request.GET, BADGES)
+    if sort.key in achievements.BADGES and sort.key not in columns:
+        sort = BADGES.default_sort  # an old link to a column nobody has earned yet
     rules = awards.badge_rules()
+    title_rules = awards.title_rules()
     return render(
         request,
         "club/honors.html",
         {
             "board": board,
             "badge_rows": (
-                achievements.sort_badge_rows(board.badge_rows, sort.key, sort.descending)
+                achievements.sort_badge_rows(
+                    board.badge_rows, sort.key, sort.descending, codes=columns
+                )
                 if board
                 else []
             ),
             "badge_columns": [
-                (code, title, rules[code], achievements.BADGE_HEADERS[code])
-                for code, title in achievements.BADGES.items()
+                (code, achievements.BADGES[code], achievements.BADGE_HEADERS[code])
+                for code in columns
+            ],
+            # Every badge, earned or not, so the page still says how to earn one.
+            "badge_rules": [
+                (title, rules[code], code in columns) for code, title in achievements.BADGES.items()
+            ],
+            "title_rules": [
+                (title, title_rules[code]) for code, title in achievements.TITLES.items()
             ],
             "ladders": awards.ladders,
             "year_links": _year_links(years, year, default_year, sort),

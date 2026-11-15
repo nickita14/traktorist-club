@@ -4,11 +4,13 @@ With ``award_rules`` and the club fixture (Y = PAST_YEAR, every period has ended
 - titles of Y: "Всегда в деньгах" and "Меценат" (31.12), spring's "Ударник" (31.05); of Y-1:
   autumn's "Ударник".
 - badges: Альфа one_buyin x3 (t0, t1, t3), hat_trick (t2), cashier (c2); Чарли cashier (c1);
-  "Ни одного прогула" for March (four evenings) to Альфа and Браво, on c2.
+  "Ни одного прогула" for March (four evenings) to Альфа and Браво, on c2. Nobody has a bubble or
+  a comeback: the matrix has no column for them.
 - diplomas: Альфа's first win, evening series 3 and 5 for Альфа and Браво.
 """
 
 import datetime
+import re
 
 import pytest
 from django.urls import reverse
@@ -41,6 +43,13 @@ def section(html, title_id):
 
 def rows(table_html):
     return table_html.split("<tbody>")[1].split("</tbody>")[0].split("<tr>")[1:]
+
+
+def badge_columns(html):
+    """The badge codes of the matrix's headers, in order."""
+    head = section(html, "badges-title").split("</thead>")[0]
+    codes = re.findall(r'href="/honors/\?(?:year=\d+&amp;)?sort=(\w+)', head)
+    return [code for code in codes if code in achievements.BADGES]
 
 
 def pin_today(monkeypatch, date):
@@ -77,7 +86,9 @@ class TestHead:
         html = html_of(client)
         assert "Игр пока не было, наград тоже" in html
         assert "Титулов за этот год нет." in html
-        assert "Знаков пока никто не получил." in html
+        badges = section(html, "badges-title")
+        assert "<table" not in badges  # rules only
+        assert plain_text(badges).count("(ещё никем не получен)") == len(achievements.BADGES)
         assert "Наград пока нет." in html
         assert 'class="segmented"' not in html
 
@@ -100,6 +111,23 @@ class TestTitles:
         assert '<span class="award-note">ничья</span>' in spring
         assert f"{NUM}4</span> вечера</td>" in spring  # only the number in the number face
         assert '<td class="text-right whitespace-nowrap">' in spring  # the cell is not mono
+
+    def test_title_rules(self, client, club, award_rules):
+        titles = section(html_of(client), "titles-title")
+        assert (
+            "Ударник сезона: больше всех клубных вечеров за время года; "
+            "Всегда в деньгах: в деньгах в каждом своём турнире сезона, если их 5 и больше; "
+            "Меценат: больше всех оставил на столе за кэш-сезон."
+        ) in plain_text(titles)
+        assert f"если их {NUM}5</span> и больше" in titles  # only the number in the number face
+
+    def test_title_rules_follow_the_settings(self, client, club, award_rules):
+        award_rules.always_itm_min_tournaments = 7
+        award_rules.save()
+        titles = section(html_of(client), "titles-title")
+        assert f"в каждом своём турнире сезона, если их {NUM}7</span> и больше" in titles
+        for title in achievements.TITLES.values():
+            assert f"{title}: " in plain_text(titles)
 
     def test_switcher(self, client, club, award_rules):
         html = html_of(client, sort="cashier")
@@ -194,15 +222,51 @@ class TestBadges:
         alpha, bravo, charlie = found
         assert "Альфа" in alpha and "Браво" in bravo and "Чарли" in charlie
         cells = [cell.split("</td>")[0] for cell in alpha.split('<td class="num">')[1:]]
-        assert cells[0].startswith('<span class="val-zero">')  # no bubble
-        assert cells[1:] == ["1", "3", cells[3], "1", "1", "6"]
-        assert "Ни одного прогула" in section(html_of(client), "badges-title").split("</thead>")[0]
+        assert cells == ["1", "3", "1", "1", "6"]  # cashier, one_buyin, hat_trick, no_skip
+        assert badge_columns(html_of(client)) == ["cashier", "one_buyin", "hat_trick", "no_skip"]
         caption = plain_text(badges)
         assert "Ни одного прогула: на всех клубных вечерах месяца, если их 2 и больше." in caption
         assert "Хет-трик: в деньгах в 3 своих турнирах подряд" in caption
         assert "Камбэк: в деньгах после 2 докупок и более" in caption
         assert "С одной закупки: победа в турнире без докупок" in caption
         assert f"после {NUM}2</span> докупок" in badges
+        # Unearned badges keep their rule, with a note.
+        assert "Бабл-гёрл: первое место сразу за призовыми (ещё никем не получен);" in caption
+        assert "Камбэк: в деньгах после 2 докупок и более (ещё никем не получен);" in caption
+        assert caption.count("(ещё никем не получен)") == 2
+
+    def test_column_appears_once_earned(self, client, club, award_rules):
+        html = html_of(client)
+        assert "Бабл-гёрл" not in section(html, "badges-title").split("</thead>")[0]
+        assert "sort=bubble" not in html
+        a, b, c, d = (club["players"][key] for key in "ABCD")
+        game = make_game(club["seasons"]["tour"], day=29, month=3)
+        for player, place in [(a, 1), (b, 2), (c, 3), (d, 4)]:  # 3 paid places: Дельта's bubble
+            make_result(game, player, buyin=50, payout=0, place=place)
+        html = html_of(client)
+        assert badge_columns(html) == ["bubble", "cashier", "one_buyin", "hat_trick", "no_skip"]
+        head = section(html, "badges-title").split("</thead>")[0]
+        assert '<span class="sort-lines">Бабл-<br>гёрл</span>' in head
+        caption = plain_text(section(html, "badges-title"))
+        assert "Бабл-гёрл: первое место сразу за призовыми;" in caption
+        assert caption.count("(ещё никем не получен)") == 1  # comeback only
+
+    def test_no_badges_rules_only(self, client, award_rules):
+        cash = make_season(Y, SeasonKind.CASH)
+        game = make_game(cash, day=1, month=3)
+        make_result(game, make_player("Альфа"), buyin=50, payout=40)
+        make_result(game, make_player("Браво"), buyin=50, payout=30)  # nobody in the plus
+        badges = section(html_of(client), "badges-title")
+        assert "<table" not in badges
+        assert plain_text(badges).count("(ещё никем не получен)") == len(achievements.BADGES)
+        for title in achievements.BADGES.values():
+            assert f"{title}: " in plain_text(badges)
+
+    def test_sort_by_a_hidden_column_falls_back(self, client, club, award_rules):
+        badges = section(html_of(client, sort="bubble"), "badges-title")
+        names = ("Альфа", "Браво", "Чарли")
+        assert [next(n for n in names if n in row) for row in rows(badges)] == list(names)
+        assert 'aria-sort="descending"><a class="sort-link sort-link-lines sort-desc"' in badges
 
     def test_long_headers_on_two_lines(self, client, club, award_rules):
         head = section(html_of(client), "badges-title").split("</thead>")[0]
@@ -211,9 +275,9 @@ class TestBadges:
             '<span aria-hidden="true"><span class="sort-lines">Ни одного<br>прогула</span></span>'
             '<span class="sr-only">Ни одного прогула</span></a>'
         ) in head
-        assert '<span class="sort-lines">Бабл-<br>гёрл</span>' in head
-        assert '<span class="sort-lines">Камбэк</span>' in head  # short: one line
-        assert head.count("sort-link-lines") == 8  # the one-line headers of the row too
+        assert '<span class="sort-lines">Снял<br>кассу</span>' in head
+        assert '<span class="sort-lines">Всего</span>' in head  # short: one line
+        assert head.count("sort-link-lines") == 6  # the one-line headers of the row too
 
     def test_default_order_is_marked(self, client, club, award_rules):
         badges = section(html_of(client), "badges-title")
@@ -237,7 +301,7 @@ class TestBadges:
 
     def test_sort_keeps_the_year(self, client, club, award_rules):
         badges = section(html_of(client, year=Y - 1), "badges-title")
-        assert f'href="/honors/?year={Y - 1}&amp;sort=bubble"' in badges
+        assert f'href="/honors/?year={Y - 1}&amp;sort=cashier"' in badges
 
 
 class TestRanks:

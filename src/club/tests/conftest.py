@@ -79,7 +79,7 @@ def award_rules():
     AchievementSettings.objects.all().delete()
     ladders = {
         "veteran": ("Ветеран", [(1, "Новобранец"), (3, "Бывалый"), (5, "Старожил")]),
-        "feeder": ("Кормилец клуба", [(100, "Пайщик"), (1000, "Меценат")]),
+        "feeder": ("Кормилец клуба", [(100, "Пайщик"), (1000, "Вкладчик")]),
         "addon": ("Мистер Аддон", [(1, "Первый аддон")]),
     }
     for code, (title, steps) in ladders.items():
