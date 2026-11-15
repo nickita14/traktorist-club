@@ -1,4 +1,5 @@
 {% extends "live/base.html" %}
+{% load ledger %}
 
 {% block title %}Новая игра{% endblock %}
 
@@ -6,29 +7,29 @@
   {% url 'live:index' as back_url %}
   {% include "live/_bar.html" with back_url=back_url back_label="Игры" label="Новая игра" %}
   <h1 class="live-title">Начать игру</h1>
-  <form id="start-form" class="live-form" method="post" action="{% url 'live:start' %}" hx-post="{% url 'live:start' %}" hx-target="#start-form" hx-select="#start-form" hx-swap="outerHTML" hx-disabled-elt="find button">
+  <form id="start-form" class="live-form" data-kind-form method="post" action="{% url 'live:start' %}" hx-post="{% url 'live:start' %}" hx-target="#start-form" hx-select="#start-form" hx-swap="outerHTML" hx-disabled-elt="find button">
     {% csrf_token %}
     {{ form.key }}
     {% for error in form.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-    <label class="field">
-      <span class="field-label">Сезон</span>
-      <select class="live-input" name="season">
-        {% for value, label in form.fields.season.choices %}
-          <option value="{{ value }}"{% if form.season.value|stringformat:"s" == value %} selected{% endif %}>{{ label }}</option>
+    <fieldset class="field">
+      <legend class="field-label">Игра</legend>
+      <ul class="segmented segmented-words">
+        {% for value, label in form.fields.kind.choices %}
+          <li><label><input class="sr-only" type="radio" name="kind" value="{{ value }}"{% if form.kind.value|stringformat:"s" == value %} checked{% endif %} required>{{ label }}</label></li>
         {% endfor %}
-      </select>
-      {% for error in form.season.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
-    </label>
+      </ul>
+      {% for error in form.kind.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+    </fieldset>
     <label class="field">
       <span class="field-label">Дата</span>
-      <input class="live-input" type="date" name="date" value="{{ form.date.value|date:'Y-m-d'|default:form.date.value }}" required>
+      <input id="start-date" class="live-input" type="date" name="date" value="{{ form.date.value|date:'Y-m-d'|default:form.date.value }}" required>
       {% for error in form.date.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
     </label>
     <label class="field">
       <span class="field-label">Место</span>
       <input class="live-input live-input-text" type="text" name="location" maxlength="100" value="{{ form.location.value|default:'' }}">
     </label>
-    <label class="field">
+    <label class="field" data-tour-only>
       <span class="field-label">Таймер блайндов · для турнира</span>
       <select class="live-input" name="blinds">
         {% for value, label in form.fields.blinds.choices %}
@@ -38,6 +39,18 @@
       {% for error in form.blinds.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
     </label>
     <p class="text-sm text-muted italic">Новый сезон создаётся с правилами прошлого: цены, фишки, призовые места, структура блайндов. Таймер стоит на паузе до «Пуск».</p>
-    <button type="submit" class="btn btn-primary w-full">Начать и посадить игроков</button>
+    {% if confirm %}
+      {# A date in another year: the question, focused (autofocus: page load and htmx swap). #}
+      <div class="live-confirm" role="status" tabindex="-1" autofocus>
+        <input type="hidden" name="confirm" value="{{ confirm }}">
+        <p>{{ question|figures }}</p>
+        <div class="sheet-actions">
+          <label for="start-date" class="btn">Изменить дату</label>
+          <button type="submit" class="btn btn-primary">Начать</button>
+        </div>
+      </div>
+    {% else %}
+      <button type="submit" class="btn btn-primary w-full">Начать и посадить игроков</button>
+    {% endif %}
   </form>
 {% endblock %}

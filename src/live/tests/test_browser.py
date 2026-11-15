@@ -3,8 +3,9 @@ a lost connection, touch target sizes and the CSP."""
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
-from club.models import Result, SeasonKind
+from club.models import Game, Result, SeasonKind
 from club.tests.factories import make_player
 from conftest import COLLECT_CSP_VIOLATIONS, COUNT_POLLS
 from live import actions
@@ -19,6 +20,8 @@ PHONE = {"viewport": {"width": 390, "height": 844}, "is_mobile": True, "has_touc
 MIN_TARGET = 44
 
 CONTROLS = "button, a, input, select"
+# A radio hidden the sr-only way (1x1): its label cell is the tap target, checked on its own.
+SR_RADIO = ".segmented input.sr-only"
 
 # Size of every visible element matching a selector (CONTROLS by default) and none of the
 # exceptions (a selector list, or ""), with its label.
@@ -215,7 +218,78 @@ def test_seating_search_and_new_player(phone):
 @pytest.mark.parametrize("name", ["live:index", "live:start"])
 def test_other_pages_are_clean(phone, name):
     page = phone(reverse(name))
-    assert_touch_targets(page)
+    assert_touch_targets(page, exceptions=[SR_RADIO])
+    assert_clean(page)
+
+
+def test_start_kind_switch(phone):
+    """The kind switch: "Кэш" hides the blind timer field, "Турнир" shows it again; it is a radio
+    group that Tab and the arrow keys reach, with a visible outline on the focused cell."""
+    page = phone(reverse("live:start"))
+    tour, cash = page.get_by_label("Турнир", exact=True), page.get_by_label("Кэш", exact=True)
+    timer_field = page.locator("[data-tour-only]")
+    expect(tour).to_be_checked()
+    expect(timer_field).to_be_visible()
+    assert_touch_targets(page, ".segmented label")
+    assert_touch_targets(page, exceptions=[SR_RADIO])
+
+    page.locator(".segmented label", has_text="Кэш").click()
+    expect(cash).to_be_checked()
+    expect(timer_field).to_be_hidden()
+    page.locator(".segmented label", has_text="Турнир").click()
+    expect(timer_field).to_be_visible()
+
+    # Keyboard: the radio group is one Tab stop; the arrows move the choice.
+    for _ in range(10):
+        page.keyboard.press("Tab")
+        if page.evaluate("document.activeElement.name") == "kind":
+            break
+    expect(tour).to_be_focused()
+    outline = page.locator(".segmented label", has_text="Турнир").evaluate(
+        "el => [getComputedStyle(el).outlineStyle, getComputedStyle(el).outlineWidth]"
+    )
+    assert outline == ["solid", "2px"]
+    page.keyboard.press("ArrowRight")
+    expect(cash).to_be_checked()
+    expect(cash).to_be_focused()
+    expect(timer_field).to_be_hidden()
+    page.keyboard.press("ArrowLeft")
+    expect(tour).to_be_checked()
+    expect(timer_field).to_be_visible()
+
+    # A form restored from the back/forward cache: the choice comes back without a change event.
+    page.evaluate("document.querySelector('input[value=cash]').checked = true")
+    expect(timer_field).to_be_visible()
+    page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true}))")
+    expect(timer_field).to_be_hidden()
+
+    assert page.evaluate("document.documentElement.scrollWidth") <= PHONE["viewport"]["width"]
+    assert_clean(page)
+
+
+def test_start_in_another_year_asks_first(phone):
+    """A date in another year brings a question (htmx swap), focused for the keyboard and screen
+    readers; "Изменить дату" goes to the date, "Начать" starts the game."""
+    year = timezone.localdate().year + 1
+    page = phone(reverse("live:start"))
+    page.locator("#start-date").fill(f"{year}-01-08")
+    page.get_by_role("button", name="Начать и посадить игроков").click()
+
+    notice = page.locator(".live-confirm")
+    expect(notice).to_contain_text(f"Будет создан сезон Турнир {year}. Начать?")
+    expect(notice).to_be_focused()
+    assert not Game.objects.exists()
+    assert_touch_targets(page, ".live-confirm .btn")
+    assert_touch_targets(page, exceptions=[SR_RADIO])
+    assert page.evaluate("document.documentElement.scrollWidth") <= PHONE["viewport"]["width"]
+    assert_clean(page)
+
+    page.get_by_text("Изменить дату").click()
+    expect(page.locator("#start-date")).to_be_focused()
+    page.get_by_role("button", name="Начать", exact=True).click()
+    expect(page.locator("#board")).to_be_visible()
+    game = Game.objects.get()
+    assert (game.season.year, game.season.kind) == (year, SeasonKind.TOUR)
     assert_clean(page)
 
 

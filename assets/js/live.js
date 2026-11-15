@@ -9,6 +9,8 @@
  * - Quick amount buttons fill an input; the bottom sheet closes on its backdrop, "×" or Escape.
  * - The blind timer on the board counts its seconds down from what the server rendered and
  *   refreshes the board when the level runs out.
+ * - The start form hides the blind timer field while "Кэш" is chosen (a tournament-only field);
+ *   without this script it stays visible and the server ignores it for cash.
  * - "Поделиться табло" opens the phone's share sheet with the display link (Web Share API);
  *   without it, the link is copied and a toast says so.
  */
@@ -105,6 +107,26 @@
       closeSheet();
     }
   });
+
+  // The start form: the timer field only for a tournament. Also after an htmx swap (the form
+  // comes back with its errors) and on pageshow (a form restored from the back/forward cache).
+  function syncKind() {
+    for (const form of document.querySelectorAll("[data-kind-form]")) {
+      const cash = form.querySelector('input[name="kind"][value="cash"]:checked') !== null;
+      for (const field of form.querySelectorAll("[data-tour-only]")) {
+        field.hidden = cash;
+      }
+    }
+  }
+
+  document.addEventListener("change", (event) => {
+    if (event.target.closest("[data-kind-form]")) {
+      syncKind();
+    }
+  });
+  document.addEventListener("htmx:afterSwap", syncKind);
+  window.addEventListener("pageshow", syncKind);
+  syncKind();
 
   // The timer strip: remaining seconds as rendered, counted down from when it appeared.
   function tickTimer() {

@@ -312,7 +312,7 @@ class TestStartForm:
         season = make_season(2026, SeasonKind.TOUR)
         org.post(
             reverse("live:start"),
-            {"key": str(uuid.uuid4()), "season": season.pk, "date": "2026-09-28",
+            {"key": str(uuid.uuid4()), "kind": "tour", "date": "2026-09-28",
              "blinds": structure.pk},
         )  # fmt: skip
         assert BlindTimer.objects.filter(game__season=season).exists()
@@ -321,7 +321,7 @@ class TestStartForm:
         season = make_season(2026, SeasonKind.TOUR, default_blinds=make_structure())
         org.post(
             reverse("live:start"),
-            {"key": str(uuid.uuid4()), "season": season.pk, "date": "2026-09-28", "blinds": ""},
+            {"key": str(uuid.uuid4()), "kind": "tour", "date": "2026-09-28", "blinds": ""},
         )
         assert Game.objects.filter(season=season).exists()
         assert not BlindTimer.objects.exists()

@@ -267,11 +267,16 @@ def start(request):
         form = StartForm(request.POST)
         if form.is_valid():
             data = form.cleaned_data
+            confirmation = form.confirmation(timezone.localdate())
+            if confirmation is not None:
+                # Another year than today's: nothing is created until the organizer confirms.
+                confirm, question = confirmation
+                context = {"form": form, "confirm": confirm, "question": question}
+                return render(request, "live/start.html", context)
             try:
                 outcome = actions.start_game(
                     data["key"],
                     request.user,
-                    season=data["season_obj"],
                     kind=data["kind"],
                     date=data["date"],
                     location=data["location"],
@@ -288,6 +293,7 @@ def start(request):
         form = StartForm(
             initial={
                 "key": uuid.uuid4(),
+                "kind": SeasonKind.TOUR,
                 "date": timezone.localdate(),
                 "location": last.location if last else "",
                 "blinds": actions.SEASON_BLINDS,
