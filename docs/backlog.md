@@ -22,13 +22,15 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 
 ### Wave 1. End of the 2026 season (deadline: the last game of December)
 
-- "Годовой отчёт за 2026" (форма № 7): a year-in-review page for the club and one per player. Built only on buy-in, payout and places; rebuy and add-on figures only from live-recorded games (unknown is never zero). Mockup first.
+- Before the first January game: season 2027 and the sheet: a season created from the live screen is not sheet-managed, so the first live game of January makes the importer refuse the whole 2027 season; decide before January whether 2027 stays in the sheet (then the flag must be set, or new seasons copy it from the previous one) or moves to the app.
+- Data check for the year report: on production data, count which year-report figures can be computed for 2026 (evening duration needs live start and end times; hosts need clean Game place values; "most often at a table with" needs only results).
+- "Годовой отчёт за 2026" (форма № 7): a year-in-review page for the club and one per player. Built only on buy-in, payout and places; rebuy and add-on figures only from live-recorded games (unknown is never zero). Poster style per `CLAUDE.md` "Celebration pages"; mockups: YearClub and YearPlayer on the design canvas; first step is the data check above.
 - Printable diplomas: a print stylesheet for titles and diplomas, to hand out on paper. No new dependencies. Mockup first.
 - Excel export, together with a printable season ledger.
 
 ### Wave 2. Redesign "Ведомость 2.0" (mockups first, one branch per item)
 
-- Front page "Стенгазета" instead of the redirect from `/`: the latest evening and its winner, the season leader, fresh awards, a game in progress.
+- Front page "Стенгазета" instead of the redirect from `/`: the latest evening and its winner, the season leader, fresh awards, a game in progress. Chosen direction: a hybrid (the newspaper masthead and headline, the "Гонка сезона" chart as the one hero, stamps and the chip as details).
 - Palette and paper: try 2-3 token variants on the canvas before touching `tokens.css`.
 - Chip preloader: waiting for chip photos; a mockup first.
 - Stamp animation: "Баланс сверен" and the winner stamp land on the sheet once; off under `prefers-reduced-motion`.
@@ -38,6 +40,7 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 
 - Blind timer and display (табло) checked at a real table (the live screen itself was checked at a real game in October 2026). Blocks the next item.
 - Табло 2.0: bust announcement with the place, a bubble banner when one player is left before the money, bank and players left, a winner screen.
+- "Итоги вечера": a phone screen right after a game ends (dark table, a falling chip, the winner large, places appearing one by one, a badge stamp). Poster style per `CLAUDE.md` "Celebration pages"; it doubles as the final screen of Табло 2.0.
 - "Хроника вечера" on the game sheet: a timeline of seats, top-ups, rebuys and exits from the live action log (live games only, public fields only). Mockup first.
 - Cash live screen: chips given by the club (a free top-up that does not increase the buy-in), for the rare case when the club gives chips instead of money.
 - Leftover check: warn when a finished cash game's leftover is unusually high (threshold in Season), since normal remainders are 0 to 50 lei.
@@ -54,7 +57,6 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 - Switching the club to the app from the 2027 season (a season that is not sheet-managed).
 - A shareable evening summary for the club chat (link preview).
 - "Очная ставка": head-to-head comparison of two players.
-- Season 2027 and the sheet: a season created from the live screen is not sheet-managed, so the first live game of January makes the importer refuse the whole 2027 season; decide before January whether 2027 stays in the sheet (then the flag must be set, or new seasons copy it from the previous one) or moves to the app.
 
 ## Done
 
@@ -62,7 +64,8 @@ Newest first. Dates are local (Europe/Chisinau), from the merge commits. Dependa
 
 | Item | Branch | Merged | PR |
 | --- | --- | --- | --- |
-| Backup and uptime monitoring on Cronitor heartbeats: `MONITOR_BACKUP_URL` / `MONITOR_SITE_URL` (renamed from `HEALTHCHECKS_*`), failures as `state=fail` through `deploy/monitor-ping.sh`, the URL never printed; runbook for the monitors and the server switch | `monitoring` | | |
+| Design decisions in the docs: "Celebration pages" in `CLAUDE.md` (poster style, `poster-red`, motion) and the year report, front page and "Итоги вечера" items | `design-decisions` | | |
+| Backup and uptime monitoring on Cronitor heartbeats: `MONITOR_BACKUP_URL` / `MONITOR_SITE_URL` (renamed from `HEALTHCHECKS_*`), failures as `state=fail` through `deploy/monitor-ping.sh`, the URL never printed; runbook for the monitors and the server switch | `monitoring` | 2026-11-15 | #57 |
 | No currency word on the public site and the live screens ("Итог", "закупки на 15 020", "закупок на 7 400", "оставлено 12,30", "закупка 50 = 5 000 фишек", "Вход 50 не сдан."); the admin keeps units; a test renders every club and live template and fails on the word | `less-lei` | 2026-11-15 | #56 |
 | `/honors/`: a badge gets a matrix column only once someone has earned it; every badge keeps its rule, an unearned one noted "ещё никем не получен" | `honors-fixes` | 2026-11-15 | #55 |
 | `/honors/`: a short rule per title (`title_rules()`), figures from the settings | `honors-fixes` | 2026-11-15 | #55 |
