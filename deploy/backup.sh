@@ -6,13 +6,18 @@
 #   3. keep the newest $KEEP dumps (counted, not dated: a week of failures never empties the folder)
 #   4. encrypt with age for $AGE_RECIPIENT (the private key is not on the server) and upload to
 #      Backblaze B2 with a key that cannot delete
-#   5. ping healthchecks.io: only after all of the above. No ping for 26 hours means an email.
+#   5. heartbeat to the Cronitor monitor in MONITOR_BACKUP_URL: only after all of the above.
+#      No heartbeat for a day plus the 2-hour grace means an alert.
 #
-# Any failure pings the check's /fail URL once, so a broken night is reported at once.
+# Any failure sends one failure ping (state=fail), so a broken night is reported at once.
+# An empty MONITOR_BACKUP_URL sends nothing.
 #
 #   deploy/backup.sh               the full run
 #   deploy/backup.sh --local-only  steps 1-3 only, no upload, no ping (before B2 is set up, drills)
 set -euo pipefail
+
+# shellcheck source=deploy/monitor-ping.sh
+. "$(dirname "${BASH_SOURCE[0]}")/monitor-ping.sh"
 
 APP_DIR=${APP_DIR:-/srv/traktorist}
 BACKUP_DIR=${BACKUP_DIR:-/var/backups/traktorist}
@@ -29,12 +34,6 @@ compose() {
     docker compose --project-directory "$APP_DIR" -f "$APP_DIR/compose.prod.yaml" "$@"
 }
 
-ping_check() {
-    # $1: "" for success, "/fail" for failure. Never fails the script itself.
-    [[ -n ${HEALTHCHECKS_BACKUP_URL:-} ]] || return 0
-    curl -fsS -m 10 --retry 5 -o /dev/null "${HEALTHCHECKS_BACKUP_URL}$1" || true
-}
-
 dump=""
 encrypted=""
 finish() {
@@ -43,7 +42,7 @@ finish() {
     if [[ -n $encrypted ]]; then rm -f -- "$encrypted"; fi
     if [[ $status -ne 0 ]]; then
         echo "Backup FAILED (exit $status)." >&2
-        $LOCAL_ONLY || ping_check /fail
+        $LOCAL_ONLY || monitor_ping "${MONITOR_BACKUP_URL:-}" fail
     fi
 }
 # One place for cleanup and the failure ping, whatever step fails (set -e ends the run there).
@@ -55,7 +54,9 @@ name="traktorist-$(date +%Y-%m-%d_%H%M%S).dump"
 dump="$BACKUP_DIR/$name"
 
 compose exec -T db pg_dump -U traktorist -d traktorist_club --format=custom >"$dump.partial"
-tables=$(compose exec -T db pg_restore --list <"$dump.partial" | grep -c ' TABLE DATA ')
+# A pg_restore failure ends the run; grep -c finding nothing (exit 1) is the check below.
+contents=$(compose exec -T db pg_restore --list <"$dump.partial")
+tables=$(grep -c ' TABLE DATA ' <<<"$contents" || true)
 if [[ $tables -eq 0 ]]; then
     echo "The dump has no table data." >&2
     exit 1
@@ -69,7 +70,7 @@ find "$BACKUP_DIR" -maxdepth 1 -name 'traktorist-*.dump' -printf '%T@ %p\n' \
     | while read -r old; do rm -f -- "$old" && echo "Removed $old"; done
 
 if $LOCAL_ONLY; then
-    echo "Local only: no upload, no healthchecks ping."
+    echo "Local only: no upload, no monitor ping."
     exit 0
 fi
 
@@ -82,5 +83,5 @@ RCLONE_CONFIG_B2_TYPE=b2 \
     rclone --config /dev/null copyto --no-check-dest --retries 3 "$encrypted" "b2:$B2_BUCKET/$name.age"
 echo "Uploaded b2:$B2_BUCKET/$name.age"
 
-ping_check ""
+monitor_ping "${MONITOR_BACKUP_URL:-}"
 echo "Backup complete."
