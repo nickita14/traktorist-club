@@ -1,5 +1,5 @@
 [Unit]
-Description=Traktorist club: database backup (dump, verify, rotate, off-site copy)
+Description=Traktorist club: database backup (dump, verify, rotate, off-site copy, heartbeat)
 Wants=network-online.target docker.service
 After=network-online.target docker.service
 
