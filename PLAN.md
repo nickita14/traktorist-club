@@ -166,3 +166,70 @@ Definitions live in `CLAUDE.md` ("Achievements") once 9a is done.
 - [x] Player card: "Звания", "Знаки отличия", "Грамоты и титулы" between the format totals and the chart
 - [x] Game sheets: badge marks next to names, "По итогам игры присвоено" for ranks and diplomas
 - [x] Nav item "Доска почёта" ("Почёт" on narrow screens), query counts, 390px layout in Chromium
+
+## Stage 10. Годовой отчёт за 2026 (branch `year-report`)
+
+"Годовой отчёт за <год>" (форма № 7): one page for the club and one per player, a celebration page per `CLAUDE.md` "Celebration pages". Mockups: YearClub and YearPlayer on the design canvas. Built on a read-only audit of production data (2026-11-16, an ad-hoc script outside the repository): every figure below can be computed from stored data; the dropped ones cannot.
+
+### Definitions (agreed)
+
+- **Year**: the season year (`game__season__year`, the calendar year of the games). Only finished games (`live_stage == ""`). Every yearly figure is computed for the calendar year directly, never taken from a seasonal title: December belongs to the udarnik period "Зима <год>/<год+1>", filed under the next year.
+- **Evening**: a date with at least one finished game, as in `achievements` (`ClubAwards.evenings`). A player attended an evening by playing any game that date. Most evenings have both a tournament and a cash game, so evenings and games are counted separately and never added up.
+- **Ties**: everyone tied is shown (podium, honors, frequent co-player, attendance rank). No tiebreaks, except where a definition says so (Камбэк года). A player may hold several honors.
+- **Release**: a year is preliminary until it is closed, by an organizer by hand or, if nobody does, automatically once `timezone.localdate()` is past 31 December. A closed year is always computed with `today` = 1 January of the next year, so closing by hand gives the same result as the fallback; a preliminary year is computed with the real `today`. Closing never locks data: a game added to a closed year counts and the figures recompute. Details under "Release" below.
+- **History caption**: figures that depend on earlier years (newcomers, rank steps) carry "с <first year> года", the year of the first finished game in the database (2025 today), never a literal.
+- **Money and plurals**: as everywhere (`club.formatting`, `|figures`, `ru_plural`, no currency word).
+
+### Figures
+
+Club page:
+- Evenings of the year, and evenings per month (server-side SVG bar chart, geometry in `club/charts.py`).
+- "N турниров и M кэш-игр за K вечеров" (each count with its plural).
+- Distinct players of the year; newcomers (first finished game ever in this year, "с <first year> года").
+- Average players per game; the largest table: "N игроков, такое было K раз" (the maximum of players in one game and how many games had it, not the list).
+- Players who attended in every month that had an evening.
+- Tournaments: season winner and podium from `stats.season_standings` (rank 1 to 3 by competition ranking, every tied player shown), with net and games played.
+- Cash: best yearly net from `stats.season_standings` with games played; best single cash evening (player, date, net); most "Снял кассу" (`cashier` badges dated in the year).
+- Honors of the year, purely by the numbers:
+  - "Ударник года": most evenings attended, "N из K".
+  - "Опора кассы": largest sum of buy-ins in the year (the feeder ladder keeps its own name, "Кормилец клуба" being one of its steps).
+  - "Бабл-гёрл года": most `bubble` badges in the year, captioned "среди турниров с известными местами" (imported games store places only for paid players, so a bubble exists only where every place is known: live tournaments, and any whose places an organizer backfilled). The row is rendered only when the leader has at least 2; otherwise it is hidden, like an unearned column on the honors board.
+  - "Железное терпение": longest run of a player's own tournaments without ITM that ends with an ITM, the whole run inside the year (a run still open at the year's last tournament does not count).
+  - "Камбэк года": largest buy-in among ITM results of the year; on equal buy-in the better place; full ties shown.
+- Closing line: the date of the year's last finished game.
+
+Player page (players with at least one finished game in the year):
+- Attendance: evenings attended of the club's evenings, percent, rank by attendance (competition ranking).
+- Month grid: each month played, missed, or without a club evening.
+- Year net and the cumulative line (`stats.player_net_timeline(year)`, `charts.year_chart`).
+- Tournament place "N из M" and cash place "N из M" with net (`stats.season_standings`); a kind the player did not play is left out.
+- ITM: tournaments in the money of tournaments played; tournament wins.
+- Best and worst evening: the sum of the player's nets over both games of the date. The best evening also names its games (game number, players, place when known) and flags "1 место без докупок" when the player won that evening's tournament with `buyin == entry_price` (the `one_buyin` rule). A player with one evening has no worst evening.
+- Longest ITM streak over the player's own tournaments of the year.
+- Most frequent co-player: most shared games in the year; every tied player shown.
+- Awards of the year: season winner (tour rank 1), "Ударник лета" (the existing udarnik title of the meteorological summer, June to August), the highest veteran-ladder step reached in the year with its game (`GameRef.document`) and date, "с <first year> года" (the lowest step is not an event, as elsewhere), counts of "С одной закупки", "Снял кассу" and "Бабл-гёрл" badges dated in the year, and the club honors of the year the player holds.
+
+Dropped (no data): evening and tournament duration (start and end times exist only for live games, and cash games are often closed the next day), «Меценат» (chip stacks only from live cash games, and every known stack was paid out in full), hosts (`Game.location` is empty).
+
+### Release
+
+- **States**: preliminary (organizers only: a "ПРЕДВАРИТЕЛЬНО · на <date>, по N вечерам" stamp; everyone else gets a 404 and sees no link to the pages) and closed (public, final, the closing stamp lands). Both pages of a year change state together.
+- **Closed** = a closure row exists for the year, or `localdate()` is past 31 December of that year (the fallback, no row needed).
+- **Storage (proposal)**: a small model `club.YearClosure` with `year` (unique), `closed_at`, `closed_by` (FK to the user, `SET_NULL`). The row exists exactly while the year is closed by hand; reopening deletes it. Why not a field on `Season`: a year has two seasons (or only one kind), both must close together, and two flags could disagree or leave a year without a place to store the state. One row per year keeps one source of truth and touches no existing table. **Needs a migration** (the model, plus a data migration that gives the Organizer group add and delete permissions on it, as `0008` did for blind structures); it runs on the next deploy, after the pre-deploy dump.
+- **Close**: "Закрыть сезон <год>" for a year with at least one finished game, not a future year, not already closed. Creates the row.
+- **Reopen** ("Открыть снова"): only while the year is closed by hand and before 1 January of the next year (a mistake, or a late December game); deletes the row and the pages go back to preliminary. After 1 January the fallback keeps the year closed; data edits still recompute it.
+- **Where**: a small admin view "Годовые отчёты" (Unfold, in the club app's admin section): one row per year with finished games, its state (preliminary, closed by hand with who and when, closed on 1 January), and the close or reopen button. Each button leads to a confirmation page (POST with CSRF; the action happens only on the confirmed POST). Organizers only (the model permissions above; superusers too). The preliminary report page shows organizers a link to that view; the link renders only for organizers (the page itself is organizer-only then), so ADMIN_URL never reaches anyone else.
+- **Log**: close and reopen each write a Django `LogEntry` (addition on close, deletion on reopen, with a Russian change message naming the year), visible in the admin history like every other organizer action.
+
+### Plan
+
+- [ ] `poster-red` (#C8281E) in `assets/css/tokens.css` and the Tailwind theme (`frontend/source.css`); a test fails when it appears in any template outside the year report
+- [ ] `achievements`: a public read accessor for the finished results it already loads (today `_Row`), so the report adds no second query path for them; no change to award definitions
+- [ ] `src/club/year_report.py`: `load(year, today=None)` on top of `achievements.load()` plus the two season standings queries; dataclasses for the club page and per player; no queries in its methods; every figure above, ties as lists
+- [ ] URLs: `/<year>/report/` (club) and `/<year>/report/<slug>/` (player). A year without finished games, the first year of history (no baseline for newcomers), or a player without games that year is a 404
+- [ ] Release (see "Release"): `club.YearClosure` and its migrations; `year_report.is_closed(year, today)` and the computation date it implies; preliminary pages for organizers only (`live.access.is_organizer`, a verified session under `ADMIN_REQUIRE_2FA`), 404 for everyone else; the admin view "Годовые отчёты" with close and reopen behind a confirmation, `LogEntry` rows; the organizer-only link from the preliminary page
+- [ ] Finding a page: the club page ends with the year's participants (`club/includes/player_name.html`, linked to their pages); a `link-box` on the player card when the selected year has a report the viewer may see; a `link-box` on `/honors/` and on the season standings of that year. No new nav item
+- [ ] Templates `club/year_report.html`, `club/year_report_player.html` and includes: poster sheets (paper, ink, red), tilted plaques, large PT Mono figures, the tractor wheel motif, the closing stamp; one CSS entrance per element, played once, off under `prefers-reduced-motion`; no inline script or `style=` (strict `SECURE_CSP`); 390px without horizontal scroll; `noindex` as on every public page
+- [ ] No cache: about 80 games a year; the page costs what `/honors/` costs (`achievements.QUERY_COUNT` plus a few); revisit only if production timing says so
+- [ ] Tests with invented players: every figure; ties for each tie rule (podium, every honor, co-player, attendance rank); empty cases (a player with one evening, no tournament, no ITM, no cash, a cash-only player, a year with no bubble leader at 2, no veteran step in the year); the calendar boundary (December and January games, a December evening in the next year's winter title); release: open vs closed by hand vs the 1 January fallback, a closed year computed as of 1 January whatever the real date, reopen (allowed before 1 January, refused after it and on a year not closed by hand), close refused for a year without games, a future year or a closed one, a game added to a closed year counted, permissions (anonymous, staff without the group, organizer, superuser; a GET never changes state), one `LogEntry` per close and per reopen, no ADMIN_URL in any page a non-organizer can load; 404s; query budget; noindex; the no-currency-word test renders both templates; a Chromium test at 390px (touch targets, CSP, reduced motion)
+- [ ] `CLAUDE.md`: a "Year report" section with these definitions once built

@@ -11,6 +11,7 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 
 | Item | Branch |
 | --- | --- |
+| "Годовой отчёт за 2026" (форма № 7): plan and definitions in `PLAN.md` Stage 10 | `year-report` |
 
 ## Queue
 
@@ -23,8 +24,7 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 ### Wave 1. End of the 2026 season (deadline: the last game of December)
 
 - Before the first January game: season 2027 and the sheet: a season created from the live screen is not sheet-managed, so the first live game of January makes the importer refuse the whole 2027 season; decide before January whether 2027 stays in the sheet (then the flag must be set, or new seasons copy it from the previous one) or moves to the app.
-- Data check for the year report: on production data, count which year-report figures can be computed for 2026 (evening duration needs live start and end times; hosts need clean Game place values; "most often at a table with" needs only results).
-- "Годовой отчёт за 2026" (форма № 7): a year-in-review page for the club and one per player. Built only on buy-in, payout and places; rebuy and add-on figures only from live-recorded games (unknown is never zero). Poster style per `CLAUDE.md` "Celebration pages"; mockups: YearClub and YearPlayer on the design canvas; first step is the data check above.
+- "Годовой отчёт за 2026" (форма № 7): a year-in-review page for the club and one per player, in progress on `year-report`. Agreed definitions, figures and plan in `PLAN.md` Stage 10 (evening = a date, ties shown, calendar year only, released when an organizer closes the year or on 1 January, a closed year computed as of 1 January, "Опора кассы", bubble only where every place is known; duration, «Меценат» and hosts dropped). Poster style per `CLAUDE.md` "Celebration pages"; mockups: YearClub and YearPlayer on the design canvas, updated for the audit before the build.
 - Printable diplomas: a print stylesheet for titles and diplomas, to hand out on paper. No new dependencies. Mockup first.
 - Excel export, together with a printable season ledger.
 
@@ -41,6 +41,7 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 - Blind timer and display (табло) checked at a real table (the live screen itself was checked at a real game in October 2026). Blocks the next item.
 - Табло 2.0: bust announcement with the place, a bubble banner when one player is left before the money, bank and players left, a winner screen.
 - "Итоги вечера": a phone screen right after a game ends (dark table, a falling chip, the winner large, places appearing one by one, a badge stamp). Poster style per `CLAUDE.md` "Celebration pages"; it doubles as the final screen of Табло 2.0.
+- Live cash game closed the next day: the 2026 audit found cash games finished about 20 hours after the start, so "ЗАВЕРШИТЬ" was pressed the next afternoon. Any duration figure must not trust the finish time of a cash game; consider a reminder on the live index for a game left open overnight.
 - "Хроника вечера" on the game sheet: a timeline of seats, top-ups, rebuys and exits from the live action log (live games only, public fields only). Mockup first.
 - Cash live screen: chips given by the club (a free top-up that does not increase the buy-in), for the rare case when the club gives chips instead of money.
 - Leftover check: warn when a finished cash game's leftover is unusually high (threshold in Season), since normal remainders are 0 to 50 lei.
@@ -48,8 +49,8 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 
 ### Wave 4. Stories
 
-- "Книга рекордов": biggest win, longest in-the-money streak, longest tournament, most crowded evening.
-- "Маршрутный лист": where the club has played, how often, who hosted most. Depends on how clean Game place values are: check the data first.
+- "Книга рекордов": biggest win, longest in-the-money streak, longest tournament, most crowded evening. Longest tournament only from live games (the 2026 audit found start and end times only there).
+- "Маршрутный лист": where the club has played, how often, who hosted most. Blocked on data: the 2026 audit found `Game.location` empty on every game, live ones included, and no link from a game to a host player.
 - "Кто кого выбил": an optional tap on a bust in the live screen; feeds a badge and a "nemesis" line. Must stay optional at the table.
 
 ## Deferred
@@ -64,7 +65,8 @@ Newest first. Dates are local (Europe/Chisinau), from the merge commits. Dependa
 
 | Item | Branch | Merged | PR |
 | --- | --- | --- | --- |
-| Design decisions in the docs: "Celebration pages" in `CLAUDE.md` (poster style, `poster-red`, motion) and the year report, front page and "Итоги вечера" items | `design-decisions` | | |
+| Data check for the year report on production data: which year-report figures 2026 data can produce; result recorded in `PLAN.md` Stage 10 (duration, «Меценат» and hosts dropped; bubble only where every place is known) | `year-report` | | |
+| Design decisions in the docs: "Celebration pages" in `CLAUDE.md` (poster style, `poster-red`, motion) and the year report, front page and "Итоги вечера" items | `design-decisions` | 2026-11-16 | #58 |
 | Backup and uptime monitoring on Cronitor heartbeats: `MONITOR_BACKUP_URL` / `MONITOR_SITE_URL` (renamed from `HEALTHCHECKS_*`), failures as `state=fail` through `deploy/monitor-ping.sh`, the URL never printed; runbook for the monitors and the server switch | `monitoring` | 2026-11-15 | #57 |
 | No currency word on the public site and the live screens ("Итог", "закупки на 15 020", "закупок на 7 400", "оставлено 12,30", "закупка 50 = 5 000 фишек", "Вход 50 не сдан."); the admin keeps units; a test renders every club and live template and fails on the word | `less-lei` | 2026-11-15 | #56 |
 | `/honors/`: a badge gets a matrix column only once someone has earned it; every badge keeps its rule, an unearned one noted "ещё никем не получен" | `honors-fixes` | 2026-11-15 | #55 |
