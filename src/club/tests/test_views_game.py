@@ -85,9 +85,9 @@ class TestTourGame:
         html = response.content.decode()
 
         assert (game.players_count, game.buyin_total, game.payout_total) == (2, 150, 150)
-        assert "Призовой фонд, лей" in html
+        assert "Призовой фонд" in html
         assert "3 призовых места" in html
-        assert "Остаток, лей" not in html and "На столе" not in html
+        assert "<dt>Остаток</dt>" not in html and "На столе" not in html
 
     def test_results_in_place_order_then_by_net(self, client, club):
         # 1st place bought in three times, so 2nd has the better net; the sheet follows places.
@@ -218,22 +218,22 @@ class TestCashGame:
     def test_stat_strip_and_note(self, client, club):
         html = html_of(client, club["games"]["c1"])
 
-        assert "Остаток, лей" in html
+        assert "<dt>Остаток</dt>" in html
         assert "сгорело в конце вечера" in html
         assert "Призовой фонд" not in html
         assert (
-            'Курс: <span class="font-num num-run not-italic">5 000</span> фишек = '
-            '<span class="font-num num-run not-italic">50</span> лей.'
+            'Курс: закупка <span class="font-num num-run not-italic">50</span> = '
+            '<span class="font-num num-run not-italic">5 000</span> фишек.'
         ) in html
 
     @staticmethod
     def leftover_cell(client, season, results):
-        """The "Остаток, лей" stat cell of a finished cash game with these (buy-in, payout)."""
+        """The "Остаток" stat cell of a finished cash game with these (buy-in, payout)."""
         game = make_game(season, day=5, month=6)
         for buyin, payout in results:
             make_result(game, make_player(), buyin, payout)
         html = html_of(client, game)
-        return html.split("<dt>Остаток, лей</dt>")[1].split("</div>")[0]
+        return html.split("<dt>Остаток</dt>")[1].split("</div>")[0]
 
     def test_positive_leftover_burned_at_the_end(self, client, club):
         cell = self.leftover_cell(client, club["seasons"]["cash"], [(100, 60), (50, 85)])

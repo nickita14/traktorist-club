@@ -55,7 +55,7 @@ _MARKUP_OR_FIGURE = re.compile(rf"(<[^>]*>|&#?\w+;)|{FIGURE.pattern}")
 
 @register.filter
 def figures(value) -> str:
-    """A text with figures ("11 вечеров", "2 из 2", "15 020 лей"): each figure in the number
+    """A text with figures ("11 вечеров", "2 из 2", "закупок на 15 020"): each figure in the number
     face with the narrowed thousands space, the words in the text face with normal spacing.
     Plain input is escaped, safe input is not escaped twice."""
 

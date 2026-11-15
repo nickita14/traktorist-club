@@ -106,7 +106,7 @@ class TestTitles:
         assert '<span class="val-zero">' in always and "претендентов нет" in always
         bravo = club["players"]["B"]
         assert f'<a class="player-link" href="{bravo.get_absolute_url()}">Браво</a>' in patron
-        assert f"{NUM}7,70</span> лея" in patron and "ничья" not in patron
+        assert f"оставлено {NUM}7,70</span>" in patron and "ничья" not in patron
         assert "Трактор</a>, <a" in spring  # labels, comma-separated
         assert '<span class="award-note">ничья</span>' in spring
         assert f"{NUM}4</span> вечера</td>" in spring  # only the number in the number face

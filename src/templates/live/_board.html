@@ -12,7 +12,7 @@
 
   <div class="phase-strip">
     {% if cash %}
-      <p>Кэш · шаг <span class="font-num">{{ season.cash_step|money }}</span> · <span class="font-num num-run">{{ step_chips|money }}</span> фишек = <span class="font-num">{{ season.cash_step|money }}</span> лей</p>
+      <p>Кэш · шаг <span class="font-num">{{ season.cash_step|money }}</span> = <span class="font-num num-run">{{ step_chips|money }}</span> фишек</p>
     {% elif clock %}
       {# With a blind timer the strip is the timer; the stage adds a line. #}
       {% include "live/_timer_strip.html" %}

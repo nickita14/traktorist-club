@@ -33,17 +33,17 @@
   {% if player.games_played %}
     <dl class="stat-strip mt-6">
       <div>
-        <dt>{% if year %}Итог за <span class="font-num">{{ year }}</span>, лей{% else %}Итог за всё время, лей{% endif %}</dt>
+        <dt>{% if year %}Итог за <span class="font-num">{{ year }}</span>{% else %}Итог за всё время{% endif %}</dt>
         <dd class="stat-value">{% net_value totals.net %}</dd>
         <dd class="stat-caption">{{ totals.games_played|money }} {{ totals.games_played|plural:"игра,игры,игр" }}</dd>
       </div>
       <div>
-        <dt>Турниры, лей</dt>
+        <dt>Турниры</dt>
         <dd class="stat-value">{% net_value totals.tour_net %}</dd>
         <dd class="stat-caption">{{ totals.tour_games_played|money }} {{ totals.tour_games_played|plural:"игра,игры,игр" }}{% if totals.tour_itm %} · ITM {{ totals.tour_itm }}{% endif %}</dd>
       </div>
       <div>
-        <dt>Кэш, лей</dt>
+        <dt>Кэш</dt>
         <dd class="stat-value">{% net_value totals.cash_net %}</dd>
         <dd class="stat-caption">{{ totals.cash_games_played|money }} {{ totals.cash_games_played|plural:"игра,игры,игр" }}</dd>
       </div>
@@ -87,7 +87,7 @@
         {% endif %}
         {% localize off %}
           <svg class="net-chart mt-2" width="100%" height="{{ chart.height }}" role="img"
-               aria-label="Итог{% if year %} за {{ year }} год{% endif %} нарастающим итогом по {{ totals.games_played }} {{ totals.games_played|plural:'игре,играм,играм' }}, сейчас {{ totals.net|net }} лей">
+               aria-label="Итог{% if year %} за {{ year }} год{% endif %} нарастающим итогом по {{ totals.games_played }} {{ totals.games_played|plural:'игре,играм,играм' }}, сейчас {{ totals.net|net }}">
             <line class="chart-zero" x1="0" x2="100%" y1="{{ chart.zero_y }}" y2="{{ chart.zero_y }}"/>
             {% for mark in chart.years %}
               {% if mark.line %}<line class="chart-year" x1="{{ mark.x }}%" x2="{{ mark.x }}%" y1="0" y2="{{ chart.height }}"/>{% endif %}
@@ -121,7 +121,7 @@
               <th scope="col" class="num"><span aria-hidden="true">3</span><span class="sr-only">Третьих мест</span></th>
               <th scope="col" class="num max-md:hidden">Закупки</th>
               <th scope="col" class="num max-md:hidden">Выплаты</th>
-              <th scope="col" class="num">Итог, лей</th>
+              <th scope="col" class="num">Итог</th>
             </tr>
           </thead>
           <tbody>

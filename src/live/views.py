@@ -200,7 +200,7 @@ def board_context(game: Game, query: str = "") -> dict:
         "now": now,
         "stage_time": stage_time(game, now) if game.live_stage == Game.Stage.REBUYS else None,
         "poll_seconds": settings.LIVE_POLL_SECONDS,
-        # The cash rate for one step, like the paper sheets: "5 000 фишек = 50 лей".
+        # The cash rate for one step: "шаг 50 = 5 000 фишек".
         "step_chips": game.season.cash_step * game.season.chips_per_lei,
     }
     if pre_game:

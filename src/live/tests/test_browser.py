@@ -366,7 +366,7 @@ def test_lineup_collect_start_and_bust_confirmation(phone):
 
     # Later Дельта pays: accepted from the row.
     page.get_by_role("button", name="Дельта не сдал 100 · принять").click()
-    page.locator(".sheet-panel").get_by_role("button", name="Принять 100 лей").click()
+    page.locator(".sheet-panel").get_by_role("button", name="Принять вход 100").click()
     expect(page.locator(".toast")).to_contain_text("Вход принят: Дельта, 100")
     expect(page.locator("#board")).not_to_contain_text("не сдал")
     assert Result.objects.get(game=game, player__name="Дельта").entry_paid

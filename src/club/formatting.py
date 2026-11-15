@@ -47,7 +47,7 @@ FIGURE = re.compile(rf"[+{MINUS}]?\d(?:\d|[{THOUSANDS_SEPARATOR}.,/](?=\d))*")
 
 
 def split_figures(text: str) -> list[tuple[str, bool]]:
-    """'15 020 лей' -> [('15 020', True), (' лей', False)]: figures (True) and the words
+    """'на 15 020' -> [('на ', False), ('15 020', True)]: figures (True) and the words
     around them, so only the figures are set in the number face."""
     parts, position = [], 0
     for match in FIGURE.finditer(text):

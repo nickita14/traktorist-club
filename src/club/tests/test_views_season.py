@@ -58,7 +58,9 @@ class TestTourStandings:
         assert f'<span class="val-neg">{MINUS}1{NBSP}500</span>' in html
         assert f'<span class="val-neg">{MINUS}50</span>' in html
         # The no-break space is narrowed by CSS on number-only elements (num-run, td.num).
-        assert f'закупки на <span class="font-num num-run not-italic">2{NBSP}800</span> лей' in html
+        assert (
+            f'закупки на <span class="font-num num-run not-italic">2{NBSP}800</span></span>' in html
+        )
         assert "\u202f" not in html
 
     def test_title_and_meta_line(self, client, season):
@@ -236,7 +238,7 @@ class TestCashStandings:
         html = get_page(client, cash_season.year, SeasonKind.CASH).content.decode()
 
         # c1 leaves 10, c2 pays out 20 more than was bought in.
-        assert f'остаток <span class="font-num num-run not-italic">{MINUS}10</span> лей' in html
+        assert f'остаток <span class="font-num num-run not-italic">{MINUS}10</span></span>' in html
 
     def test_player_totals(self, client, cash_season):
         response = get_page(client, cash_season.year, SeasonKind.CASH)

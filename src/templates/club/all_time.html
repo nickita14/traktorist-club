@@ -11,7 +11,7 @@
     <span class="whitespace-nowrap">{% if kind == "tour" %}Турниры{% elif kind == "cash" %}Кэш-игры{% else %}Все игры{% endif %}</span>
     · <span class="whitespace-nowrap"><span class="font-num num-run not-italic">{{ totals.games_count|money }}</span> {{ totals.games_count|plural:"игра,игры,игр" }}</span>
     · <span class="whitespace-nowrap"><span class="font-num num-run not-italic">{{ totals.players_count|money }}</span> {{ totals.players_count|plural:"участник,участника,участников" }}</span>
-    · <span class="whitespace-nowrap">закупки на <span class="font-num num-run not-italic">{{ totals.buyin_total|money }}</span> лей</span>
+    · <span class="whitespace-nowrap">закупки на <span class="font-num num-run not-italic">{{ totals.buyin_total|money }}</span></span>
   </p>
 {% endblock %}
 
