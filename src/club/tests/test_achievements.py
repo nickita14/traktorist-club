@@ -665,7 +665,7 @@ class TestDisplay:
         assert by_code == {
             "bubble": "4 место при 3 призовых",
             "one_buyin": "1 место без докупок",
-            "comeback": "2 место, закупка 150 лей",
+            "comeback": "2 место при закупке 150",
         }
 
     def test_streak_and_series_bases_name_the_start(self, tour25, players):
@@ -685,7 +685,7 @@ class TestDisplay:
         mine = {x.title: x.basis for x in awards(Kind.RANK) if x.player_id == a.pk}
         assert mine["Новичок"] == "1 игра"
         assert mine["Мастер"] == "3 игры"
-        assert mine["Пайщик"] == "100 лей закупок"
+        assert mine["Пайщик"] == "закупок на 100"
 
     def test_title_figures(self, tour25, cash25, players):
         a, b, *_ = players
@@ -693,9 +693,9 @@ class TestDisplay:
         cash(cash25, 3, 15, [(a, 50, 40, 5123), (b, 50, 60, 5000)])
         assert title("udarnik", "Весна 2025").shared_metric == "2 вечера"
         patron = title("patron", "Кэш 2025")
-        assert (patron.shared_metric, names(patron.holders)) == ("11,23 лея", ["Альфа"])
+        assert (patron.shared_metric, names(patron.holders)) == ("оставлено 11,23", ["Альфа"])
         found = awards(Kind.TITLE, "patron")[0]
-        assert (found.basis, found.document) == ("11,23 лея", "Кэш 2025")
+        assert (found.basis, found.document) == ("оставлено 11,23", "Кэш 2025")
 
     def test_always_itm_holders_keep_their_own_figures(self, rules, tour25, players):
         rules.always_itm_min_tournaments = 1
@@ -723,7 +723,7 @@ class TestDisplay:
         card = achievements.load(TODAY).player(a.pk)
         assert card.lead_lines == [
             "Всегда в деньгах в турнирах 2026: пока 2 из 2.",
-            "Лидирует в «Меценате» кэша 2026: 12,30 лея.",
+            "Лидирует в «Меценате» кэша 2026: оставлено 12,30.",
             "Лидирует в «Ударнике лета 2026»: 3 вечера.",
         ]
 
@@ -741,8 +741,7 @@ class TestDisplay:
         assert [state for _, state in veteran.step_states] == ["current", "future"]
         assert [state for _, state in addon.step_states] == ["future", "future"]
         assert (addon.step_number, addon.value_text) == (0, "0 аддонов")
-        assert (feeder.ladder.counter_label, feeder.value_text) == ("Закупки", "100 лей")
-        assert feeder.ladder.unit_forms == "лей,лея,лей"
+        assert (feeder.ladder.counter_label, feeder.value_text) == ("Закупки", "закупок на 100")
         tour(tour25, 3, 8, [(a, 1, 150)])
         feeder = achievements.load(TODAY).rank_progress(a.pk)[1]
         assert [state for _, state in feeder.step_states] == ["passed", "passed", "current"]

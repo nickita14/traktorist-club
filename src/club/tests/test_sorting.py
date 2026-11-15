@@ -178,10 +178,10 @@ class TestSeasonPage:
         html = season_page(client).text
         base = reverse("season", args=[PAST_YEAR, "tour"])
         assert header_link(html, "Игр") == f"{base}?sort=games"
-        assert header_link(html, "Итог, лей") == f"{base}?dir=asc"  # the active column flips
+        assert header_link(html, "Итог") == f"{base}?dir=asc"  # the active column flips
         html = season_page(client, sort="games").text
         assert header_link(html, "Игр") == f"{base}?sort=games&dir=asc"
-        assert header_link(html, "Итог, лей") == base
+        assert header_link(html, "Итог") == base
 
     def test_active_header(self, client, club):
         html = season_page(client, sort="itm", dir="asc").text
@@ -352,7 +352,7 @@ class TestPlayersPage:
         assert header_link(html, "Имя") == f"{base}?dir=desc"  # the active column flips
         assert header_link(html, "Ник") == f"{base}?sort=nick"
         assert header_link(html, "Игр") == f"{base}?sort=games"
-        assert header_link(html, "Итог, лей") == f"{base}?sort=net"
+        assert header_link(html, "Итог") == f"{base}?sort=net"
 
     def test_active_numeric_header(self, client, club):
         html = players_page(client, sort="games").text

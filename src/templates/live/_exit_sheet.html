@@ -17,7 +17,7 @@
         {% for error in form.chips.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
       </label>
       <label class="field">
-        <span class="field-label">Выдано, лей</span>
+        <span class="field-label">Выдано</span>
         <input id="exit-paid" class="live-input" type="number" name="paid" hx-get="{{ preview_url }}" hx-trigger="input changed delay:250ms" hx-target="#exit-calc" hx-swap="outerHTML" hx-include="closest form" min="0" step="1" inputmode="numeric" autocomplete="off" value="{{ form.paid.value|default_if_none:'' }}" required>
         {% for error in form.paid.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
       </label>

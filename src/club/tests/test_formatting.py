@@ -90,9 +90,9 @@ class TestSplitFigures:
     @pytest.mark.parametrize(
         ("text", "expected"),
         [
-            (f"15{NBSP}020 лей", [(f"15{NBSP}020", True), (" лей", False)]),
+            (f"закупки на 15{NBSP}020", [("закупки на ", False), (f"15{NBSP}020", True)]),
             ("4 из 4", [("4", True), (" из ", False), ("4", True)]),
-            ("12,30 лея", [("12,30", True), (" лея", False)]),
+            ("оставлено 12,30", [("оставлено ", False), ("12,30", True)]),
             ("подряд с 01.03.2025.", [("подряд с ", False), ("01.03.2025", True), (".", False)]),
             ("Зима 2025/26", [("Зима ", False), ("2025/26", True)]),
             (
@@ -155,9 +155,9 @@ class TestTemplateTags:
         assert render("{{ n|roman }} из {{ m|roman }}", n=5, m=6) == "V из VI"
 
     def test_figures_filter_marks_only_numbers(self):
-        html = render("{{ t|figures }}", t=f"11 вечеров, 15{NBSP}020 лей")
+        html = render("{{ t|figures }}", t=f"11 вечеров, закупок на 15{NBSP}020")
         num = '<span class="font-num num-run not-italic">'
-        assert html == f"{num}11</span> вечеров, {num}15{NBSP}020</span> лей"
+        assert html == f"{num}11</span> вечеров, закупок на {num}15{NBSP}020</span>"
 
     def test_figures_filter_escapes_plain_text(self):
         html = render("{{ t|figures }}", t="<b>2</b> & 'Альфа'")

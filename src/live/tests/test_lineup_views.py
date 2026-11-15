@@ -73,7 +73,7 @@ class TestLineupScreen:
         assert re.search(
             r'<li aria-current="step">\s*<span><span><span class="font-num">1</span> · Состав', page
         )
-        assert "За столом · 3" in words and "Вход 100 лей" in words
+        assert "За столом · 3" in words and "Вход 100" in words
         assert page.count('aria-label="Убрать: ') == 3
         assert "без следа" in words
         assert "Состав верен · к сбору" in words
@@ -200,7 +200,7 @@ class TestLineupScreen:
         game, _ = lineup
         response = act(org, game, "stage", **{"from": "lineup", "to": "collect"})
         assert stage(game) == Game.Stage.COLLECT
-        assert "К сбору, лей" in response.text
+        assert "К сбору" in response.text
 
     def test_query_count(self, org, django_assert_num_queries):
         def check(players):
@@ -241,7 +241,7 @@ class TestCollectScreen:
         page = board(org, game)
 
         strip = text(re.search(r'<dl class="stat-strip.*?</dl>', page, re.S).group())
-        assert strip == "К сбору, лей 300 Собрано 100 Не сдали 2"
+        assert strip == "К сбору 300 Собрано 100 Не сдали 2"
         assert '<dd class="stat-value text-accent">2</dd>' in page
 
     def test_nobody_unpaid(self, org, collect):
@@ -346,7 +346,7 @@ class TestAfterTheStart:
     def test_player_sheet_accepts_the_money(self, org, playing):
         game, (_, bravo, _) = playing
         sheet = org.get(reverse("live:player", args=[game.pk, bravo.pk])).text
-        assert "Принять 100 лей" in text(sheet)
+        assert "Принять вход 100" in text(sheet)
         assert "paid-on" in sheet
 
         act(org, game, "paid-on", result=bravo)
@@ -654,6 +654,6 @@ class TestReturnTheEntry:
         unpaid = org.get(reverse("live:player", args=[game.pk, bravo.pk])).text
 
         assert "Вход уже сдан. Верните" in text(paid)
-        assert "Верните 50 лей." in text(paid)
-        assert re.search(r'hx-confirm="[^"]*Верните 50 лей\."', paid)
+        assert 'Верните вход <span class="font-num">50</span>.' in paid
+        assert re.search(r'hx-confirm="[^"]*Верните вход 50\."', paid)
         assert "Верните" not in unpaid

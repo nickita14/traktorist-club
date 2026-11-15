@@ -72,7 +72,7 @@ class ExitForm(forms.Form):
         widget=forms.NumberInput(attrs={"inputmode": "numeric", "autocomplete": "off"}),
     )
     paid = forms.IntegerField(
-        label="Выдано, лей",
+        label="Выдано",
         min_value=0,
         widget=forms.NumberInput(attrs={"inputmode": "numeric", "autocomplete": "off"}),
     )

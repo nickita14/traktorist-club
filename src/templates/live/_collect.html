@@ -1,14 +1,14 @@
 {% load ledger live %}
 {# Step 2: who handed over the entry. The buy-in is recorded at seating; this is only the mark. #}
 <dl class="stat-strip stat-strip-3 mt-4">
-  <div><dt>К сбору, лей</dt><dd class="stat-value">{{ collection.due|money }}</dd></div>
+  <div><dt>К сбору</dt><dd class="stat-value">{{ collection.due|money }}</dd></div>
   <div><dt>Собрано</dt><dd class="stat-value">{{ collection.collected|money }}</dd></div>
   <div><dt>Не сдали</dt><dd class="stat-value{% if collection.unpaid %} text-accent{% endif %}">{% count_value collection.unpaid %}</dd></div>
 </dl>
 
 <h2 class="live-heading live-heading-split">
   <span>За столом · <span class="font-num">{{ seated|length }}</span></span>
-  <span>Вход <span class="font-num">{{ collection.entry|money }}</span> лей</span>
+  <span>Вход <span class="font-num">{{ collection.entry|money }}</span></span>
 </h2>
 <ul class="live-list">
   {% for result in seated %}

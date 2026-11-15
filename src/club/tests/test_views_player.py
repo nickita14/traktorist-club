@@ -64,7 +64,7 @@ class TestPlayerCard:
     def test_stat_strip_markup(self, client, club):
         html = all_years(client, club["players"]["A"]).content.decode()
 
-        assert "<dt>Итог за всё время, лей</dt>" in html
+        assert "<dt>Итог за всё время</dt>" in html
         assert '<dd class="stat-value">+190</dd>' in html
         assert "4 игры · ITM 4" in html
         assert f'<dd class="stat-value"><span class="val-neg">{MINUS}20</span></dd>' in html
@@ -298,7 +298,7 @@ class TestPlayerYears:
         )
         assert (totals.tour_games_played, totals.tour_net, totals.tour_itm) == (3, 160, 3)
         assert (totals.cash_games_played, totals.cash_net) == (2, -20)
-        assert f'<dt>Итог за <span class="font-num">{PAST_YEAR}</span>, лей</dt>' in html
+        assert f'<dt>Итог за <span class="font-num">{PAST_YEAR}</span></dt>' in html
         assert '<dd class="stat-value">+140</dd>' in html
         assert "3 игры · ITM 3" in html
         assert f'<dd class="stat-value"><span class="val-neg">{MINUS}20</span></dd>' in html
@@ -331,7 +331,7 @@ class TestPlayerYears:
         assert f'Динамика итога · <span class="font-num">{PAST_YEAR}</span></h2>' in html
         assert '<p class="section-note">нарастающим итогом с 1 января, все форматы</p>' in html
         assert html.count('class="chart-month"') == 3
-        assert f"Итог за {PAST_YEAR} год нарастающим итогом по 5 играм, сейчас +140 лей" in html
+        assert f"Итог за {PAST_YEAR} год нарастающим итогом по 5 играм, сейчас +140" in html
 
     def test_chart_of_last_year_runs_to_its_last_month(self, client, club):
         chart = get_card(client, club["players"]["A"], year=PAST_YEAR - 1).context["chart"]
@@ -520,11 +520,11 @@ class TestPlayerAwards:
         assert '<span class="rank-of">I из II</span>' in ranks
         assert '<progress class="rank-progress" value="300" max="900"></progress>' in ranks
         assert 'до звания «Вкладчик» ещё <span class="font-num num-run">600</span>' in ranks
-        assert '<span class="font-num num-run">400</span> лей' in ranks
+        assert 'закупок на <span class="font-num num-run not-italic">400</span>' in ranks
         # No step yet: a faint dot, an empty bar, the way to the first step.
         assert 'value="0" max="1"' in ranks
         assert "до звания «Первый аддон» ещё" in ranks
-        assert '<span class="font-num num-run">0</span> аддонов' in ranks
+        assert '<span class="font-num num-run not-italic">0</span> аддонов' in ranks
         assert (
             '<span class="rank-step-passed">Новобранец</span> · '
             '<span class="rank-step-passed">Бывалый</span> · '

@@ -1,7 +1,7 @@
 {% load ledger %}
 <div id="exit-calc" class="exit-calc">
   <p class="exit-value">
-    {% if calc.value is not None %}<span class="font-num num-run">{{ calc.chips|money }}</span> = <span class="font-num num-run">{{ calc.value|amount }}</span> лей{% else %}<span class="text-muted">Введите фишки: здесь будет их стоимость в леях.</span>{% endif %}
+    {% if calc.value is not None %}<span class="font-num num-run">{{ calc.chips|money }}</span> фишек = <span class="font-num num-run">{{ calc.value|amount }}</span>{% else %}<span class="text-muted">Введите фишки: здесь будет их стоимость.</span>{% endif %}
   </p>
   {% if calc.quick %}
     <div class="exit-quick" role="group" aria-label="Выдать">

@@ -50,16 +50,16 @@
       <dd class="stat-value">{{ game.players_count|money }}</dd>
     </div>
     <div>
-      <dt>Закупки, лей</dt>
+      <dt>Закупки</dt>
       <dd class="stat-value">{{ game.buyin_total|money }}</dd>
     </div>
     <div>
-      <dt>Выплаты, лей</dt>
+      <dt>Выплаты</dt>
       <dd class="stat-value">{{ game.payout_total|money }}</dd>
     </div>
     {% if season.kind == "cash" %}
       <div>
-        <dt>Остаток, лей</dt>
+        <dt>Остаток</dt>
         <dd class="stat-value">{% pot_value game.leftover %}</dd>
         {% if game.leftover > 0 %}
           <dd class="stat-caption">сгорело в конце вечера</dd>
@@ -69,7 +69,7 @@
       </div>
     {% else %}
       <div>
-        <dt>Призовой фонд, лей</dt>
+        <dt>Призовой фонд</dt>
         <dd class="stat-value">{{ game.buyin_total|money }}</dd>
         <dd class="stat-caption">{{ season.paid_places }} {{ season.paid_places|plural:"призовое место,призовых места,призовых мест" }}</dd>
       </div>
@@ -89,7 +89,7 @@
             {% if show_chips %}<th scope="col" class="num max-md:hidden">Фишек на выходе</th>{% endif %}
             <th scope="col" class="num max-md:hidden">Выплата</th>
             {% if show_chips %}<th scope="col" class="num max-md:hidden">На столе</th>{% endif %}
-            <th scope="col" class="num">Итог, лей</th>
+            <th scope="col" class="num">Итог</th>
           </tr>
         </thead>
         <tbody>
@@ -134,7 +134,7 @@
           На столе: что игрок оставил другим, стоимость фишек на выходе минус выплата.
           Где фишки на выходе не записаны, стоит точка. Внизу остаток вечера: закупки минус выплаты, он сгорает в конце.
         {% endif %}
-        <span class="whitespace-nowrap">Курс: <span class="font-num num-run not-italic">{{ rate_example.chips|money }}</span> фишек = <span class="font-num num-run not-italic">{{ rate_example.lei|money }}</span> лей.</span>
+        <span class="whitespace-nowrap">Курс: закупка <span class="font-num num-run not-italic">{{ rate_example.lei|money }}</span> = <span class="font-num num-run not-italic">{{ rate_example.chips|money }}</span> фишек.</span>
       </p>
     {% endif %}
   </section>

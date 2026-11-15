@@ -617,7 +617,7 @@ class TestExitSheet:
 
         calc = response.context["calc"]
         assert calc.quick == [112, 110, 100]
-        assert "11 230</span> = <span" in response.text
+        assert "11 230</span> фишек = <span" in response.text
         assert "112,30" in response.text
         assert figure(response.text, "На столе") == "2,30"  # left on the table: 112,30 - 110
         assert "+60" in response.text  # 110 - 50

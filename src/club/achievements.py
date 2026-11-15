@@ -41,12 +41,12 @@ KIND_LABELS = {
     Kind.TITLE: "Титул",
 }
 
-# Per ladder code: the counter's name, its unit (one, few, many) and what a rank's basis adds
-# after the threshold ("5 000 лей закупок").
+# Per ladder code: the counter's name and its unit (one, few, many). None is a sum of money,
+# printed without a currency word: "закупок на 5 000".
 LADDER_COUNTERS = {
-    LadderCode.VETERAN: ("Игры", ("игра", "игры", "игр"), ""),
-    LadderCode.FEEDER: ("Закупки", ("лей", "лея", "лей"), " закупок"),
-    LadderCode.ADDON: ("Аддоны", ("аддон", "аддона", "аддонов"), ""),
+    LadderCode.VETERAN: ("Игры", ("игра", "игры", "игр")),
+    LadderCode.FEEDER: ("Закупки", None),
+    LadderCode.ADDON: ("Аддоны", ("аддон", "аддона", "аддонов")),
 }
 
 
@@ -108,11 +108,10 @@ def _count(value: int, forms: tuple[str, str, str]) -> str:
     return f"{format_money(value)} {ru_plural(value, forms)}"
 
 
-def _lei(value: int | Fraction) -> str:
-    """'10 лей', '2 лея', '12,30 лея' (a fractional amount takes the genitive singular)."""
-    if isinstance(value, Fraction) and value.denominator != 1:
-        return f"{format_amount(value)} лея"
-    return _count(int(value), ("лей", "лея", "лей"))
+def _left_amount(value: int | Fraction) -> str:
+    """The «Меценат» figure: 'оставлено 12,30', 'оставлено 10'. Impersonal, since it stands
+    next to a player's name and a player has no grammatical gender."""
+    return f"оставлено {format_amount(value)}"
 
 
 def _since(date: datetime.date) -> str:
@@ -150,14 +149,12 @@ class Ladder:
     def counter_label(self) -> str:
         return LADDER_COUNTERS[self.code][0]
 
-    @property
-    def unit_forms(self) -> str:
-        """For the ``plural`` template filter: "игра,игры,игр"."""
-        return ",".join(LADDER_COUNTERS[self.code][1])
-
     def counter_text(self, value: int) -> str:
-        """'86 игр', '7 400 лей', '11 аддонов'."""
-        return _count(value, LADDER_COUNTERS[self.code][1])
+        """'86 игр', 'закупок на 7 400', '11 аддонов'."""
+        forms = LADDER_COUNTERS[self.code][1]
+        if forms is None:
+            return f"закупок на {format_money(value)}"
+        return _count(value, forms)
 
 
 @dataclass(frozen=True)
@@ -298,11 +295,11 @@ class TitleResult:
     holder_values: tuple[int | Fraction, ...] = ()
 
     def metric_of(self, value: int | Fraction) -> str:
-        """The figure as the honors board prints it: "13 вечеров", "4 из 4", "12,30 лея"."""
+        """The figure as the honors board prints it: "13 вечеров", "4 из 4", "оставлено 12,30"."""
         if self.code == "udarnik":
             return _count(int(value), ("вечер", "вечера", "вечеров"))
         if self.code == "patron":
-            return _lei(value)
+            return _left_amount(value)
         return f"{format_money(int(value))} из {format_money(int(value))}"
 
     @property
@@ -591,7 +588,7 @@ class ClubAwards:
                         basis = "1 место без докупок"
                         self._award(Kind.BADGE, "one_buyin", BADGES["one_buyin"], row, basis)
                     if row.itm and row.buyin >= row.entry_price + extra_buys * row.rebuy_price:
-                        basis = f"{row.place} место, закупка {_lei(row.buyin)}"
+                        basis = f"{row.place} место при закупке {format_money(row.buyin)}"
                         self._award(Kind.BADGE, "comeback", BADGES["comeback"], row, basis)
             else:
                 winners, _ = _leaders({row: row.net for row in rows})
@@ -664,7 +661,7 @@ class ClubAwards:
                     continue
                 for step in ladder.steps:
                     if before < step.threshold <= after:
-                        basis = ladder.counter_text(step.threshold) + LADDER_COUNTERS[code][2]
+                        basis = ladder.counter_text(step.threshold)
                         self._award(
                             Kind.RANK, code, step.title, row, basis, ladder=ladder, step=step
                         )
