@@ -11,9 +11,15 @@ from django.urls import reverse
 from django.utils import timezone
 
 from club.models import Game, Result, Season, SeasonKind
-from club.tests.factories import make_game, make_player, make_result, make_season
+from club.tests.factories import (
+    make_game,
+    make_player,
+    make_result,
+    make_season,
+    make_structure,
+)
 from live import actions
-from live.models import LiveAction
+from live.models import BlindTimer, LiveAction
 from live.tests.conftest import key, live_game, seat
 
 pytestmark = pytest.mark.django_db
@@ -304,57 +310,218 @@ class TestActions:
 
 
 class TestStart:
+    """The organizer picks "Турнир" or "Кэш"; the season is the date's year of that kind."""
+
     def post(self, client, **fields):
-        data = {"key": str(uuid.uuid4()), "date": "2026-09-28", "location": "Гараж"} | fields
+        data = {
+            "key": str(uuid.uuid4()),
+            "kind": SeasonKind.TOUR,
+            "date": "2026-09-28",
+            "location": "Гараж",
+        } | fields
         return client.post(reverse("live:start"), data)
+
+    @pytest.fixture
+    def on(self, monkeypatch, client, organizer):
+        """Freeze today's local date (09:00 UTC is late morning in Chisinau), then sign in: a
+        session made before the freeze would already have expired."""
+
+        def freeze(day):
+            morning = datetime.datetime.combine(day, datetime.time(9), tzinfo=datetime.UTC)
+            monkeypatch.setattr(timezone, "now", lambda: morning)
+            client.force_login(organizer)
+            return client
+
+        return freeze
+
+    @pytest.fixture
+    def org(self, on):
+        """Signed in on 28 September 2026: the 2026 dates below need no confirmation."""
+        return on(datetime.date(2026, 9, 28))
 
     def test_defaults(self, org):
         make_season(2026, SeasonKind.TOUR)
         make_game(make_season(2025, SeasonKind.CASH), location="Гараж № 5")
-        form = org.get(reverse("live:start")).context["form"]
+        response = org.get(reverse("live:start"))
+        form = response.context["form"]
         assert form.initial["date"] == timezone.localdate()
         assert form.initial["location"] == "Гараж № 5"
+        assert 'name="kind" value="tour" checked' in response.text
+        assert 'name="kind" value="cash" required>' in response.text
+        assert "2026" not in response.text.split('name="kind"')[1].split("</ul>")[0]
+        assert 'name="season"' not in response.text
 
-    def test_start_in_an_existing_season(self, org):
-        season = make_season(2026, SeasonKind.TOUR)
-        response = self.post(org, season=str(season.pk))
+    @pytest.mark.parametrize("kind", [SeasonKind.TOUR, SeasonKind.CASH])
+    def test_start_in_the_season_of_the_dates_year(self, org, kind):
+        season = make_season(2026, kind)
+        make_season(2025, kind)
+        response = self.post(org, kind=kind)
         game = Game.objects.get()
         assert response["Location"] == reverse("live:board", args=[game.pk])
         assert (game.season, game.live_stage, game.location) == (season, "lineup", "Гараж")
 
-    def test_start_in_a_new_season(self, org, settings):
+    def test_missing_season_gets_the_previous_rules(self, org):
         make_season(2025, SeasonKind.CASH, chips_per_lei=10, cash_step=20)
-        year = timezone.localdate().year
-        response = self.post(org, season="new-cash", date=f"{year}-01-03")
+        response = self.post(org, kind=SeasonKind.CASH, date="2026-01-03")
         assert response.status_code == 302
-        season = Season.objects.get(year=year, kind=SeasonKind.CASH)
+        season = Season.objects.get(year=2026, kind=SeasonKind.CASH)
         assert (season.chips_per_lei, season.cash_step) == (10, 20)
+        assert Game.objects.get().season == season
 
-    def test_new_season_is_offered_only_when_missing(self, org):
-        year = timezone.localdate().year
-        make_season(year, SeasonKind.TOUR)
-        choices = dict(org.get(reverse("live:start")).context["form"].fields["season"].choices)
-        assert "new-cash" in choices and "new-tour" not in choices
+    def test_other_kind_is_not_created(self, org):
+        make_season(2025, SeasonKind.TOUR)
+        self.post(org, kind=SeasonKind.TOUR)
+        assert set(Season.objects.values_list("year", "kind")) == {
+            (2025, SeasonKind.TOUR),
+            (2026, SeasonKind.TOUR),
+        }
 
-    def test_wrong_year(self, org):
-        season = make_season(2025, SeasonKind.TOUR)
-        response = self.post(org, season=str(season.pk))
-        assert response.status_code == 200
-        assert "Дата должна быть в 2025 году." in response.text
-        assert not Game.objects.exists()
-
-    def test_twice_with_the_same_key(self, org):
+    def test_late_entry_of_last_years_game(self, on):
+        """Entered on 1 January, dated 31 December: the old year's season once confirmed, no
+        new one."""
+        org = on(datetime.date(2027, 1, 1))
         season = make_season(2026, SeasonKind.TOUR)
         same = str(uuid.uuid4())
-        self.post(org, season=str(season.pk), key=same)
-        self.post(org, season=str(season.pk), key=same)
+        response = self.post(org, date="2026-12-31", key=same)
+        assert "Игра попадёт в сезон" in response.text and not Game.objects.exists()
+        self.post(org, date="2026-12-31", key=same, confirm="2026:tour")
+        assert Game.objects.get().season == season
+        assert not Season.objects.filter(year=2027).exists()
+
+    def test_new_years_game_entered_the_day_before(self, on):
+        org = on(datetime.date(2026, 12, 31))
+        make_season(2026, SeasonKind.TOUR, entry_price=70)
+        same = str(uuid.uuid4())
+        response = self.post(org, date="2027-01-01", key=same)
+        assert "Будет создан сезон" in response.text
+        assert not Season.objects.filter(year=2027).exists()
+        self.post(org, date="2027-01-01", key=same, confirm="2027:tour")
+        game = Game.objects.get()
+        assert (game.season.year, game.season.kind) == (2027, SeasonKind.TOUR)
+        assert game.season.entry_price == 70
+
+    @pytest.mark.parametrize("blinds", ["season", "999999", "garbage"])
+    def test_cash_start_ignores_the_timer(self, org, blinds):
+        structure = make_structure()
+        season = make_season(2026, SeasonKind.CASH, default_blinds=structure)
+        response = self.post(org, kind=SeasonKind.CASH, blinds=blinds)
+        assert response.status_code == 302
+        assert Game.objects.get().season == season
+        assert not BlindTimer.objects.exists()
+
+    def test_cash_start_with_a_real_structure_creates_no_timer(self, org):
+        structure = make_structure()
+        self.post(org, kind=SeasonKind.CASH, blinds=str(structure.pk))
+        assert Game.objects.get().season.kind == SeasonKind.CASH
+        assert not BlindTimer.objects.exists()
+
+    def test_tour_start_refuses_an_unknown_structure(self, org):
+        response = self.post(org, blinds="garbage")
+        assert response.status_code == 200
+        assert not Game.objects.exists()
+
+    def test_unknown_kind(self, org):
+        response = self.post(org, kind="poker")
+        assert response.status_code == 200
+        assert not Game.objects.exists() and not Season.objects.exists()
+
+    def test_twice_with_the_same_key(self, org):
+        make_season(2026, SeasonKind.TOUR)
+        same = str(uuid.uuid4())
+        self.post(org, key=same)
+        self.post(org, key=same)
         assert Game.objects.count() == 1
 
     def test_finished_game_on_that_day(self, org):
         season = make_season(2026, SeasonKind.TOUR)
         make_game(season, day=28, month=9)
-        response = self.post(org, season=str(season.pk))
+        response = self.post(org)
         assert "уже записана" in response.text
+
+
+class TestStartInAnotherYear:
+    """A date outside today's year (28 September 2026 here) is started only once confirmed, and
+    the confirmation holds for the year and kind it was asked for."""
+
+    @pytest.fixture
+    def org(self, monkeypatch, client, organizer):
+        now = datetime.datetime(2026, 9, 28, 9, tzinfo=datetime.UTC)
+        monkeypatch.setattr(timezone, "now", lambda: now)
+        client.force_login(organizer)
+        return client
+
+    @pytest.fixture(autouse=True)
+    def same_key(self):
+        """One key per test: the question and its confirmation are the same start."""
+        self.key = str(uuid.uuid4())
+
+    def post(self, client, headers=None, **fields):
+        data = {"key": self.key, "kind": SeasonKind.TOUR, "date": "2027-01-08"} | fields
+        return client.post(reverse("live:start"), data, headers=headers)
+
+    def question(self, response) -> str:
+        return re.sub(
+            r"<[^>]+>", "", response.text.split('class="live-confirm"')[1].split("</p>")[0]
+        )
+
+    def test_existing_season_asks_first(self, org):
+        make_season(2027, SeasonKind.TOUR)
+        response = self.post(org)
+        assert response.status_code == 200
+        assert self.question(response).endswith("Игра попадёт в сезон 2027. Начать?")
+        assert 'name="confirm" value="2027:tour"' in response.text
+        assert f'value="{self.key}"' in response.text
+        assert '<span class="font-num num-run not-italic">2027</span>' in response.text
+        assert "Начать и посадить игроков" not in response.text
+        assert not Game.objects.exists() and not LiveAction.objects.exists()
+
+    def test_missing_season_asks_first(self, org):
+        make_season(2026, SeasonKind.CASH)
+        response = self.post(org, kind=SeasonKind.CASH)
+        assert self.question(response).endswith("Будет создан сезон Кэш 2027. Начать?")
+        assert 'name="confirm" value="2027:cash"' in response.text
+        assert list(Season.objects.values_list("year", flat=True)) == [2026]
+        assert not Game.objects.exists()
+
+    def test_htmx_submit_gets_the_question_too(self, org):
+        response = self.post(org, headers={"HX-Request": "true"})
+        assert response.status_code == 200 and "HX-Redirect" not in response
+        assert "live-confirm" in response.text and not Game.objects.exists()
+        confirmed = self.post(org, headers={"HX-Request": "true"}, confirm="2027:tour")
+        assert confirmed["HX-Redirect"] == reverse("live:board", args=[Game.objects.get().pk])
+
+    def test_confirmed_starts(self, org):
+        response = self.post(org, confirm="2027:tour")
+        game = Game.objects.get()
+        assert response["Location"] == reverse("live:board", args=[game.pk])
+        assert (game.season.year, game.season.kind) == (2027, SeasonKind.TOUR)
+
+    def test_confirmation_for_another_year_asks_again(self, org):
+        response = self.post(org, date="2025-12-20", confirm="2027:tour")
+        assert 'name="confirm" value="2025:tour"' in response.text
+        assert not Game.objects.exists() and not Season.objects.exists()
+
+    def test_confirmation_for_another_kind_asks_again(self, org):
+        response = self.post(org, kind=SeasonKind.CASH, confirm="2027:tour")
+        assert 'name="confirm" value="2027:cash"' in response.text
+        assert not Game.objects.exists() and not Season.objects.exists()
+
+    def test_todays_year_starts_at_once(self, org):
+        self.post(org, date="2026-10-02")
+        assert Game.objects.get().season.year == 2026
+
+    def test_stale_confirmation_with_todays_year_is_ignored(self, org):
+        """The question was shown for 2027, then the date went back to this year."""
+        response = self.post(org, date="2026-10-02", confirm="2027:tour")
+        game = Game.objects.get()
+        assert response["Location"] == reverse("live:board", args=[game.pk])
+        assert game.season.year == 2026
+        assert not Season.objects.filter(year=2027).exists()
+
+    def test_confirmed_twice_with_the_same_key(self, org):
+        self.post(org, confirm="2027:tour")
+        self.post(org, confirm="2027:tour")
+        assert Game.objects.count() == 1 and LiveAction.objects.count() == 1
 
 
 class TestSeating:

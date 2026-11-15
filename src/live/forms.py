@@ -6,39 +6,22 @@ from django.utils import timezone
 from club.models import BlindStructure, Player, Season, SeasonKind
 from live.actions import SEASON_BLINDS
 
-# Start form choice for a season of the current year that does not exist yet: "new-tour".
-NEW_SEASON_PREFIX = "new-"
-
-
-def season_choices(year: int) -> list[tuple[str, str]]:
-    """This year's tour and cash seasons first (tour is the default), offered as new when they do
-    not exist yet; then older seasons, newest first."""
-    seasons = {(s.year, s.kind): s for s in Season.objects.all()}
-    choices = []
-    for kind, label in SeasonKind.choices:
-        season = seasons.get((year, kind))
-        if season is None:
-            choices.append((f"{NEW_SEASON_PREFIX}{kind}", f"{label} {year} · новый сезон"))
-        else:
-            choices.append((str(season.pk), str(season)))
-    older = sorted(
-        (s for (y, _), s in seasons.items() if y != year),
-        key=lambda s: (-s.year, s.kind != SeasonKind.TOUR),
-    )
-    return choices + [(str(s.pk), str(s)) for s in older]
-
 
 class StartForm(forms.Form):
+    """The season is not chosen: start_game resolves it from the kind and the date's year."""
+
     key = forms.UUIDField(widget=forms.HiddenInput)
-    season = forms.ChoiceField(label="Сезон")
+    kind = forms.ChoiceField(label="Игра", choices=SeasonKind.choices)
     date = forms.DateField(label="Дата", widget=forms.DateInput(attrs={"type": "date"}))
     location = forms.CharField(label="Место", max_length=100, required=False)
     # Tournaments only: a structure pk, the season's default or "" for no timer.
     blinds = forms.ChoiceField(label="Таймер блайндов", required=False)
+    # A date in another year than today's is started only once confirmed: the confirmation it
+    # was asked for ("2027:cash", see confirmation()) comes back with the second submit.
+    confirm = forms.CharField(required=False, widget=forms.HiddenInput)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["season"].choices = season_choices(timezone.localdate().year)
         self.fields["blinds"].choices = [
             (SEASON_BLINDS, "Как в сезоне"),
             ("", "Без таймера"),
@@ -51,19 +34,24 @@ class StartForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
-        choice, date = cleaned.get("season"), cleaned.get("date")
-        if choice is None or date is None:
-            return cleaned
-        if choice.startswith(NEW_SEASON_PREFIX):
-            cleaned["kind"] = choice.removeprefix(NEW_SEASON_PREFIX)
-            year = timezone.localdate().year
-            cleaned["season_obj"] = None
-        else:
-            season = Season.objects.get(pk=choice)
-            cleaned["season_obj"], cleaned["kind"], year = season, season.kind, season.year
-        if date.year != year:
-            self.add_error("date", f"Дата должна быть в {year} году.")
+        if cleaned.get("kind") == SeasonKind.CASH:
+            # A cash game has no timer, whatever was posted (even a value that is no choice).
+            self.errors.pop("blinds", None)
+            cleaned["blinds"] = None
         return cleaned
+
+    def confirmation(self, today: datetime.date) -> tuple[str, str] | None:
+        """For a valid form: None when the game may start, else the confirmation to ask for (its
+        token, its question). A date in today's year never asks; another year asks until the
+        form brings back the token of this year and kind, so a date or kind changed after the
+        question asks again, and a stale token with today's year is simply ignored."""
+        kind, year = self.cleaned_data["kind"], self.cleaned_data["date"].year
+        token = f"{year}:{kind}"
+        if year == today.year or self.cleaned_data["confirm"] == token:
+            return None
+        if Season.objects.filter(year=year, kind=kind).exists():
+            return token, f"Игра попадёт в сезон {year}. Начать?"
+        return token, f"Будет создан сезон {SeasonKind(kind).label} {year}. Начать?"
 
 
 class NewPlayerForm(forms.ModelForm):

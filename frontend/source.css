@@ -392,9 +392,36 @@
     text-transform: uppercase;
   }
 
-  .segmented [aria-current="page"] {
+  .segmented [aria-current="page"],
+  .segmented label:has(:checked) {
     background: var(--ink);
     color: var(--paper);
+  }
+
+  /* A form choice (the live start form's "Турнир" / "Кэш"): radio inputs hidden the sr-only way,
+     so they keep Tab and the arrow keys; the cell draws the focus. */
+  .segmented label {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 2.75rem;
+    padding: 0 0.875rem;
+    cursor: pointer;
+  }
+
+  .segmented-words label {
+    font-family: var(--font-stack-head);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+  }
+
+  .segmented label:has(:focus-visible) {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  .field > .segmented {
+    justify-self: start;
   }
 
   /* Ledger table. The wrapper scrolls sideways, the page never does. */
@@ -1440,12 +1467,27 @@
     gap: 0.25rem;
   }
 
+  fieldset.field > legend {
+    margin-bottom: 0.25rem;
+  }
+
   .field-label {
     color: var(--muted);
     font-family: var(--font-stack-head);
     font-size: var(--text-sm);
     letter-spacing: var(--tracking-label);
     text-transform: uppercase;
+  }
+
+  /* A question before the start form goes on (a date in another year): neutral, not an alert. */
+  .live-confirm {
+    padding: 0.75rem;
+    border: 1px solid var(--ink);
+    background: var(--surface);
+  }
+
+  .live-confirm .sheet-actions {
+    margin-top: 0.75rem;
   }
 
   .field-error {

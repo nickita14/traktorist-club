@@ -16,7 +16,6 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 
 ### Wave 0. Loose ends
 
-- Live start form: only "Турнир" / "Кэш" of the current year (no year in the labels, no older seasons), the date check follows from that; the blind timer field hidden for cash.
 - "Бабл-гёрл" column on `/honors/` is empty for everyone: hide a badge column until someone earns it, or add a caption.
 - Title rules on `/honors/`: a short visible condition per title, like `badge_rules()` for badges ("Меценат": больше всех оставил на столе за сезон).
 - «Меценат» is both a step of the «Кормилец клуба» rank (sum of buy-ins) and the cash season title (most left on the table): rename one of them (the rank step lives in the database, seeded by migration 0011, so this needs a data migration or an admin edit).
@@ -58,6 +57,7 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 - Switching the club to the app from the 2027 season (a season that is not sheet-managed).
 - A shareable evening summary for the club chat (link preview).
 - "Очная ставка": head-to-head comparison of two players.
+- Season 2027 and the sheet: a season created from the live screen is not sheet-managed, so the first live game of January makes the importer refuse the whole 2027 season; decide before January whether 2027 stays in the sheet (then the flag must be set, or new seasons copy it from the previous one) or moves to the app.
 
 ## Done
 
@@ -65,7 +65,8 @@ Newest first. Dates are local (Europe/Chisinau), from the merge commits. Dependa
 
 | Item | Branch | Merged | PR |
 | --- | --- | --- | --- |
-| Backlog Queue in waves, with the newly agreed items | `backlog-roadmap` | | |
+| Live start form: "Турнир" / "Кэш" only, the season is the date's year of that kind (created with the previous rules if missing); a date outside today's year asks first; the blind timer field hidden for cash and ignored by the server | `live-start-form` | | |
+| Backlog Queue in waves, with the newly agreed items | `backlog-roadmap` | 2026-11-15 | #53 |
 | Cash leftover is a dropped remainder, not a pot: wording, Stage 8 cancelled | `cash-remainder` | 2026-10-27 | #42 |
 | Stop tracking local Claude Code settings; deny git writes in `.claude/settings.json` | `claude-settings` | 2026-10-27 | #41 |
 | One tracked backlog (this file) | `backlog` | 2026-10-27 | #40 |
