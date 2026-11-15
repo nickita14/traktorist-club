@@ -16,8 +16,8 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 
 ### Wave 0. Loose ends
 
-- Backup and uptime monitoring: `deploy/backup.sh` and `deploy/sitecheck.sh` ping healthchecks.io once their URLs are set; the checks are not set up yet (or switch to Cronitor or Better Stack).
 - Gender-neutral award texts: the badge name "Снял кассу" (printed at a player's name on game sheets and the player card) and the «Меценат» rule "больше всех оставил на столе" assume a man; Player has no gender, so reword them impersonally (as "оставлено 12,30" already is). "Бабл-гёрл" is a deliberate joke name: decide whether it stays.
+- shellcheck for `deploy/*.sh` in pre-commit or CI (a one-off run is clean; today nothing runs it).
 - Live screen behavior audit: messages after actions (readable long enough, no stacking, never over buttons), sheets on native `<dialog>` / Popover, keyboard access. No new dependencies.
 
 ### Wave 1. End of the 2026 season (deadline: the last game of December)
@@ -62,7 +62,8 @@ Newest first. Dates are local (Europe/Chisinau), from the merge commits. Dependa
 
 | Item | Branch | Merged | PR |
 | --- | --- | --- | --- |
-| No currency word on the public site and the live screens ("Итог", "закупки на 15 020", "закупок на 7 400", "оставлено 12,30", "закупка 50 = 5 000 фишек", "Вход 50 не сдан."); the admin keeps units; a test renders every club and live template and fails on the word | `less-lei` | | |
+| Backup and uptime monitoring on Cronitor heartbeats: `MONITOR_BACKUP_URL` / `MONITOR_SITE_URL` (renamed from `HEALTHCHECKS_*`), failures as `state=fail` through `deploy/monitor-ping.sh`, the URL never printed; runbook for the monitors and the server switch | `monitoring` | | |
+| No currency word on the public site and the live screens ("Итог", "закупки на 15 020", "закупок на 7 400", "оставлено 12,30", "закупка 50 = 5 000 фишек", "Вход 50 не сдан."); the admin keeps units; a test renders every club and live template and fails on the word | `less-lei` | 2026-11-15 | #56 |
 | `/honors/`: a badge gets a matrix column only once someone has earned it; every badge keeps its rule, an unearned one noted "ещё никем не получен" | `honors-fixes` | 2026-11-15 | #55 |
 | `/honors/`: a short rule per title (`title_rules()`), figures from the settings | `honors-fixes` | 2026-11-15 | #55 |
 | Live start form: "Турнир" / "Кэш" only, the season is the date's year of that kind (created with the previous rules if missing); a date outside today's year asks first; the blind timer field hidden for cash and ignored by the server | `live-start-form` | 2026-11-15 | #54 |
