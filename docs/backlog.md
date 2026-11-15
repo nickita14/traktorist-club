@@ -16,9 +16,6 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 
 ### Wave 0. Loose ends
 
-- "Бабл-гёрл" column on `/honors/` is empty for everyone: hide a badge column until someone earns it, or add a caption.
-- Title rules on `/honors/`: a short visible condition per title, like `badge_rules()` for badges ("Меценат": больше всех оставил на столе за сезон).
-- «Меценат» is both a step of the «Кормилец клуба» rank (sum of buy-ins) and the cash season title (most left on the table): rename one of them (the rank step lives in the database, seeded by migration 0011, so this needs a data migration or an admin edit).
 - Backup and uptime monitoring: `deploy/backup.sh` and `deploy/sitecheck.sh` ping healthchecks.io once their URLs are set; the checks are not set up yet (or switch to Cronitor or Better Stack).
 - Less of the word "лей" across the site: no emphasis on the currency; audit every place it is printed and keep it only where a figure would be ambiguous without it.
 - Live screen behavior audit: messages after actions (readable long enough, no stacking, never over buttons), sheets on native `<dialog>` / Popover, keyboard access. No new dependencies.
@@ -65,7 +62,9 @@ Newest first. Dates are local (Europe/Chisinau), from the merge commits. Dependa
 
 | Item | Branch | Merged | PR |
 | --- | --- | --- | --- |
-| Live start form: "Турнир" / "Кэш" only, the season is the date's year of that kind (created with the previous rules if missing); a date outside today's year asks first; the blind timer field hidden for cash and ignored by the server | `live-start-form` | | |
+| `/honors/`: a badge gets a matrix column only once someone has earned it; every badge keeps its rule, an unearned one noted "ещё никем не получен" | `honors-fixes` | | |
+| `/honors/`: a short rule per title (`title_rules()`), figures from the settings | `honors-fixes` | | |
+| Live start form: "Турнир" / "Кэш" only, the season is the date's year of that kind (created with the previous rules if missing); a date outside today's year asks first; the blind timer field hidden for cash and ignored by the server | `live-start-form` | 2026-11-15 | #54 |
 | Backlog Queue in waves, with the newly agreed items | `backlog-roadmap` | 2026-11-15 | #53 |
 | Cash leftover is a dropped remainder, not a pot: wording, Stage 8 cancelled | `cash-remainder` | 2026-10-27 | #42 |
 | Stop tracking local Claude Code settings; deny git writes in `.claude/settings.json` | `claude-settings` | 2026-10-27 | #41 |
