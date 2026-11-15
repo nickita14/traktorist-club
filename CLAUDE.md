@@ -51,7 +51,7 @@ Do not add new dependencies without saying why in the PR description. Prefer the
 
 ## Design rules
 
-Direction: **Soviet-era official ledger / factory wall newspaper**. Off-white paper background, dark ink text, one accent color (stamp red), thin ruled lines, dense tables like a sports results sheet. Standings look like an official "ведомость", a player page looks like a personal record card. Light theme only for now.
+Direction: **Soviet-era official ledger / factory wall newspaper**. Off-white paper background, dark ink text, one accent color on reference pages (stamp red; celebration pages add `poster-red`, see "Celebration pages"), thin ruled lines, dense tables like a sports results sheet. Standings look like an official "ведомость", a player page looks like a personal record card. Light theme only for now.
 
 Fonts (SIL OFL, self-hosted in `assets/fonts/<family>/` with their `OFL.txt`; cyrillic, latin-ext and latin subsets; never a runtime CDN):
 - **PT Sans Narrow** 400/700: headings, nav, column headers, labels (`font-head`)
@@ -59,7 +59,7 @@ Fonts (SIL OFL, self-hosted in `assets/fonts/<family>/` with their `OFL.txt`; cy
 - **PT Mono** 400: every number: money, counts, dates, ranks (`font-num`)
 - **Ruslan Display** 400: only the club name in the header (`font-display`)
 
-Tokens (`assets/css/tokens.css`, the only place with raw color values): `paper` #F2EDE3 page background, `ink` #1D1B18 text, `muted` #6B655C nicknames, captions, column headers, `faint` #9A9285 zero values, `rule` #C9C1B2 row lines, `accent` #B3261E stamp red, the only accent, `surface` #FBF9F5 near-white for admin panels and inputs. `frontend/source.css` maps them into the Tailwind theme and removes Tailwind's default palettes and font stacks.
+Tokens (`assets/css/tokens.css`, the only place with raw color values): `paper` #F2EDE3 page background, `ink` #1D1B18 text, `muted` #6B655C nicknames, captions, column headers, `faint` #9A9285 zero values, `rule` #C9C1B2 row lines, `accent` #B3261E stamp red, the only accent on reference pages (`poster-red` on celebration pages: see "Celebration pages"), `surface` #FBF9F5 near-white for admin panels and inputs. `frontend/source.css` maps them into the Tailwind theme and removes Tailwind's default palettes and font stacks.
 
 Admin (a work tool that echoes the ledger, it does not copy it): Unfold scales are mixed from the same tokens in `UNFOLD["COLORS"]` (in oklab: oklch loses the hue of near-neutral colors). Primary is **ink**; stamp red only for danger and warning states (`assets/css/admin.css` remaps Unfold's red and orange). Fonts: **PT Sans** 400/700 for the UI, PT Sans Narrow only for page titles (`h1`) and table headers, PT Mono for numbers (display methods in `src/club/admin.py` return `number_cell` / `net_cell` with `formatting="price"`); no PT Serif in the admin. **Light mode only**: `UNFOLD["THEME"]` alone does not win over a theme stored in localStorage, so `assets/js/admin-theme.js` forces it; `src/club/tests/test_admin_browser.py` checks it in Chromium. Unfold ships no translations: set `search_help_text` on every ModelAdmin with `search_fields`.
 
@@ -82,6 +82,22 @@ Implementation:
 - Numbers are right-aligned; negative values use the accent color or a clear minus, not only color.
 - Mobile first: tables scroll horizontally inside their own container, the page never scrolls sideways.
 - Before introducing a new visual pattern, check how an existing page solves it and reuse that. If nothing fits, stop and propose the pattern instead of inventing silently.
+
+### Celebration pages
+
+Two modes. **Reference pages** (standings, game sheets, player cards, honors, the admin, the live screens) stay the ledger, with every rule and ban above.
+
+**Celebration pages** are the year report (форма № 7), and later the evening results screen ("Итоги вечера") and Табло 2.0. They follow the poster style (Soviet agitprop):
+- sheets that alternate paper, ink and red backgrounds
+- tilted ink or red plaques for headings
+- very large PT Mono figures
+- a tractor wheel motif
+- a stamp landing at the end
+- motion: one entrance per element, played once, off under `prefers-reduced-motion: reduce`
+
+On these pages the "no hero sections" ban does not apply; every other ban does (no gradients, glass, glow, large shadows, emoji, Inter, default palettes).
+
+Color: a second accent token for celebration pages only, `poster-red` #C8281E. `accent` #B3261E stays the stamp red everywhere else. `poster-red` is not in `tokens.css` yet: the branch that builds the first celebration page adds it there (and to the Tailwind theme).
 
 ## Player years
 
