@@ -24,7 +24,7 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 ### Wave 1. End of the 2026 season (deadline: the last game of December)
 
 - Before the first January game: season 2027 and the sheet: a season created from the live screen is not sheet-managed, so the first live game of January makes the importer refuse the whole 2027 season; decide before January whether 2027 stays in the sheet (then the flag must be set, or new seasons copy it from the previous one) or moves to the app.
-- "Годовой отчёт за 2026" (форма № 7): a year-in-review page for the club and one per player, in progress on `year-report`. Agreed definitions, figures and plan in `PLAN.md` Stage 10 (evening = a date, ties shown, calendar year only, final with today = 1 January, "Опора кассы", bubble only where every place is known; duration, «Меценат» and hosts dropped). Poster style per `CLAUDE.md` "Celebration pages"; mockups: YearClub and YearPlayer on the design canvas, updated for the audit before the build.
+- "Годовой отчёт за 2026" (форма № 7): a year-in-review page for the club and one per player, in progress on `year-report`. Agreed definitions, figures and plan in `PLAN.md` Stage 10 (evening = a date, ties shown, calendar year only, released when an organizer closes the year or on 1 January, a closed year computed as of 1 January, "Опора кассы", bubble only where every place is known; duration, «Меценат» and hosts dropped). Poster style per `CLAUDE.md` "Celebration pages"; mockups: YearClub and YearPlayer on the design canvas, updated for the audit before the build.
 - Printable diplomas: a print stylesheet for titles and diplomas, to hand out on paper. No new dependencies. Mockup first.
 - Excel export, together with a printable season ledger.
 
