@@ -1,0 +1,14 @@
+{# The end of a report: the red stamp lands once the year is closed; a dashed draft stamp while it runs. #}
+{% if state.closed %}
+  <p class="poster-stamp">
+    <span class="poster-stamp-season">Сезон {{ club.year }}</span>
+    <span class="poster-stamp-word">закрыт</span>
+    <span class="poster-stamp-date font-num">{{ club.last_game|date:"d.m.Y" }}</span>
+  </p>
+{% else %}
+  <p class="poster-stamp poster-stamp-draft">
+    <span class="poster-stamp-season">Сезон {{ club.year }}</span>
+    <span class="poster-stamp-word">идёт</span>
+    <span class="poster-stamp-date font-num">на {{ state.today|date:"d.m.Y" }}</span>
+  </p>
+{% endif %}

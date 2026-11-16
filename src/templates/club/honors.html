@@ -19,6 +19,10 @@
   </p>
 {% endblock %}
 
+{% block head_extra %}
+  {% include "club/includes/report_link.html" %}
+{% endblock %}
+
 {% block body %}
   <div class="page-grid mt-6">
     {# min-w-0: a grid item grows to its widest table otherwise; the tables scroll inside. #}

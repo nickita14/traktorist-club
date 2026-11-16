@@ -1,0 +1,22 @@
+{% load static tailwind_cli %}<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if not site_indexing %}<meta name="robots" content="noindex, nofollow">{% endif %}
+  <title>{% block title %}{% endblock %} · Кочующий Клуб Тракториста</title>
+  <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+  {% tailwind_css %}
+  {% include "includes/favicons.html" %}
+  {# Plays each sheet's entrance once, when the sheet first scrolls into view; without it (or with reduced motion) everything is simply there. #}
+  <script src="{% static 'js/poster.js' %}"></script>
+</head>
+{# A celebration page (CLAUDE.md "Celebration pages"): full-width poster sheets, no site nav; the club name on the first sheet links home. #}
+<body class="poster">
+  <main>
+    {% for sheet in sheets %}
+      {% include sheet with number=forloop.counter total=sheets|length %}
+    {% endfor %}
+  </main>
+</body>
+</html>

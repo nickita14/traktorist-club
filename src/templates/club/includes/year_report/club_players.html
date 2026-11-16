@@ -1,0 +1,26 @@
+{% load ledger %}
+<section class="poster-sheet poster-sheet-ink" aria-labelledby="players-title">
+  <div class="poster-inner">
+    <h2 id="players-title" class="poster-plaque poster-plaque-red">За столом побывал{{ club.participants|length|plural:",о,о" }}</h2>
+    <p class="poster-figure-line">
+      <span class="poster-figure">{{ club.participants|length|money }}</span>
+      <span class="poster-figure-word">{{ club.participants|length|plural:"игрок,игрока,игроков" }}</span>
+    </p>
+    <dl class="poster-rows">
+      <div>
+        <dt><span>из них новичков</span><span class="poster-row-note">с {{ club.first_year }} года</span></dt>
+        <dd class="font-num">{{ club.newcomers|length|money }}</dd>
+      </div>
+      <div>
+        <dt><span>в среднем за столом</span><span class="poster-row-note">игроков за игру</span></dt>
+        <dd class="font-num">{{ club.average_text }}</dd>
+      </div>
+      <div>
+        <dt><span>не пропустили ни одного месяца</span><span class="poster-row-note">с вечерами клуба</span></dt>
+        <dd class="font-num">{{ club.every_month|length|money }}</dd>
+      </div>
+    </dl>
+    <p class="poster-caption">Рекорд стола: <span class="font-num">{{ club.largest_table }}</span> {{ club.largest_table|plural:"игрок,игрока,игроков" }}.<br>Такое было <span class="font-num">{{ club.largest_table_times }}</span> {{ club.largest_table_times|plural:"раз,раза,раз" }}</p>
+  </div>
+  {% include "club/includes/year_report/mark.html" %}
+</section>

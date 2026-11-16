@@ -31,6 +31,8 @@ urlpatterns = [
     path("players/<slug:slug>/games/", views.player_games, name="player_games"),
     path("all-time/", views.all_time, name="all_time"),
     path("honors/", views.honors, name="honors"),
+    path("<int:year>/report/", views.year_report_club, name="year_report"),
+    path("<int:year>/report/<slug:slug>/", views.year_report_player, name="year_report_player"),
     # The organizers' login on the public site (the admin login stays under ADMIN_URL).
     path("prokhodnaya/", auth.LoginView.as_view(), name="login"),
     path("prokhodnaya/vykhod/", auth.logout_view, name="logout"),

@@ -1,0 +1,44 @@
+{% load ledger l10n %}
+<section class="poster-sheet poster-sheet-ink" aria-labelledby="net-title">
+  <div class="poster-inner">
+    <h2 id="net-title" class="poster-plaque poster-plaque-red">Итог года</h2>
+    <p class="poster-figure poster-figure-md">{{ page.net|net }}</p>
+    {% if chart %}
+      {% localize off %}
+        <svg class="net-chart poster-chart" width="100%" height="{{ chart.height }}" role="img"
+             aria-label="Итог за {{ club.year }} год нарастающим итогом, в конце года {{ page.net|net }}">
+          <line class="chart-zero" x1="0" x2="100%" y1="{{ chart.zero_y }}" y2="{{ chart.zero_y }}"/>
+          {% for month in chart.months %}
+            {% if month.line %}<line class="chart-year" x1="{{ month.start }}%" x2="{{ month.start }}%" y1="0" y2="{{ chart.height }}"/>{% endif %}
+            <text class="chart-month" x="{{ month.x }}%" y="{{ chart.label_y }}" text-anchor="middle">{{ month.label|slice:":1" }}</text>
+          {% endfor %}
+          <svg viewBox="0 0 100 {{ chart.height }}" preserveAspectRatio="none" width="100%" height="100%">
+            <polyline class="chart-line" points="{{ chart.points }}"/>
+          </svg>
+          <circle class="chart-last" cx="{{ chart.last_x }}%" cy="{{ chart.last_y }}" r="5"/>
+        </svg>
+      {% endlocalize %}
+    {% endif %}
+    <dl class="poster-rows">
+      {% if page.tour %}
+        <div>
+          <dt><span>турниры: {{ page.tour.rank.place_text|figures }}</span>{% if page.tour.rank.others %}<span class="poster-row-note">наравне: {{ page.tour.rank.others_text|figures }}</span>{% endif %}</dt>
+          <dd class="font-num">{{ page.tour.net|net }}</dd>
+        </div>
+      {% endif %}
+      {% if page.cash %}
+        <div>
+          <dt><span>кэш: {{ page.cash.rank.place_text|figures }}</span>{% if page.cash.rank.others %}<span class="poster-row-note">наравне: {{ page.cash.rank.others_text|figures }}</span>{% endif %}</dt>
+          <dd class="font-num">{{ page.cash.net|net }}</dd>
+        </div>
+      {% endif %}
+      {% if page.tournaments %}
+        <div>
+          <dt><span>в призах</span></dt>
+          <dd>{{ page.itm_text|figures }}</dd>
+        </div>
+      {% endif %}
+    </dl>
+  </div>
+  {% include "club/includes/year_report/mark.html" %}
+</section>

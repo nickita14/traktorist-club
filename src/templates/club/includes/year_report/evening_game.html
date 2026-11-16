@@ -1,0 +1,10 @@
+{% load ledger %}
+{# A game of a player's evening: its sheet, the place when known, the table size, the net. #}
+<a class="poster-game" href="{% url 'game_detail' game.game.pk %}">
+  <span class="poster-game-text">
+    <span class="poster-game-title">{% if game.game.kind == "cash" %}Кэш-вечер{% else %}Турнир{% endif %} №&nbsp;<span class="font-num">{{ game.game.number }}</span></span>
+    <span class="poster-game-note{% if game.one_buyin %} poster-red-text{% endif %}">{% if game.one_buyin %}1 место без докупок · {% elif game.place %}<span class="font-num">{{ game.place }}</span> место · {% endif %}<span class="font-num">{{ game.players }}</span> {{ game.players|plural:"игрок,игрока,игроков" }}</span>
+  </span>
+  <span class="poster-game-net font-num">{{ game.net|net }}</span>
+  <span class="font-num" aria-hidden="true">→</span>
+</a>

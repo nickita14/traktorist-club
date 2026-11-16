@@ -1,0 +1,15 @@
+<section class="poster-sheet poster-sheet-ink poster-sheet-center" aria-label="Итог сезона">
+  <div class="poster-inner">
+    {% include "club/includes/year_report/closing_stamp.html" %}
+    {% if state.closed %}
+      <p class="poster-slogan poster-center">Личное дело пополнено.<br>Даёшь сезон {{ club.year|add:1 }}!</p>
+    {% else %}
+      <p class="poster-slogan poster-center">Печать поставит организатор<br>в вечер последней игры</p>
+    {% endif %}
+    <div class="poster-buttons">
+      <a class="poster-button poster-button-paper" href="{% url 'year_report' club.year %}"><span>Отчёт всего клуба</span><span class="font-num" aria-hidden="true">→</span></a>
+      <a class="poster-button poster-button-line" href="{{ card_url }}"><span>Личная карточка</span><span class="font-num" aria-hidden="true">→</span></a>
+    </div>
+  </div>
+  {% include "club/includes/year_report/mark.html" %}
+</section>

@@ -1,0 +1,28 @@
+{% load ledger %}
+<section class="poster-sheet" aria-labelledby="evening-title">
+  <div class="poster-inner">
+    <h2 id="evening-title" class="poster-plaque">Лучший вечер</h2>
+    <p class="poster-figure-line poster-figure-split">
+      <span class="poster-figure poster-figure-md">{{ page.best_evening.date|date:"d.m" }}</span>
+      <span class="poster-tag font-num">{{ page.best_evening.net|net }}</span>
+    </p>
+    <div class="poster-games">
+      {% for game in page.best_evening.games %}
+        {% include "club/includes/year_report/evening_game.html" %}
+      {% endfor %}
+    </div>
+    <dl class="poster-facts poster-facts-ruled">
+      {% if page.tournaments %}
+        <div><dt>побед в турнирах</dt><dd>{% count_value page.wins %}</dd></div>
+        <div><dt>серия в призах</dt><dd>{% if page.itm_streak %}{{ page.streak_text|figures }}{% else %}{% no_value %}{% endif %}</dd></div>
+      {% endif %}
+      {% if page.co_players %}
+        <div><dt>чаще всего за одним столом</dt><dd>{{ page.co_text|figures }}</dd></div>
+      {% endif %}
+    </dl>
+    {% if page.worst_evening %}
+      <p class="poster-aside">Был и вечер похуже: {{ page.worst_evening.date|date:"j E" }}, <span class="font-num not-italic">{{ page.worst_evening.net|net }}</span>. С кем не бывает.</p>
+    {% endif %}
+  </div>
+  {% include "club/includes/year_report/mark.html" %}
+</section>

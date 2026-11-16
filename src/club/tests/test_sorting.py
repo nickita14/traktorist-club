@@ -257,7 +257,7 @@ class TestQueryCounts:
 
     def test_season(self, client, club, django_assert_num_queries):
         for params in [{}, {"sort": "games", "dir": "asc"}, {"sort": "bogus"}]:
-            with django_assert_num_queries(6):
+            with django_assert_num_queries(7):
                 season_page(client, **params)
 
     def test_all_time(self, client, club, django_assert_num_queries):
@@ -270,7 +270,7 @@ class TestQueryCounts:
         game = make_game(season, day=29, month=3)
         for i in range(10):
             make_result(game, make_player(f"Лишний {i}"), buyin=50)
-        with django_assert_num_queries(6):
+        with django_assert_num_queries(7):
             season_page(client, sort="itm")
 
 

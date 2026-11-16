@@ -1,0 +1,30 @@
+{% load ledger %}
+<section class="poster-sheet" aria-labelledby="attendance-title">
+  <div class="poster-inner">
+    <h2 id="attendance-title" class="poster-plaque">Явка за год</h2>
+    <p class="poster-figure-line">
+      <span class="poster-figure">{{ page.evenings|money }}</span>
+      <span class="poster-figure-word poster-red-text">из <span class="font-num">{{ page.club_evenings|money }}</span></span>
+    </p>
+    <div class="poster-band poster-band-stack">
+      <p>План по явке выполнен на <span class="poster-percent font-num">{{ page.percent }}&nbsp;%</span></p>
+      <progress class="poster-progress" max="100" value="{{ page.percent }}" aria-label="Явка: {{ page.percent }} процентов"></progress>
+    </div>
+    <ol class="poster-months" aria-label="Явка по месяцам">
+      {% for bar, state in page.months %}
+        <li class="poster-month poster-month-{{ state }}">
+          <span class="poster-month-box" aria-hidden="true"></span>
+          <span class="poster-month-letter" aria-hidden="true">{{ bar.letter }}</span>
+          <span class="sr-only">{{ bar.name }}: {% if state == "played" %}был{% elif state == "missed" %}пропуск{% else %}вечеров не было{% endif %}</span>
+        </li>
+      {% endfor %}
+    </ol>
+    <ul class="poster-legend" aria-hidden="true">
+      <li><span class="poster-month-box poster-legend-played"></span>был</li>
+      <li><span class="poster-month-box poster-legend-missed"></span>пропуск</li>
+      <li><span class="poster-month-box poster-legend-none"></span>вечеров не было</li>
+    </ul>
+    <p class="poster-caption">{{ page.attendance.place_text|figures }} по явке в клубе{% if page.attendance.others %},<br>наравне: {{ page.attendance.others_text|figures }}{% endif %}.<br>{{ page.missed_text|figures }}</p>
+  </div>
+  {% include "club/includes/year_report/mark.html" %}
+</section>

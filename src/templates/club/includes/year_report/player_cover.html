@@ -1,0 +1,17 @@
+<section class="poster-sheet poster-sheet-red" aria-labelledby="report-title">
+  <div class="poster-inner">
+    <a class="poster-club" href="{% url 'home' %}">Кочующий Клуб Тракториста</a>
+    <p class="poster-plaque">Личный отчёт</p>
+    <h1 id="report-title" class="poster-name">
+      <span class="poster-name-main">{{ player.name }}</span>
+      {% if player.nickname %}<span class="poster-name-nick">«{{ player.nickname }}»</span>{% endif %}
+      <span class="sr-only">: годовой отчёт за {{ club.year }}</span>
+    </h1>
+    <p class="poster-figure poster-figure-year-md" aria-hidden="true">{{ club.year }}</p>
+    {% if not state.closed %}
+      {% include "club/includes/year_report/prelim_stamp.html" %}
+    {% endif %}
+  </div>
+  {% include "club/includes/year_report/wheel.html" %}
+  <span class="poster-foot">Форма № 7-И{% if not state.closed %} · черновик{% endif %} · листайте вниз</span>
+</section>

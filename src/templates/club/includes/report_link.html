@@ -1,0 +1,7 @@
+{# A ledger page's way to a year report (views._report_link): only when the viewer may see it. #}
+{% if report_link %}
+  <a class="link-box mt-4" href="{{ report_link.url }}">
+    <span class="link-box-label">Годовой отчёт <span class="font-num">{{ report_link.year }}</span>{% if report_link.preliminary %} · предварительно{% endif %}</span>
+    <span class="link-box-target">{{ report_link.target }} →</span>
+  </a>
+{% endif %}

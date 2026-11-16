@@ -154,8 +154,9 @@ class TestTourStandings:
         assert get_page(client, PAST_YEAR).status_code == 404
 
     def test_query_count_does_not_grow_with_rows(self, client, season, django_assert_num_queries):
-        # Season, year list, standings, recent games, their winners and the nav years.
-        with django_assert_num_queries(6):
+        # Season, year list, standings, recent games, their winners, the nav years and the first
+        # year of history (the year report link; a past year needs no closure query).
+        with django_assert_num_queries(7):
             get_page(client, season.year)
 
     def test_names_link_to_player_cards(self, client, season):
@@ -275,7 +276,7 @@ class TestCashStandings:
         assert client.get(f"/{cash_season.year}/poker/").status_code == 404
 
     def test_query_count(self, client, cash_season, django_assert_num_queries):
-        with django_assert_num_queries(6):
+        with django_assert_num_queries(7):
             get_page(client, cash_season.year, SeasonKind.CASH)
 
 

@@ -1,0 +1,13 @@
+{% load ledger %}
+<section id="lichnye" class="poster-sheet poster-sheet-roster" aria-labelledby="roster-title">
+  <div class="poster-inner">
+    <h2 id="roster-title" class="poster-plaque">Личные дела</h2>
+    <p class="poster-caption"><span class="font-num">{{ club.participants|length|money }}</span> {{ club.participants|length|plural:"участник,участника,участников" }} сезона.<br>Найдите себя:</p>
+    <ul class="poster-roster">
+      {% for player in club.participants %}
+        <li><a href="{% url 'year_report_player' club.year player.slug %}"><span>{{ player.label }}</span><span class="poster-roster-arrow font-num" aria-hidden="true">→</span></a></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% include "club/includes/year_report/mark.html" %}
+</section>

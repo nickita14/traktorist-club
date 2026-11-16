@@ -14,9 +14,9 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from club.models import Game, SeasonKind
+from club.models import Game, Season, SeasonKind
 from club.tests.conftest import PAST_YEAR
-from club.tests.factories import make_game, make_player, make_structure
+from club.tests.factories import make_game, make_player, make_result, make_structure
 from live import actions
 from live.models import BlindTimer
 from live.tests.conftest import key, lineup_game, live_game, seat
@@ -74,6 +74,10 @@ def public_urls(club) -> list[str]:
             reverse("season_games", args=[season.year, season.kind]),
         ]
     urls += [reverse("game_detail", args=[game.pk]) for game in club["games"].values()]
+    # The year report of PAST_YEAR (closed by the 1 January fallback) and its players' pages.
+    urls.append(reverse("year_report", args=[PAST_YEAR]))
+    for name in "ABCD":
+        urls.append(reverse("year_report_player", args=[PAST_YEAR, club["players"][name].slug]))
     for player in club["players"].values():
         for suffix in ("", "?year=all", f"?year={PAST_YEAR}"):
             urls.append(reverse("player_detail", args=[player.slug]) + suffix)
@@ -141,6 +145,14 @@ def test_public_and_live_pages(organizer_client, client, club, award_rules):
     preview = pages.get(live("exit_preview", cash.pk, alpha.pk), {"chips": "11230", "paid": "110"})
     assert "112,30" in preview
     pages.get(live("close", cash.pk))
+
+    # This year's report is preliminary: organizers only, with its stamp and the close link.
+    this_year = timezone.localdate().year
+    season, _ = Season.objects.get_or_create(year=this_year, kind=SeasonKind.CASH)
+    evening = make_game(season, day=1, month=1)
+    make_result(evening, club["players"]["A"], buyin=50, payout=60)
+    pages.get(reverse("year_report", args=[this_year]))
+    pages.get(reverse("year_report_player", args=[this_year, club["players"]["A"].slug]))
 
     pages.get(live("index"))
     pages.get(live("start"))

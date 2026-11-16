@@ -29,6 +29,10 @@
   </p>
 {% endblock %}
 
+{% block head_extra %}
+  {% include "club/includes/report_link.html" %}
+{% endblock %}
+
 {% block body %}
   {% if player.games_played %}
     <dl class="stat-strip mt-6">
