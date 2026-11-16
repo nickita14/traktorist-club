@@ -569,6 +569,40 @@ class TestQueries:
         assert achievements.load().today == timezone.localdate()
 
 
+class TestRows:
+    """The public accessor club.year_report reads: finished results in load()'s order."""
+
+    def test_rows_are_finished_results_in_order(self, tour25, cash25, players):
+        alpha, bravo = players[:2]
+        evening_cash = cash(cash25, 3, 1, [(alpha, 50, 80), (bravo, 50, 20)])
+        evening_tour = tour(tour25, 3, 1, [(bravo, 1, 50, 100), (alpha, 2)])
+        earlier = tour(tour25, 2, 1, [(alpha, 1, 50, 100)])
+        tour(
+            tour25, 4, 1, [(alpha, 1)], live_stage="rebuys", started_at=timezone.now()
+        )  # in progress
+
+        rows = achievements.load(TODAY).rows
+
+        assert [(row.game.pk, row.player_id) for row in rows] == [
+            (earlier.pk, alpha.pk),
+            (evening_tour.pk, alpha.pk),
+            (evening_tour.pk, bravo.pk),
+            (evening_cash.pk, alpha.pk),
+            (evening_cash.pk, bravo.pk),
+        ]
+        first = rows[0]
+        assert (first.year, first.buyin, first.payout, first.net, first.itm) == (
+            2025,
+            50,
+            100,
+            50,
+            True,
+        )
+        assert first.game.kind == SeasonKind.TOUR
+        assert first.game.number == 1
+        assert isinstance(rows, tuple)
+
+
 class TestViews:
     """What 9b reads: a game's awards, the honors board, recent awards, completeness."""
 

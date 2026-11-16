@@ -1,0 +1,24 @@
+{% load ledger %}
+<section class="poster-sheet poster-sheet-red" aria-labelledby="awards-title">
+  <div class="poster-inner">
+    <h2 id="awards-title" class="poster-plaque">Награды за год</h2>
+    {% if page.awards %}
+      <ul class="poster-tiles">
+        {% for award in page.awards %}
+          <li class="poster-tile">
+            <span class="poster-tile-name">{{ award.name }}</span>
+            <span class="poster-tile-mark">{{ award.mark|figures }}</span>
+            <span class="poster-tile-why">{{ award.basis|figures }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    {% if page.honors %}
+      <p class="poster-honor-box">
+        <span class="poster-honor-box-label">Доска почёта года</span>
+        <span class="poster-honor-box-list">{% for honor in page.honors %}{{ honor.title }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+      </p>
+    {% endif %}
+  </div>
+  {% include "club/includes/year_report/mark.html" %}
+</section>

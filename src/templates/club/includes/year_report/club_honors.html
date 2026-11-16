@@ -1,0 +1,19 @@
+{% load ledger %}
+<section class="poster-sheet" aria-labelledby="honors-title">
+  <div class="poster-inner">
+    <h2 id="honors-title" class="poster-plaque poster-plaque-red">Доска почёта года</h2>
+    <dl class="poster-honors">
+      {% for honor in club.honors %}
+        <div class="poster-honor">
+          <dt class="poster-honor-title">{{ honor.title }}</dt>
+          <dd class="poster-honor-body">
+            <span class="poster-honor-who">{% for player in honor.holders %}{{ player.label }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+            <span class="poster-honor-why">{{ honor.basis|figures }}</span>
+            {% if honor.note %}<span class="poster-honor-note">{{ honor.note }}</span>{% endif %}
+          </dd>
+        </div>
+      {% endfor %}
+    </dl>
+  </div>
+  {% include "club/includes/year_report/mark.html" %}
+</section>

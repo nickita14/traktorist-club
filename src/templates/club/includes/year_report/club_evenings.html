@@ -1,0 +1,27 @@
+{% load ledger l10n %}
+<section class="poster-sheet" aria-labelledby="evenings-title">
+  <div class="poster-inner">
+    <h2 id="evenings-title" class="poster-plaque">За год сыграно</h2>
+    <p class="poster-figure-line">
+      <span class="poster-figure">{{ club.evening_count|money }}</span>
+      <span class="poster-figure-word poster-red-text">{{ club.evening_count|plural:"вечер,вечера,вечеров" }}</span>
+    </p>
+    {% localize off %}
+      <svg class="poster-bars" viewBox="0 0 {{ bars.width }} {{ bars.height }}" role="img"
+           aria-label="Вечера по месяцам: {% for bar in bars.bars %}{{ bar.letter }} {{ bar.count }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+        {% for bar in bars.bars %}
+          {% if bar.count %}
+            <rect class="{% if bar.peak %}poster-bar-peak{% else %}poster-bar{% endif %}" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"/>
+            <text class="poster-bar-count" x="{{ bar.center }}" y="{{ bar.label_y }}" text-anchor="middle">{{ bar.count }}</text>
+          {% else %}
+            <text class="poster-bar-count poster-bar-none" x="{{ bar.center }}" y="{{ bars.base|add:-5 }}" text-anchor="middle">·</text>
+          {% endif %}
+          <text class="poster-bar-letter" x="{{ bar.center }}" y="{{ bars.letter_y }}" text-anchor="middle">{{ bar.letter }}</text>
+        {% endfor %}
+        <line class="poster-bar-base" x1="0" x2="{{ bars.width }}" y1="{{ bars.base }}" y2="{{ bars.base }}"/>
+      </svg>
+    {% endlocalize %}
+    <p class="poster-band">{{ club.games_text|figures }}</p>
+  </div>
+  {% include "club/includes/year_report/mark.html" %}
+</section>

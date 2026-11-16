@@ -9,9 +9,10 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
-from club import achievements, charts, stats
+from club import achievements, charts, stats, year_report
 from club.models import Game, Player, Season, SeasonKind
 from club.sorting import BADGES, CASH_STANDINGS, PLAYERS, TOUR_STANDINGS, parse_sort
+from live.access import is_organizer, signed_in
 
 RECENT_GAMES = 8
 RECENT_AWARDS = 10
@@ -53,6 +54,15 @@ def season_standings(request, year: int, kind: str):
             # No stored "closed" flag: the season of the current year is the running one.
             "is_ongoing": season.year == timezone.localdate().year,
             "cash": kind == SeasonKind.CASH,
+            "report_link": _report_link(
+                request,
+                season.year,
+                year_report.history_start(),
+                url=reverse("year_report", args=[season.year]),
+                target="Отчёт клуба",
+            )
+            if season.games_count
+            else None,
             "nav_section": NAV_SECTION[kind],
         },
     )
@@ -149,6 +159,7 @@ def player_detail(request, slug: str):
         year = _player_year(request, years)
         totals = player if year is None else stats.player_year_card(player, year)
         timeline = stats.player_net_timeline(player, year)
+        awards = achievements.load()
         context |= {
             "year": year,
             "totals": totals,
@@ -160,7 +171,14 @@ def player_detail(request, slug: str):
             "recent_results": stats.player_results(player, year)[:PLAYER_RECENT_GAMES],
             "has_more_games": totals.games_played > PLAYER_RECENT_GAMES,
             "games_url": f"{reverse('player_games', args=[player.slug])}?{_year_query(year)}",
-            "awards": achievements.load().player(player.pk),
+            "awards": awards.player(player.pk),
+            "report_link": _report_link(
+                request,
+                year,
+                year_report.first_year(awards),
+                url=reverse("year_report_player", args=[year, player.slug]) if year else "",
+                target="Личный отчёт",
+            ),
         }
     return render(request, "club/player_detail.html", context)
 
@@ -288,6 +306,14 @@ def honors(request):
         sort = BADGES.default_sort  # an old link to a column nobody has earned yet
     rules = awards.badge_rules()
     title_rules = awards.title_rules()
+    game_years = {date.year for date in awards.evenings}
+    report_link = _report_link(
+        request,
+        year if year in game_years else None,
+        year_report.first_year(awards),
+        url=reverse("year_report", args=[year]) if year else "",
+        target="Отчёт клуба",
+    )
     return render(
         request,
         "club/honors.html",
@@ -315,6 +341,7 @@ def honors(request):
             "year_links": _year_links(years, year, default_year, sort),
             "sort": sort,
             "recent_awards": awards.recent(RECENT_AWARDS),
+            "report_link": report_link,
             "nav_section": "honors",
         },
     )
@@ -336,6 +363,114 @@ def _year_links(years: list[int], current: int | None, default: int | None, sort
             }
         )
     return links
+
+
+# Годовой отчёт (форма № 7): a celebration page per year and per player (club.year_report).
+
+
+def _can_manage(request) -> bool:
+    """An organizer (or a superuser) with a verified session under ADMIN_REQUIRE_2FA: the only
+    viewers of a preliminary report and of the link to "Годовые отчёты"."""
+    return signed_in(request) and is_organizer(request.user)
+
+
+def _year_report(request, year: int):
+    """The report of ``year`` as this viewer may see it: a closed year for everyone, computed as
+    of 1 January; a preliminary one for organizers only, as of today. Anything else is a 404,
+    so a preliminary report looks exactly like a year without one."""
+    state = year_report.release(year)
+    manager = _can_manage(request)
+    if not (state.closed or manager):
+        raise Http404("Нет такого отчёта.")
+    report = year_report.load(year, state.computation_date)
+    if report is None:
+        raise Http404("Нет такого отчёта.")
+    return state, report, manager
+
+
+def _report_link(request, year: int | None, first_year: int | None, *, url: str, target: str):
+    """The link-box to a year report from a ledger page, for a year with finished games: None
+    for the first year of history, and for a preliminary year unless the viewer is an organizer
+    (so a preliminary report stays invisible). A past year costs no query (the fallback)."""
+    if year is None or first_year is None or year <= first_year:
+        return None
+    if year_report.is_closed(year):
+        return {"url": url, "year": year, "target": target, "preliminary": False}
+    if _can_manage(request):
+        return {"url": url, "year": year, "target": target, "preliminary": True}
+    return None
+
+
+def _report_context(state, report, manager: bool) -> dict:
+    context = {
+        "state": state,
+        "club": report.club,
+        "manager": manager,
+        "stamp_text": state.stamp_text(report.club.evening_count),
+    }
+    if manager and not state.closed:
+        # Only for organizers: the URL is under ADMIN_URL.
+        context["close_url"] = reverse("admin:club_yearclosure_close", args=[report.year])
+    return context
+
+
+CLUB_SHEETS = ["cover", "evenings", "players", "tour", "cash", "honors", "closing", "roster"]
+
+
+def year_report_club(request, year: int):
+    state, report, manager = _year_report(request, year)
+    club = report.club
+    shown = {
+        "tour": bool(club.podium),
+        "cash": bool(club.cash_leaders),
+        "honors": bool(club.honors),
+    }
+    sheets = [
+        f"club/includes/year_report/club_{name}.html"
+        for name in CLUB_SHEETS
+        if shown.get(name, True)
+    ]
+    return render(
+        request,
+        "club/year_report.html",
+        _report_context(state, report, manager)
+        | {
+            "sheets": sheets,
+            "bars": charts.month_bars(
+                [bar.evenings for bar in club.months], [bar.letter for bar in club.months]
+            ),
+            "season_kind": SeasonKind.TOUR if club.tournaments else SeasonKind.CASH,
+        },
+    )
+
+
+PLAYER_SHEETS = ["cover", "attendance", "net", "evening", "awards", "closing"]
+
+
+def year_report_player(request, year: int, slug: str):
+    state, report, manager = _year_report(request, year)
+    player = next((p for p in report.club.participants if p.slug == slug), None)
+    page = report.player(player.pk) if player is not None else None
+    if page is None:
+        raise Http404("Нет такого отчёта.")
+    shown = {"awards": bool(page.awards or page.honors)}
+    sheets = [
+        f"club/includes/year_report/player_{name}.html"
+        for name in PLAYER_SHEETS
+        if shown.get(name, True)
+    ]
+    return render(
+        request,
+        "club/year_report_player.html",
+        _report_context(state, report, manager)
+        | {
+            "page": page,
+            "player": page.player,
+            "sheets": sheets,
+            "chart": charts.year_chart(stats.player_net_timeline(page.player, year), year),
+            "card_url": f"{page.player.get_absolute_url()}?{_year_query(year)}",
+        },
+    )
 
 
 @require_GET

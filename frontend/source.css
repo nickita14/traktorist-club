@@ -13,6 +13,7 @@
   --color-faint: var(--faint);
   --color-rule: var(--rule);
   --color-accent: var(--accent);
+  --color-poster-red: var(--poster-red);
 
   --font-*: initial;
   --font-display: var(--font-stack-display);
@@ -2083,6 +2084,1016 @@
     .tablo-next {
       font-size: 6vw;
     }
+  }
+}
+
+/*
+ * Celebration pages (CLAUDE.md "Celebration pages"): the year report, форма № 7. Full-width
+ * poster sheets alternating paper, ink and poster red; tilted plaques; very large PT Mono figures;
+ * the tractor wheel; a stamp at the end. Templates: club/year_report*.html and
+ * club/includes/year_report/. poster-red appears only here and in those templates.
+ *
+ * Motion: each sheet's entrance (the plaque slides in, the wheel rolls, the stamp lands) plays
+ * once, when assets/js/poster.js marks the sheet seen. The script sets .poster-motion on <html>
+ * only when motion is allowed, so without it, or under prefers-reduced-motion, nothing moves
+ * and nothing is hidden.
+ */
+@layer components {
+  .poster {
+    background: var(--paper);
+    color: var(--ink);
+    overflow-x: clip;
+  }
+
+  .poster-sheet {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 100vh;
+    min-height: 100svh;
+    padding-block: 4.75rem 3.75rem;
+    overflow: hidden;
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  .poster-sheet-red {
+    background: var(--poster-red);
+    color: var(--paper);
+  }
+
+  .poster-sheet-ink {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .poster-sheet-roster {
+    justify-content: flex-start;
+    min-height: auto;
+    padding-block: 3.5rem 4rem;
+  }
+
+  /* A flex item of the sheet: its z-index lifts it over the wheel without positioning it, so
+     the club name and the sheet marks are placed against the sheet. */
+  .poster-inner {
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1.125rem;
+    width: 100%;
+    max-width: 28rem;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+
+  .poster-sheet-center .poster-inner {
+    align-items: center;
+    gap: 2.25rem;
+  }
+
+  .poster-center {
+    text-align: center;
+  }
+
+  .poster-club {
+    position: absolute;
+    top: 1.375rem;
+    left: max(1.25rem, calc(50% - 12.75rem));
+    right: max(1.25rem, calc(50% - 12.75rem));
+    font-family: var(--font-stack-display);
+    font-size: 1.375rem;
+    line-height: 1.15;
+    text-decoration: none;
+    text-transform: uppercase;
+  }
+
+  .poster-plaque {
+    align-self: flex-start;
+    padding: 0.5rem 1.125rem 0.375rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--font-stack-head);
+    font-size: 1.875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    text-transform: uppercase;
+    transform: rotate(-4deg);
+    transform-origin: left center;
+  }
+
+  .poster-plaque-red {
+    background: var(--poster-red);
+  }
+
+  .poster-sheet-red .poster-plaque,
+  .poster-sheet-ink .poster-plaque:not(.poster-plaque-red) {
+    background: var(--ink);
+  }
+
+  .poster-sheet:first-child .poster-plaque {
+    font-size: 2.25rem;
+  }
+
+  /* The very large figures: PT Mono, tight, sized to the phone's width. */
+  .poster-figure {
+    margin: 0;
+    font-family: var(--font-stack-num);
+    font-size: clamp(7rem, 60vw, 15rem);
+    letter-spacing: -0.06em;
+    line-height: 0.86;
+    word-spacing: var(--number-word-spacing);
+    white-space: nowrap;
+  }
+
+  .poster-figure-year {
+    margin-top: 0.5rem;
+    font-size: clamp(5rem, 37vw, 9.375rem);
+  }
+
+  .poster-figure-year-md {
+    font-size: clamp(4rem, 24vw, 6rem);
+  }
+
+  .poster-figure-md {
+    font-size: clamp(3.25rem, 22vw, 6.5rem);
+  }
+
+  .poster-figure-line {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.375rem;
+  }
+
+  .poster-figure-split {
+    justify-content: space-between;
+  }
+
+  .poster-figure-word,
+  .poster-slogan,
+  .poster-caption,
+  .poster-band,
+  .poster-foot {
+    font-family: var(--font-stack-head);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .poster-figure-word {
+    padding-bottom: 0.875rem;
+    font-size: 2.125rem;
+    line-height: 1;
+  }
+
+  .poster-red-text {
+    color: var(--poster-red);
+  }
+
+  .poster-sheet-red .poster-red-text {
+    color: var(--ink);
+  }
+
+  .poster-slogan {
+    font-size: 1.875rem;
+    line-height: 1.05;
+  }
+
+  .poster-sheet-center .poster-slogan {
+    font-size: 1.5rem;
+    line-height: 1.15;
+  }
+
+  .poster-caption {
+    font-size: 1.125rem;
+    line-height: 1.2;
+  }
+
+  .poster-note {
+    max-width: 18rem;
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+
+  .poster-aside {
+    font-size: 1rem;
+    font-style: italic;
+    line-height: 1.4;
+  }
+
+  .poster-foot,
+  .poster-mark {
+    position: absolute;
+    bottom: 1.25rem;
+    z-index: 1;
+    font-size: 0.875rem;
+  }
+
+  .poster-foot {
+    left: max(1.25rem, calc(50% - 12.75rem));
+  }
+
+  .poster-mark {
+    right: max(1.25rem, calc(50% - 12.75rem));
+    font-family: var(--font-stack-num);
+    font-size: 0.8125rem;
+  }
+
+  /* Figures inside generated text keep the number face; a band's figures are larger. */
+  .poster .num-run {
+    word-spacing: var(--number-word-spacing);
+  }
+
+  .poster-band {
+    margin-inline: -1.25rem;
+    padding: 1rem 1.25rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-size: 1.375rem;
+    line-height: 1.25;
+  }
+
+  .poster-band .num-run {
+    font-size: 1.36em;
+  }
+
+  .poster-band-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+
+  .poster-percent {
+    padding-inline: 0.5rem;
+    background: var(--poster-red);
+    white-space: nowrap;
+  }
+
+  .poster-progress {
+    appearance: none;
+    width: 100%;
+    height: 1.375rem;
+    border: 2px solid var(--paper);
+    background: transparent;
+    color: var(--poster-red);
+  }
+
+  .poster-progress::-webkit-progress-bar {
+    background: transparent;
+  }
+
+  .poster-progress::-webkit-progress-value {
+    background: var(--poster-red);
+  }
+
+  .poster-progress::-moz-progress-bar {
+    background: var(--poster-red);
+  }
+
+  /* The wheel: tyre in ink, rim in the sheet's red, paper spokes and hub. */
+  .poster-wheel {
+    position: absolute;
+    right: -6rem;
+    bottom: -4.375rem;
+    width: 18.75rem;
+    height: 18.75rem;
+    transform-origin: 50% 50%;
+  }
+
+  .poster-wheel-tyre {
+    fill: var(--ink);
+  }
+
+  .poster-wheel-rim {
+    fill: var(--poster-red);
+  }
+
+  .poster-wheel-spokes {
+    stroke: var(--paper);
+    stroke-width: 10;
+  }
+
+  .poster-wheel-hub {
+    fill: var(--paper);
+  }
+
+  /* Evenings per month (charts.month_bars), drawn in one viewBox. */
+  .poster-bars {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .poster-bar {
+    fill: var(--ink);
+  }
+
+  .poster-bar-peak {
+    fill: var(--poster-red);
+  }
+
+  .poster-bar-base {
+    stroke: var(--ink);
+    stroke-width: 4;
+  }
+
+  .poster-bar-count {
+    fill: currentColor;
+    font-family: var(--font-stack-num);
+    font-size: 13px;
+  }
+
+  .poster-bar-none {
+    fill: var(--faint);
+  }
+
+  .poster-bar-letter {
+    fill: currentColor;
+    font-family: var(--font-stack-head);
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  /* Rows of a figure list: a caption on the left, the figure on the right. */
+  .poster-rows {
+    border-top: 3px solid currentColor;
+  }
+
+  .poster-rows > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-block: 0.8125rem;
+    border-bottom: 1px solid color-mix(in oklab, currentColor 40%, transparent);
+  }
+
+  .poster-rows dt {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    font-size: 1.0625rem;
+  }
+
+  .poster-row-note {
+    font-family: var(--font-stack-head);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    opacity: 0.75;
+    text-transform: uppercase;
+  }
+
+  .poster-rows dd {
+    font-size: 1.5rem;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .poster-rows dd .num-run {
+    font-size: 1em;
+  }
+
+  /* A person on a poster: name in the head face, the nickname below in red (ink on red). */
+  .poster-person {
+    margin-top: 0.875rem;
+    font-family: var(--font-stack-head);
+    font-size: clamp(2.5rem, 15vw, 5.25rem);
+    font-weight: 700;
+    line-height: 0.9;
+    overflow-wrap: anywhere;
+    text-transform: uppercase;
+  }
+
+  .poster-person + .poster-person {
+    margin-top: 0.25rem;
+  }
+
+  .poster-person-nick {
+    display: block;
+    color: var(--poster-red);
+    font-size: 0.62em;
+  }
+
+  .poster-person-on-red .poster-person-nick {
+    color: var(--ink);
+  }
+
+  .poster-name {
+    display: flex;
+    flex-direction: column;
+    margin-top: 0.875rem;
+    font-family: var(--font-stack-head);
+    font-weight: 700;
+    line-height: 0.88;
+    overflow-wrap: anywhere;
+    text-transform: uppercase;
+  }
+
+  .poster-name-main {
+    font-size: clamp(3rem, 20vw, 7.75rem);
+  }
+
+  .poster-name-nick {
+    color: var(--ink);
+    font-size: clamp(2rem, 12vw, 3.5rem);
+  }
+
+  .poster-podium {
+    border: 3px solid var(--ink);
+  }
+
+  .poster-podium-row {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.625rem 0.875rem;
+    border-bottom: 3px solid var(--ink);
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .poster-podium-row:last-child {
+    border-bottom: 0;
+  }
+
+  .poster-podium-first {
+    background: var(--poster-red);
+  }
+
+  .poster-podium-place {
+    width: 2.25rem;
+    font-size: 3.25rem;
+    letter-spacing: -0.06em;
+    line-height: 0.9;
+  }
+
+  .poster-podium-name {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    min-height: 2.75rem;
+    font-family: var(--font-stack-head);
+    font-size: 1.375rem;
+    font-weight: 700;
+    line-height: 1;
+    overflow-wrap: anywhere;
+    text-decoration: none;
+    text-transform: uppercase;
+  }
+
+  .poster-podium-sub {
+    font-family: var(--font-stack-body);
+    font-size: 0.875rem;
+    font-weight: 400;
+    text-transform: none;
+  }
+
+  .poster-podium-net {
+    font-size: 1.375rem;
+    white-space: nowrap;
+  }
+
+  /* Labelled facts: a label line, then the names and a figure on one line. */
+  .poster-facts {
+    border-top: 3px solid currentColor;
+  }
+
+  .poster-facts > div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding-block: 0.75rem;
+    border-bottom: 1px solid color-mix(in oklab, currentColor 55%, transparent);
+  }
+
+  .poster-facts dt {
+    font-family: var(--font-stack-head);
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .poster-facts dd {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 1.0625rem;
+  }
+
+  .poster-facts dd > .font-num,
+  .poster-fact-value {
+    font-size: 1.375rem;
+    white-space: nowrap;
+  }
+
+  /* The player's facts: label left, value right, heavy rules. */
+  .poster-facts-ruled {
+    border-top-width: 4px;
+  }
+
+  .poster-facts-ruled > div {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-bottom: 2px solid currentColor;
+  }
+
+  .poster-facts-ruled dt {
+    font-family: var(--font-stack-body);
+    font-size: 1.0625rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .poster-facts-ruled dd {
+    display: block;
+    font-size: 1.25rem;
+    text-align: right;
+  }
+
+  .poster-honors > .poster-honor {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 3px solid var(--ink);
+  }
+
+  .poster-honor-title {
+    display: flex;
+    flex: none;
+    align-items: center;
+    width: 8.25rem;
+    padding: 0.75rem 0.625rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--font-stack-head);
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1.05;
+    text-transform: uppercase;
+  }
+
+  .poster-honor:nth-child(even) .poster-honor-title {
+    background: var(--poster-red);
+  }
+
+  .poster-honor-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.125rem;
+    min-width: 0;
+    padding: 0.75rem 0 0.75rem 0.75rem;
+  }
+
+  .poster-honor-who {
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  .poster-honor-why {
+    font-family: var(--font-stack-head);
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .poster-honor-note {
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* A player's evening: one link per game (44px and more). */
+  .poster-games {
+    border-top: 3px solid var(--ink);
+  }
+
+  .poster-game {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 3.5rem;
+    padding-block: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+    text-decoration: none;
+  }
+
+  .poster-game-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .poster-game-title {
+    font-family: var(--font-stack-head);
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .poster-game-note {
+    font-size: 0.9375rem;
+  }
+
+  .poster-game-net {
+    font-size: 1.375rem;
+    white-space: nowrap;
+  }
+
+  .poster-tag {
+    padding: 0.375rem 0.625rem;
+    background: var(--poster-red);
+    color: var(--paper);
+    font-size: 2.125rem;
+    line-height: 1;
+    white-space: nowrap;
+    transform: rotate(5deg);
+  }
+
+  /* The player's month grid: played (filled), missed (outlined), no club evening (dashed). */
+  .poster-months {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 0.3125rem;
+  }
+
+  .poster-month {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .poster-month-box {
+    display: block;
+    width: 100%;
+    height: 2.125rem;
+    border: 3px solid var(--ink);
+    background: var(--ink);
+  }
+
+  .poster-month-missed .poster-month-box,
+  .poster-legend-missed {
+    background: transparent;
+  }
+
+  .poster-month-none .poster-month-box,
+  .poster-legend-none {
+    border-style: dashed;
+    border-color: var(--faint);
+    background: transparent;
+  }
+
+  .poster-month-letter {
+    font-family: var(--font-stack-head);
+    font-size: 0.8125rem;
+    font-weight: 700;
+  }
+
+  .poster-month-none .poster-month-letter {
+    color: var(--faint);
+  }
+
+  .poster-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    color: var(--muted);
+    font-family: var(--font-stack-head);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .poster-legend li {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .poster-legend .poster-month-box {
+    width: 0.875rem;
+    height: 0.875rem;
+    border-width: 2px;
+  }
+
+  /* The awards of the year: square tiles, ink and paper in a checkerboard of two columns. */
+  .poster-tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.625rem;
+  }
+
+  .poster-tile {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-height: 7.75rem;
+    padding: 0.75rem;
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  .poster-tile:nth-child(4n + 1),
+  .poster-tile:nth-child(4n + 4) {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .poster-tile-name {
+    font-family: var(--font-stack-head);
+    font-size: 1.1875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1.05;
+    text-transform: uppercase;
+  }
+
+  .poster-tile-mark {
+    font-family: var(--font-stack-head);
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+    overflow-wrap: anywhere;
+  }
+
+  .poster-tile-mark .num-run {
+    font-size: 1.25em;
+  }
+
+  .poster-tile-why {
+    font-family: var(--font-stack-head);
+    font-size: 0.9375rem;
+    line-height: 1.15;
+  }
+
+  .poster-honor-box {
+    display: flex;
+    align-items: stretch;
+    border: 3px solid var(--paper);
+  }
+
+  .poster-honor-box-label {
+    display: flex;
+    flex: none;
+    align-items: center;
+    width: 7rem;
+    padding: 0.625rem 0.75rem;
+    background: var(--paper);
+    color: var(--poster-red);
+    font-family: var(--font-stack-head);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1.05;
+    text-transform: uppercase;
+  }
+
+  .poster-honor-box-list {
+    display: flex;
+    align-items: center;
+    padding: 0.625rem 0.75rem;
+    font-family: var(--font-stack-head);
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1.15;
+    text-transform: uppercase;
+  }
+
+  /* The preliminary stamp (organizers only) and the closing stamp. */
+  .poster-prelim {
+    display: flex;
+    flex-direction: column;
+    align-self: flex-start;
+    gap: 0.125rem;
+    padding: 0.5rem 0.75rem 0.375rem;
+    border: 3px solid currentColor;
+    font-family: var(--font-stack-head);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transform: rotate(-3deg);
+  }
+
+  .poster-prelim-title {
+    font-size: 1.875rem;
+    line-height: 1;
+  }
+
+  .poster-prelim-line {
+    font-size: 1rem;
+  }
+
+  .poster-stamp {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 1.25rem 1.625rem 1rem;
+    background: var(--poster-red);
+    color: var(--paper);
+    font-family: var(--font-stack-head);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 0.95;
+    text-transform: uppercase;
+    transform: rotate(-7deg);
+  }
+
+  .poster-stamp-draft {
+    border: 4px dashed var(--paper);
+    background: transparent;
+  }
+
+  .poster-stamp-season {
+    font-size: clamp(2.25rem, 13vw, 3.25rem);
+  }
+
+  .poster-stamp-word {
+    font-size: clamp(3rem, 19vw, 4.75rem);
+  }
+
+  .poster-stamp-draft .poster-stamp-word {
+    font-size: clamp(2.75rem, 16vw, 4rem);
+  }
+
+  .poster-stamp-date {
+    font-size: 0.9375rem;
+    letter-spacing: 0;
+  }
+
+  /* Big buttons at the end of a report (56px). */
+  .poster-buttons {
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+    gap: 0.75rem;
+  }
+
+  .poster-button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 3.5rem;
+    padding-inline: 1rem;
+    font-family: var(--font-stack-head);
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-decoration: none;
+    text-transform: uppercase;
+  }
+
+  .poster-button-paper {
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  .poster-button-ink {
+    align-self: stretch;
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .poster-button-line {
+    border: 3px solid currentColor;
+  }
+
+  /* Личные дела: every participant, two columns on a phone, 44px rows. */
+  .poster-roster {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 1rem;
+    border-top: 3px solid var(--ink);
+  }
+
+  .poster-roster a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    border-bottom: 1px solid var(--rule);
+    font-size: 1.0625rem;
+    overflow-wrap: anywhere;
+    text-decoration: none;
+  }
+
+  .poster-roster-arrow {
+    color: var(--poster-red);
+    font-size: 0.875rem;
+  }
+
+  .poster a:hover {
+    text-decoration: underline;
+  }
+
+  .poster a:focus-visible {
+    outline: 3px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  /* The player's year chart on an ink sheet. */
+  .poster-chart .chart-line {
+    stroke: var(--poster-red);
+    stroke-width: 4px;
+  }
+
+  .poster-chart .chart-zero {
+    stroke: color-mix(in oklab, var(--paper) 40%, transparent);
+  }
+
+  .poster-chart .chart-year {
+    stroke: color-mix(in oklab, var(--paper) 18%, transparent);
+  }
+
+  .poster-chart .chart-last {
+    fill: var(--paper);
+  }
+
+  .poster-chart text {
+    fill: var(--paper);
+  }
+
+  /* Entrances, once per sheet (see the note at the top). */
+  .poster-motion .poster-sheet:not(.is-seen) :is(.poster-plaque, .poster-wheel, .poster-stamp) {
+    opacity: 0;
+  }
+
+  .poster-motion .is-seen .poster-plaque {
+    animation: poster-slam 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .poster-motion .is-seen .poster-wheel {
+    animation: poster-roll 1.4s cubic-bezier(0.3, 0.1, 0.2, 1) both;
+  }
+
+  .poster-motion .is-seen .poster-stamp {
+    animation: poster-stamp 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s both;
+  }
+
+  @media (prefers-reduced-motion: reduce), print {
+    .poster-motion .poster-sheet :is(.poster-plaque, .poster-wheel, .poster-stamp) {
+      opacity: 1;
+      animation: none;
+    }
+  }
+}
+
+@keyframes poster-slam {
+  from {
+    opacity: 0;
+    transform: translateX(-3.75rem) rotate(-4deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) rotate(-4deg);
+  }
+}
+
+@keyframes poster-roll {
+  from {
+    opacity: 1;
+    transform: rotate(-200deg);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0);
+  }
+}
+
+@keyframes poster-stamp {
+  0% {
+    opacity: 0;
+    transform: scale(2.2) rotate(-7deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.94) rotate(-7deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-7deg);
   }
 }
 

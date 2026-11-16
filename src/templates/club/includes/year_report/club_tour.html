@@ -1,0 +1,24 @@
+{% load ledger %}
+<section class="poster-sheet" aria-labelledby="tour-title">
+  <div class="poster-inner">
+    <h2 id="tour-title" class="poster-plaque">Победител{{ club.winners|length|plural:"ь,и,и" }} сезона</h2>
+    {% for row in club.winners %}
+      <p class="poster-person">{% include "club/includes/year_report/person.html" with player=row.player %}</p>
+    {% endfor %}
+    {% with winner=club.winners.0 %}
+      <p class="poster-figure poster-figure-md">{{ winner.net|net }}</p>
+      <p class="poster-caption">Турниры · итог за <span class="font-num">{{ winner.games }}</span> {{ winner.games|plural:"игру,игры,игр" }}</p>
+    {% endwith %}
+    <ol class="poster-podium" aria-label="Тройка сезона">
+      {% for row in club.podium %}
+        <li class="poster-podium-row{% if row.rank == 1 %} poster-podium-first{% endif %}">
+          <span class="poster-podium-place font-num" aria-label="{{ row.rank }} место">{{ row.rank }}</span>
+          <a class="poster-podium-name" href="{% url 'year_report_player' club.year row.player.slug %}">{{ row.player.label }}{% if row.player.nickname %}<span class="poster-podium-sub">{{ row.player.name }}</span>{% endif %}</a>
+          <span class="poster-podium-net font-num">{{ row.net|net }}</span>
+        </li>
+      {% endfor %}
+    </ol>
+    {% if club.podium_tie %}<p class="poster-aside">Одинаковый итог: место делят поровну.</p>{% endif %}
+  </div>
+  {% include "club/includes/year_report/mark.html" %}
+</section>

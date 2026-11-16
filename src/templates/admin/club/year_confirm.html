@@ -1,0 +1,43 @@
+{% extends "admin/base.html" %}
+{% comment %}
+  The confirmation of a close or a reopen (club.admin.YearActionView). A GET shows it; only the
+  POST of this form acts.
+{% endcomment %}
+
+{% block title %}{{ title }} | {{ site_title|default:"" }}{% endblock %}
+
+{% block content %}
+<div class="sheet-sync">
+  <header class="sync-head">
+    <h1 class="sync-title">{{ title }}</h1>
+  </header>
+
+  <dl class="sync-strip year-strip">
+    <div><dt>Вечеров</dt><dd class="admin-num">{{ row.evenings }}</dd></div>
+    <div><dt>Последняя игра</dt><dd class="admin-num">{{ row.last_game|date:"d.m.Y" }}</dd></div>
+    <div><dt>Участников</dt><dd class="admin-num">{{ row.participants }}</dd></div>
+  </dl>
+
+  {% if allowed %}
+    <ul class="sync-list year-points">
+      {% if closing %}
+        <li>Отчёт клуба и личные отчёты участников станут видны всем, появятся ссылки на карточках и в ведомостях.</li>
+        <li>Цифры считаются на <span class="admin-num">{{ new_year|date:"d.m.Y" }}</span>: титулы года закрыты, лидеров «по ходу» больше нет.</li>
+        <li>Игра, добавленная позже, всё равно попадёт в отчёт.</li>
+        <li class="sync-note">Открыть снова можно до <span class="admin-num">1 января</span>.</li>
+      {% else %}
+        <li>Отчёт снова станет предварительным: его увидят только организаторы.</li>
+        <li>Если сезон не закрыть заново, он закроется сам <span class="admin-num">{{ new_year|date:"d.m.Y" }}</span>.</li>
+      {% endif %}
+    </ul>
+    <form method="post" class="year-form">
+      {% csrf_token %}
+      <button type="submit" class="sync-button {% if closing %}sync-button-primary{% else %}sync-button-danger{% endif %}">{% if closing %}Да, закрыть сезон {{ row.year }}{% else %}Да, открыть сезон {{ row.year }} снова{% endif %}</button>
+      <a href="{{ list_url }}">Отмена</a>
+    </form>
+  {% else %}
+    <p class="sync-warning">{% if closing %}Этот сезон закрыть нельзя.{% else %}Этот сезон открыть снова нельзя.{% endif %}</p>
+    <p><a href="{{ list_url }}">К годовым отчётам</a></p>
+  {% endif %}
+</div>
+{% endblock %}

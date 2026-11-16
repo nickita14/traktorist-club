@@ -23,6 +23,8 @@
   --faint: #9a9285;
   --rule: #c9c1b2;
   --accent: #b3261e;
+  /* Celebration pages only (the year report): the poster red beside the stamp red. */
+  --poster-red: #c8281e;
   /* Near-white warm tone for surfaces that must stand out from the paper: admin panels, inputs. */
   --surface: #fbf9f5;
 

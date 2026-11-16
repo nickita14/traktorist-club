@@ -1,0 +1,68 @@
+{% extends "admin/base.html" %}
+{% comment %}
+  Годовые отчёты (club.admin.YearReportsView): one row per year with finished games, its state
+  and the close or reopen link. The action itself is on the confirmation page (a POST).
+{% endcomment %}
+
+{% block title %}{{ title }} | {{ site_title|default:"" }}{% endblock %}
+
+{% block content %}
+<div class="sheet-sync">
+  <header class="sync-head">
+    <div>
+      <h1 class="sync-title">{{ title }}</h1>
+      <p class="sync-meta">
+        Пока сезон не закрыт, отчёт видят только организаторы. Закройте сезон в вечер последней игры;
+        если этого не сделать, он закроется сам <span class="admin-num">1 января</span>.
+      </p>
+    </div>
+  </header>
+
+  {% if rows %}
+    <div class="sync-scroll">
+      <table class="sync-table year-table">
+        <thead>
+          <tr><th scope="col">Год</th><th scope="col" class="num">Вечеров</th><th scope="col">Состояние</th><th scope="col">Подробности</th><th scope="col"><span class="sr-only">Действие</span></th></tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <th scope="row" class="admin-num year-cell">{{ row.year }}</th>
+              <td class="num"><span class="admin-num">{{ row.evenings }}</span></td>
+              {% if row.first %}
+                <td>Нет отчёта</td>
+                <td class="sync-note">первый год в базе: новичков не с чем сравнить</td>
+                <td class="year-action"><span class="val-zero">·</span></td>
+              {% elif row.release.closed_by_hand %}
+                <td><strong>Закрыт вручную</strong></td>
+                <td class="sync-note">{% if row.release.closure.closed_by %}{{ row.release.closure.closed_by.get_username }} · {% endif %}<span class="admin-num">{{ row.release.closure.closed_at|date:"d.m.Y H:i" }}</span></td>
+                <td class="year-action">
+                  {% if row.release.can_reopen %}
+                    <a class="sync-button sync-button-danger" href="{% url 'admin:club_yearclosure_reopen' row.year %}">Открыть снова</a>
+                  {% else %}
+                    <span class="sync-note">открыть снова нельзя</span>
+                  {% endif %}
+                </td>
+              {% elif row.release.fallback %}
+                <td><strong>Закрыт 1 января</strong></td>
+                <td class="sync-note">никто не закрыл, закрылся сам</td>
+                <td class="year-action"><span class="sync-note">открыть снова нельзя</span></td>
+              {% else %}
+                <td><strong>Предварительный</strong></td>
+                <td class="sync-note">считается на <span class="admin-num">{{ row.release.today|date:"d.m.Y" }}</span></td>
+                <td class="year-action">
+                  {% if row.can_close %}
+                    <a class="sync-button sync-button-primary" href="{% url 'admin:club_yearclosure_close' row.year %}">Закрыть сезон {{ row.year }}</a>
+                  {% endif %}
+                </td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="sync-note">Сыгранных игр пока нет.</p>
+  {% endif %}
+</div>
+{% endblock %}

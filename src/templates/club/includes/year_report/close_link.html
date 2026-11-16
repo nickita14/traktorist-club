@@ -1,0 +1,4 @@
+{# Organizers only, preliminary pages only: close_url is under ADMIN_URL and is never in the context otherwise. #}
+{% if close_url %}
+  <a class="poster-button poster-button-ink" href="{{ close_url }}"><span>Закрыть сезон {{ club.year }}</span><span class="font-num" aria-hidden="true">→</span></a>
+{% endif %}

@@ -1,4 +1,5 @@
-"""Geometry for the server-side net chart on the player card. Pure functions, no database.
+"""Geometry for the server-side charts (the net chart on the player card, the year report's
+month bars). Pure functions, no database.
 
 The SVG is drawn in two layers so it can stretch to any width without distorting text or dots:
 the polyline lives in an inner <svg viewBox="0 0 100 HEIGHT" preserveAspectRatio="none">, where
@@ -153,3 +154,63 @@ def year_chart(timeline: Sequence[TimelinePoint], year: int) -> NetChart | None:
         months=months,
         label_y=MONTH_LABEL_Y,
     )
+
+
+# The year report's evenings per month: twelve bars in one viewBox, scaled as a whole (the bars
+# and their labels keep their proportions at any width).
+BARS_WIDTH = 350
+BARS_HEIGHT = 170
+BARS_GAP = 5
+BARS_TOP = 22  # room for the count above the tallest bar
+BARS_BASE = BARS_HEIGHT - 22  # the baseline; the month letters go under it
+BARS_LETTER_Y = BARS_HEIGHT - 4
+
+
+@dataclass(frozen=True)
+class Bar:
+    x: float
+    width: float
+    y: float
+    height: float
+    count: int
+    letter: str
+    peak: bool  # the busiest month (every tied one)
+
+    @property
+    def center(self) -> float:
+        return _round(self.x + self.width / 2)
+
+    @property
+    def label_y(self) -> float:
+        return _round(self.y - 5)
+
+
+@dataclass(frozen=True)
+class MonthBars:
+    width: int
+    height: int
+    base: int
+    letter_y: int
+    bars: list[Bar]
+
+
+def month_bars(counts: Sequence[int], letters: Sequence[str]) -> MonthBars:
+    """Bars for twelve monthly counts. A month without evenings gets no bar (its count label is
+    drawn faint as "·" by the template)."""
+    peak = max(counts, default=0)
+    width = (BARS_WIDTH - BARS_GAP * (len(counts) - 1)) / len(counts)
+    bars = []
+    for index, (count, letter) in enumerate(zip(counts, letters, strict=True)):
+        height = (BARS_BASE - BARS_TOP) * count / peak if peak else 0
+        bars.append(
+            Bar(
+                x=_round(index * (width + BARS_GAP)),
+                width=_round(width),
+                y=_round(BARS_BASE - height),
+                height=_round(height),
+                count=count,
+                letter=letter,
+                peak=bool(count) and count == peak,
+            )
+        )
+    return MonthBars(BARS_WIDTH, BARS_HEIGHT, BARS_BASE, BARS_LETTER_Y, bars)

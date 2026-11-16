@@ -44,6 +44,9 @@ def test_organizer_group_has_exact_permissions():
         "delete_rankstep",
         "view_achievementsettings",
         "change_achievementsettings",
+        "view_yearclosure",
+        "add_yearclosure",
+        "delete_yearclosure",
     }
     assert set(group.permissions.values_list("content_type__app_label", flat=True)) == {"club"}
 
@@ -206,6 +209,34 @@ def test_rows_inserted_without_entry_paid_are_paid():
                 [game.pk, player.pk],
             )
             assert cursor.fetchone() == (True,)
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+def test_year_closure_permissions_forward_and_backward():
+    granted = ("club", "0015_organizer_year_closure_permissions")
+    schema = ("club", "0014_year_closure")
+
+    def migrate(target):
+        executor = MigrationExecutor(connection)
+        executor.migrate([target])
+        executor.loader.build_graph()
+        return executor.loader.project_state([target]).apps
+
+    try:
+        apps = migrate(schema)
+        organizer, _ = apps.get_model("auth", "Group").objects.get_or_create(name="Organizer")
+        assert not organizer.permissions.filter(codename__endswith="_yearclosure").exists()
+
+        apps = migrate(granted)
+        organizer = apps.get_model("auth", "Group").objects.get(name="Organizer")
+        codenames = set(
+            organizer.permissions.filter(codename__endswith="_yearclosure").values_list(
+                "codename", flat=True
+            )
+        )
+        assert codenames == {"view_yearclosure", "add_yearclosure", "delete_yearclosure"}
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())

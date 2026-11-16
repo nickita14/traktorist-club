@@ -5,6 +5,7 @@ from django.template import Context, Template
 from django.utils.safestring import mark_safe
 
 from club.formatting import (
+    EVENINGS_DATIVE,
     format_amount,
     format_money,
     format_net,
@@ -136,6 +137,29 @@ class TestRuPlural:
     )
     def test_forms(self, value, expected):
         assert ru_plural(value, GAME_FORMS) == expected
+
+
+class TestEveningsDative:
+    """The preliminary stamp: "по 1 вечеру", "по 2 вечерам" (dative after "по")."""
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (1, "вечеру"),
+            (2, "вечерам"),
+            (4, "вечерам"),
+            (5, "вечерам"),
+            (11, "вечерам"),
+            (12, "вечерам"),
+            (21, "вечеру"),
+            (41, "вечеру"),
+            (44, "вечерам"),
+            (101, "вечеру"),
+            (111, "вечерам"),
+        ],
+    )
+    def test_forms(self, value, expected):
+        assert ru_plural(value, EVENINGS_DATIVE) == expected
 
 
 def render(source: str, **context) -> str:

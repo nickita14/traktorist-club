@@ -1,0 +1,34 @@
+{% load ledger %}
+<section class="poster-sheet poster-sheet-red" aria-labelledby="cash-title">
+  <div class="poster-inner">
+    <h2 id="cash-title" class="poster-plaque">Кэш · лучший итог</h2>
+    {% for row in club.cash_leaders %}
+      <p class="poster-person poster-person-on-red">{% include "club/includes/year_report/person.html" with player=row.player %}</p>
+    {% endfor %}
+    {% with leader=club.cash_leaders.0 %}
+      <p class="poster-figure poster-figure-md">{{ leader.net|net }}</p>
+      <p class="poster-caption">Итог за <span class="font-num">{{ leader.games }}</span> {{ leader.games|plural:"кэш-игру,кэш-игры,кэш-игр" }}</p>
+    {% endwith %}
+    <dl class="poster-facts">
+      {% if club.best_cash_evenings %}
+        <div>
+          <dt>Лучший вечер</dt>
+          <dd>
+            <span>{% for evening in club.best_cash_evenings %}{{ evening.player.label }}, <span class="font-num">{{ evening.game.date|date:"d.m" }}</span>{% if not forloop.last %}; {% endif %}{% endfor %}</span>
+            <span class="font-num">{{ club.best_cash_evenings.0.net|net }}</span>
+          </dd>
+        </div>
+      {% endif %}
+      {% if club.cashier_leaders %}
+        <div>
+          <dt>Чаще всех «Снял кассу»</dt>
+          <dd>
+            <span>{% for player in club.cashier_leaders %}{{ player.label }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+            <span class="poster-fact-value">{% if club.cashier_leaders|length > 1 %}по <span class="font-num">{{ club.cashier_count }}</span> {{ club.cashier_count|plural:"разу,раза,раз" }}{% else %}<span class="font-num">{{ club.cashier_count }}</span> {{ club.cashier_count|plural:"раз,раза,раз" }}{% endif %}</span>
+          </dd>
+        </div>
+      {% endif %}
+    </dl>
+  </div>
+  {% include "club/includes/year_report/mark.html" %}
+</section>

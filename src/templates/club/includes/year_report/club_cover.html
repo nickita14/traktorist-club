@@ -1,0 +1,17 @@
+{% load ledger %}
+<section class="poster-sheet poster-sheet-red" aria-labelledby="report-title">
+  <div class="poster-inner">
+    <a class="poster-club" href="{% url 'home' %}">Кочующий Клуб Тракториста</a>
+    <h1 id="report-title" class="poster-plaque">Годовой отчёт <span class="sr-only">за {{ club.year }}</span></h1>
+    <p class="poster-figure poster-figure-year" aria-hidden="true">{{ club.year }}</p>
+    {% if state.closed %}
+      <p class="poster-slogan">Сезон сдан.<br>Все ведомости<br>закрыты в срок!</p>
+    {% else %}
+      {% include "club/includes/year_report/prelim_stamp.html" %}
+      <p class="poster-note">Отчёт видят только организаторы. Цифры меняются после каждого вечера до закрытия сезона.</p>
+      {% include "club/includes/year_report/close_link.html" %}
+    {% endif %}
+  </div>
+  {% include "club/includes/year_report/wheel.html" %}
+  <span class="poster-foot">Форма № 7{% if not state.closed %} · черновик{% endif %} · листайте вниз</span>
+</section>
