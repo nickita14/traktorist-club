@@ -160,7 +160,7 @@ class TestClubPage:
     def test_no_inline_style_or_script(self, html):
         assert "style=" not in html
         assert "<script>" not in html
-        tags = re.findall(r"<script\b[^>]*>", html)
+        tags = re.findall(r"<script\b[^>]*>", html, flags=re.IGNORECASE)
         assert tags
         assert all("src=" in tag for tag in tags)
 
