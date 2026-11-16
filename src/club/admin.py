@@ -1,3 +1,5 @@
+import datetime
+
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
@@ -17,8 +19,11 @@ from django.db.models import (
     When,
     Window,
 )
+from django.http import Http404
 from django.shortcuts import redirect
+from django.urls import path, reverse
 from django.utils.html import format_html
+from django.views.generic import TemplateView
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.contrib.filters.admin import (
@@ -33,9 +38,10 @@ from unfold.forms import (
     UserChangeForm,
     UserCreationForm,
 )
+from unfold.views import UnfoldModelAdminViewMixin
 from unfold.widgets import UnfoldAdminSelectWidget
 
-from club import stats
+from club import stats, year_report
 from club.formatting import format_money, format_net
 from club.models import (
     ADDON_ON_LEVEL,
@@ -49,6 +55,7 @@ from club.models import (
     Result,
     Season,
     SeasonKind,
+    YearClosure,
 )
 from importer.models import PlayerAlias
 from live.models import LiveAction
@@ -605,3 +612,98 @@ class AchievementSettingsAdmin(ModelAdmin):
         if row is not None:
             return redirect("admin:club_achievementsettings_change", row.pk)
         return super().changelist_view(request, extra_context)
+
+
+# Годовые отчёты: close and reopen a year's report (club.year_report, "Release").
+
+
+class YearReportsView(UnfoldModelAdminViewMixin, TemplateView):
+    """Every year with finished games, its state and the close or reopen button."""
+
+    title = "Годовые отчёты"
+    permission_required = ("club.view_yearclosure",)
+    template_name = "admin/club/year_reports.html"
+
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(rows=year_report.summaries(), **kwargs)
+
+
+class YearActionView(UnfoldModelAdminViewMixin, TemplateView):
+    """The confirmation page of a close or a reopen: a GET only shows it, the action happens on
+    the confirmed POST (CSRF), then back to the list with a message."""
+
+    template_name = "admin/club/year_confirm.html"
+    closing = True
+
+    @property
+    def title(self) -> str:
+        verb = "Закрыть" if self.closing else "Открыть снова"
+        return f"{verb} сезон {self.kwargs['year']}?"
+
+    def summary(self):
+        found = year_report.summary(self.kwargs["year"])
+        if found is None:
+            raise Http404("Нет такого года.")
+        return found
+
+    def get_context_data(self, **kwargs):
+        found = self.summary()
+        return super().get_context_data(
+            row=found,
+            closing=self.closing,
+            allowed=found.can_close if self.closing else found.release.can_reopen,
+            new_year=datetime.date(found.year + 1, 1, 1),
+            list_url=reverse("admin:club_yearclosure_changelist"),
+            **kwargs,
+        )
+
+    def post(self, request, *args, **kwargs):
+        year = self.kwargs["year"]
+        try:
+            if self.closing:
+                year_report.close(year, request.user)
+                messages.success(request, f"Сезон {year} закрыт: отчёт виден всем.")
+            else:
+                year_report.reopen(year, request.user)
+                messages.success(request, f"Сезон {year} открыт снова: отчёт предварительный.")
+        except year_report.ReleaseError as error:
+            messages.error(request, str(error))
+        return redirect("admin:club_yearclosure_changelist")
+
+
+class CloseYearView(YearActionView):
+    permission_required = ("club.add_yearclosure",)
+    closing = True
+
+
+class ReopenYearView(YearActionView):
+    permission_required = ("club.delete_yearclosure",)
+    closing = False
+
+
+@admin.register(YearClosure)
+class YearClosureAdmin(ModelAdmin):
+    """No list, form or delete of its own: the "Годовые отчёты" page replaces them."""
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        # Reopening is ReopenYearView (the 1 January rule, the log message), never a plain delete.
+        return False
+
+    def get_urls(self):
+        def view(cls):
+            return self.admin_site.admin_view(cls.as_view(model_admin=self))
+
+        return [
+            path("<int:year>/close/", view(CloseYearView), name="club_yearclosure_close"),
+            path("<int:year>/reopen/", view(ReopenYearView), name="club_yearclosure_reopen"),
+            *super().get_urls(),
+        ]
+
+    def changelist_view(self, request, extra_context=None):
+        return YearReportsView.as_view(model_admin=self)(request)
+
+    def add_view(self, request, form_url="", extra_context=None):
+        return redirect("admin:club_yearclosure_changelist")

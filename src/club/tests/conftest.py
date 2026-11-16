@@ -7,6 +7,8 @@ from club.models import AchievementSettings, RankLadder, RankStep, SeasonKind
 from club.tests.factories import make_game, make_player, make_result, make_season
 
 PAST_YEAR = timezone.localdate().year - 1
+# The year report's fixture year (report_year): fixed, the release decides by the date given.
+REPORT_YEAR = 2026
 
 # How the ``figures`` filter marks a number inside a text (club.templatetags.ledger).
 NUM = '<span class="font-num num-run not-italic">'
@@ -87,3 +89,57 @@ def award_rules():
         for threshold, step in steps:
             RankStep.objects.create(ladder=ladder, threshold=threshold, title=step)
     return AchievementSettings.objects.create()
+
+
+def tour_game(season, month, day, rows):
+    """``rows``: (player, buyin, payout, place)."""
+    game = make_game(season, day=day, month=month)
+    for player, buyin, payout, place in rows:
+        make_result(game, player, buyin=buyin, payout=payout, place=place)
+    return game
+
+
+def cash_game(season, month, day, rows):
+    """``rows``: (player, buyin, payout)."""
+    game = make_game(season, day=day, month=month)
+    for player, buyin, payout in rows:
+        make_result(game, player, buyin=buyin, payout=payout)
+    return game
+
+
+@pytest.fixture
+def report_year(award_rules):
+    """A baseline year and one report year, worked out by hand. 2026 tour pays 2 places.
+
+    2025 tour  10.11: A, B
+    2026 tour  t1 01.03: A 50->150 p1 (one buy-in), B 50->50 p2, C 50->0 p3 (bubble), D 50->0 p4
+               t2 08.03: B 150->150 p1, A 50->50 p2, C 50->0 p3 (bubble)
+               t3 07.06: C 100->150 p1, A 50->50 p2, B 50->0 p3 (bubble)
+               t4 20.12: D 200->150 p1, B 50->50 p2, A 50->0 p3 (bubble)
+    2026 cash  c1 08.03: A 100->50, B 50->150, E 50->0
+               c2 12.07: A 50->120, C 50->30
+    2027 tour  05.01: A, C (another year: counts nowhere in 2026)
+
+    Evenings 01.03, 08.03, 07.06, 12.07, 20.12. Tour nets: A +50, B −50, C −50, D −100.
+    Cash nets: B +100, A +20, C −20, E −50.
+    """
+    a = make_player("Альфа", nickname="Трактор")
+    b, c, d = make_player("Браво"), make_player("Чарли"), make_player("Дельта")
+    e = make_player("Эхо", nickname="Сеялка")
+    make_player("Фокстрот")  # no games at all
+    old = make_season(REPORT_YEAR - 1, SeasonKind.TOUR)
+    tour = make_season(REPORT_YEAR, SeasonKind.TOUR, paid_places=2)
+    cash = make_season(REPORT_YEAR, SeasonKind.CASH)
+    tour_game(old, 11, 10, [(a, 50, 100, 1), (b, 50, 0, 2)])
+    games = {
+        "t1": tour_game(
+            tour, 3, 1, [(a, 50, 150, 1), (b, 50, 50, 2), (c, 50, 0, 3), (d, 50, 0, 4)]
+        ),
+        "t2": tour_game(tour, 3, 8, [(b, 150, 150, 1), (a, 50, 50, 2), (c, 50, 0, 3)]),
+        "t3": tour_game(tour, 6, 7, [(c, 100, 150, 1), (a, 50, 50, 2), (b, 50, 0, 3)]),
+        "t4": tour_game(tour, 12, 20, [(d, 200, 150, 1), (b, 50, 50, 2), (a, 50, 0, 3)]),
+        "c1": cash_game(cash, 3, 8, [(a, 100, 50), (b, 50, 150), (e, 50, 0)]),
+        "c2": cash_game(cash, 7, 12, [(a, 50, 120), (c, 50, 30)]),
+    }
+    tour_game(make_season(REPORT_YEAR + 1, SeasonKind.TOUR), 1, 5, [(a, 50, 100, 1), (c, 50, 0, 2)])
+    return {"players": {"A": a, "B": b, "C": c, "D": d, "E": e}, "games": games}

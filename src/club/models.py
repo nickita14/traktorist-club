@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -718,3 +719,32 @@ class AchievementSettings(models.Model):
     @property
     def evening_series(self) -> list[int]:
         return [int(step) for step in self.evening_series_steps.split(",")]
+
+
+class YearClosure(models.Model):
+    """A year closed by hand: its year report (форма № 7) is public and final.
+
+    The row exists exactly while the year is closed by hand; reopening deletes it. Without a row
+    a year is still closed once the local date is past 31 December (club.year_report.release).
+    One row per year, not a flag per Season: both seasons of a year change state together.
+    """
+
+    year = models.PositiveSmallIntegerField("год", unique=True)
+    closed_at = models.DateTimeField("закрыт", auto_now_add=True)
+    # Deleting a user never reopens a year.
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="кто закрыл",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "годовой отчёт"
+        verbose_name_plural = "годовые отчёты"
+        ordering = ["-year"]
+
+    def __str__(self) -> str:
+        return f"Сезон {self.year}"

@@ -471,3 +471,47 @@ input[type="radio"] {
   color: var(--muted);
   cursor: pointer;
 }
+
+/* Годовые отчёты (templates/admin/club/year_reports.html, year_confirm.html): the sheet sync
+   page's head, strip, table and buttons. */
+.sync-button-danger {
+  background: transparent;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+a.sync-button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.sheet-sync .year-table th.year-cell {
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.year-table td.year-action {
+  text-align: right;
+}
+
+.year-strip {
+  max-width: 45rem;
+}
+
+@media (min-width: 40rem) {
+  .year-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.year-points {
+  max-width: 45rem;
+}
+
+.year-form {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
