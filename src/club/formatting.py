@@ -84,3 +84,7 @@ def ru_plural(value: int, forms: Sequence[str]) -> str:
     if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
         return few
     return many
+
+
+# "по N вечеру/вечерам": the dative has one form for 1, 21, 101 and one for every other count.
+EVENINGS_DATIVE = ("вечеру", "вечерам", "вечерам")
