@@ -417,7 +417,10 @@ class Completeness:
 
 
 @dataclass(frozen=True)
-class _Row:
+class ResultRow:
+    """One finished result as load() reads it, with its game and its season's rules. Public so
+    other computations over finished results (club.year_report) reuse the one query."""
+
     player_id: int
     game: GameRef
     year: int
@@ -504,7 +507,7 @@ class ClubAwards:
     def __init__(
         self,
         *,
-        rows: list[_Row],
+        rows: list[ResultRow],
         players: dict[int, Player],
         ladders: list[Ladder],
         settings: AchievementSettings,
@@ -554,13 +557,15 @@ class ClubAwards:
 
     # Computation.
 
-    def _games(self) -> list[tuple[GameRef, list[_Row]]]:
-        games: dict[int, tuple[GameRef, list[_Row]]] = {}
+    def _games(self) -> list[tuple[GameRef, list[ResultRow]]]:
+        games: dict[int, tuple[GameRef, list[ResultRow]]] = {}
         for row in self._rows:
             games.setdefault(row.game.pk, (row.game, []))[1].append(row)
         return list(games.values())
 
-    def _award(self, kind: Kind, code: str, title: str, row: _Row, basis: str, **extra) -> None:
+    def _award(
+        self, kind: Kind, code: str, title: str, row: ResultRow, basis: str, **extra
+    ) -> None:
         self.awards.append(
             Award(
                 kind,
@@ -601,7 +606,7 @@ class ClubAwards:
         tournament they skipped does not break a streak, one outside the money does."""
         length = self.settings.hat_trick_length
         series = self.settings.itm_series
-        by_player: dict[int, list[_Row]] = defaultdict(list)
+        by_player: dict[int, list[ResultRow]] = defaultdict(list)
         for row in self._rows:
             if row.game.kind == SeasonKind.TOUR:
                 by_player[row.player_id].append(row)
@@ -626,7 +631,7 @@ class ClubAwards:
         """Evening series: club evenings in a row; a missed one breaks it. The earning game is
         the player's first game that evening (the tournament when there were both)."""
         series = self.settings.evening_series
-        first_game: dict[tuple[int, datetime.date], _Row] = {}
+        first_game: dict[tuple[int, datetime.date], ResultRow] = {}
         for row in self._rows:
             first_game.setdefault((row.player_id, row.game.date), row)
         for player_id in {row.player_id for row in self._rows}:
@@ -712,7 +717,7 @@ class ClubAwards:
         months: dict[Period, list[datetime.date]] = defaultdict(list)
         for date in self.evenings:
             months[_month_period(date)].append(date)
-        last_game: dict[tuple[int, Period], _Row] = {}
+        last_game: dict[tuple[int, Period], ResultRow] = {}
         for row in self._rows:  # oldest first: the last one seen is the month's last game
             last_game[(row.player_id, _month_period(row.game.date))] = row
         for period, dates in months.items():
@@ -737,8 +742,8 @@ class ClubAwards:
                     )
                 )
 
-    def _by_season(self, kind: str) -> dict[int, list[_Row]]:
-        seasons: dict[int, list[_Row]] = defaultdict(list)
+    def _by_season(self, kind: str) -> dict[int, list[ResultRow]]:
+        seasons: dict[int, list[ResultRow]] = defaultdict(list)
         for row in self._rows:
             if row.game.kind == kind:
                 seasons[row.year].append(row)
@@ -801,6 +806,12 @@ class ClubAwards:
         return results
 
     # What views and the admin call.
+
+    @property
+    def rows(self) -> tuple[ResultRow, ...]:
+        """Every finished result, oldest first; on a date with both kinds the tournament first,
+        then by game and player. Read-only: the awards are computed from these."""
+        return tuple(self._rows)
 
     def counters(self) -> dict[str, dict[int, int]]:
         """Lifetime counter per ladder code and player (players without games are absent)."""
@@ -1002,7 +1013,7 @@ def _load_ladders() -> list[Ladder]:
     ]
 
 
-def _load_rows() -> list[_Row]:
+def _load_rows() -> list[ResultRow]:
     # Oldest first; on a date with both kinds the tournament comes first ("tour" > "cash").
     fields = (
         "player_id",
@@ -1031,7 +1042,7 @@ def _load_rows() -> list[_Row]:
     rows = []
     for player_id, game_id, date, kind, *rest, number in values:
         game = games.setdefault(game_id, GameRef(game_id, date, kind, number))
-        rows.append(_Row(player_id, game, *rest))
+        rows.append(ResultRow(player_id, game, *rest))
     return rows
 
 
