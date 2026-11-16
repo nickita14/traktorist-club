@@ -11,7 +11,6 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 
 | Item | Branch |
 | --- | --- |
-| "Годовой отчёт за 2026" (форма № 7): plan and definitions in `PLAN.md` Stage 10 | `year-report` |
 
 ## Queue
 
@@ -24,9 +23,9 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 ### Wave 1. End of the 2026 season (deadline: the last game of December)
 
 - Before the first January game: season 2027 and the sheet: a season created from the live screen is not sheet-managed, so the first live game of January makes the importer refuse the whole 2027 season; decide before January whether 2027 stays in the sheet (then the flag must be set, or new seasons copy it from the previous one) or moves to the app.
-- "Годовой отчёт за 2026" (форма № 7): a year-in-review page for the club and one per player, in progress on `year-report`. Agreed definitions, figures and plan in `PLAN.md` Stage 10 (evening = a date, ties shown, calendar year only, released when an organizer closes the year or on 1 January, a closed year computed as of 1 January, "Опора кассы", bubble only where every place is known; duration, «Меценат» and hosts dropped). Poster style per `CLAUDE.md` "Celebration pages"; mockups: YearClub and YearPlayer on the design canvas, updated for the audit before the build.
 - Printable diplomas: a print stylesheet for titles and diplomas, to hand out on paper. No new dependencies. Mockup first.
 - Excel export, together with a printable season ledger.
+- Year report: the shared-rank line names the others in the nominative ("2–3 место · наравне: Марина") because `Player.label` cannot be declined; the mockup's "вместе с Мариной" needs a stored instrumental form per player (or another wording). Decide before the first January release.
 
 ### Wave 2. Redesign "Ведомость 2.0" (mockups first, one branch per item)
 
@@ -65,7 +64,8 @@ Newest first. Dates are local (Europe/Chisinau), from the merge commits. Dependa
 
 | Item | Branch | Merged | PR |
 | --- | --- | --- | --- |
-| Data check for the year report on production data: which year-report figures 2026 data can produce; result recorded in `PLAN.md` Stage 10 (duration, «Меценат» and hosts dropped; bubble only where every place is known) | `year-report` | | |
+| "Годовой отчёт за 2026" (форма № 7): club and player pages in the poster style, the release (organizers close the year in "Годовые отчёты", 1 January fallback, preliminary pages for organizers only), `club.YearClosure`, links from the card, `/honors/` and the standings | `year-report-pages` | | |
+| Data check for the year report on production data: which year-report figures 2026 data can produce; result recorded in `PLAN.md` Stage 10 (duration, «Меценат» and hosts dropped; bubble only where every place is known) | `year-report` | 2026-11-16 | #59 |
 | Design decisions in the docs: "Celebration pages" in `CLAUDE.md` (poster style, `poster-red`, motion) and the year report, front page and "Итоги вечера" items | `design-decisions` | 2026-11-16 | #58 |
 | Backup and uptime monitoring on Cronitor heartbeats: `MONITOR_BACKUP_URL` / `MONITOR_SITE_URL` (renamed from `HEALTHCHECKS_*`), failures as `state=fail` through `deploy/monitor-ping.sh`, the URL never printed; runbook for the monitors and the server switch | `monitoring` | 2026-11-15 | #57 |
 | No currency word on the public site and the live screens ("Итог", "закупки на 15 020", "закупок на 7 400", "оставлено 12,30", "закупка 50 = 5 000 фишек", "Вход 50 не сдан."); the admin keeps units; a test renders every club and live template and fails on the word | `less-lei` | 2026-11-15 | #56 |
