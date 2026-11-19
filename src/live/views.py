@@ -11,6 +11,7 @@ import uuid
 from dataclasses import dataclass
 from fractions import Fraction
 from itertools import islice
+from types import SimpleNamespace
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -25,12 +26,12 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from club import search, stats
 from club.formatting import ru_plural
 from club.models import BlindStructure, Game, LiveStage, Player, Result, SeasonKind
-from live import actions, clock
+from live import actions, clock, themes
 from live import manifest as app_manifest
 from live.access import is_organizer, organizer_required
 from live.actions import GameGone, Outcome, RuleError
 from live.forms import ExitForm, NewPlayerForm, StartForm, parse_int
-from live.models import BlindTimer, LiveAction
+from live.models import BlindTimer, EventKind, LiveAction, ThemeSound
 
 SEAT_CANDIDATES = 30
 # Quick-add buttons on the lineup before anything is searched.
@@ -519,10 +520,34 @@ def _epoch_ms(moment: datetime.datetime | None) -> int | None:
     return None if moment is None else round(moment.timestamp() * 1000)
 
 
-def display_state(game: Game, timer: BlindTimer, totals: stats.LiveTotals) -> dict:
-    """Everything the display needs to count on its own; ``now`` lets it correct its clock."""
+def display_state(
+    game: Game, timer: BlindTimer, totals: stats.LiveTotals, *, after: str | None = None
+) -> dict:
+    """Everything the display needs to count on its own; ``now`` lets it correct its clock.
+
+    With ``after`` (the last action the display has seen, from its sync) the state also carries
+    the theme and the table events since (live.themes); a missing or garbage cursor gets none
+    and the latest one.
+    """
+    now = timezone.now()
+    state = _clock_state(game, timer, totals, now)
+    if after is not None:
+        cursor = themes.parse_cursor(after)
+        if cursor is None:
+            events, cursor = [], themes.latest_cursor(game)
+        else:
+            events, cursor = themes.table_events(game, cursor, totals, now)
+        state |= {
+            "cursor": cursor,
+            "events": [event.as_json() for event in events],
+            "theme": themes.theme_payload(themes.active_theme()),
+        }
+    return state
+
+
+def _clock_state(game: Game, timer: BlindTimer, totals: stats.LiveTotals, now) -> dict:
     return {
-        "now": _epoch_ms(timezone.now()),
+        "now": _epoch_ms(now),
         "position": timer.position,
         "started": _epoch_ms(timer.started_at),
         "paused": _epoch_ms(timer.paused_at),
@@ -546,6 +571,8 @@ def display_context(game: Game, timer: BlindTimer, *, controls: bool, state_url:
         "controls": controls,
         "state_url": state_url,
         "sync_seconds": settings.TIMER_SYNC_SECONDS,
+        "event_cursor": themes.latest_cursor(game),
+        "tip_seconds": settings.THEME_TIP_SECONDS,
     }
 
 
@@ -576,7 +603,8 @@ def tablo(request, pk: int):
 @require_GET
 def tablo_state(request, pk: int):
     game, timer = _organizer_timer(pk)
-    return _no_index(JsonResponse(display_state(game, timer, stats.live_totals(game))))
+    state = display_state(game, timer, stats.live_totals(game), after=request.GET.get("after"))
+    return _no_index(JsonResponse(state))
 
 
 @organizer_required
@@ -627,7 +655,99 @@ def tablo_public(request, token: str):
 def tablo_public_state(request, token: str):
     timer = _public_timer(token)
     game = timer.game
-    return _no_index(JsonResponse(display_state(game, timer, stats.live_totals(game))))
+    state = display_state(game, timer, stats.live_totals(game), after=request.GET.get("after"))
+    return _no_index(JsonResponse(state))
+
+
+@require_GET
+def tablo_sound(request, digest: str):
+    """A theme sound by its hash, for the display and the admin. The URL changes with the bytes,
+    so it is cached for good; nothing in it names a game or a display link."""
+    etag = f'"{digest}"'
+    if request.headers.get("If-None-Match") == etag:
+        response = HttpResponse(status=304)
+    else:
+        sound = ThemeSound.objects.filter(sha256=digest).only("data", "content_type").first()
+        if sound is None:
+            raise Http404
+        response = HttpResponse(bytes(sound.data), content_type=sound.content_type)
+    response["ETag"] = etag
+    response["Cache-Control"] = "public, max-age=31536000, immutable"
+    return _no_index(response)
+
+
+# The theme preview ("Проверить" on a theme in the admin): the display with an invented board and
+# a button per event, for any theme, active or not. Nothing is written and no game is needed.
+
+PREVIEW_LEVELS = [
+    clock.Row(1, 100, 200, 0, 20, "", False, 1),
+    clock.Row(2, None, None, 0, 10, "Перерыв", False, None),
+    clock.Row(3, 200, 400, 0, 20, "", False, 2),
+]
+PREVIEW_PLAYED = {"level": (1, 6), "break": (2, 2)}  # scene: (position, minutes played)
+
+
+def _theme(pk: int):
+    theme = themes.theme_with_events(pk)
+    if theme is None:
+        raise Http404
+    return theme
+
+
+@organizer_required
+@require_GET
+def theme_preview(request, pk: int):
+    theme = _theme(pk)
+    now = timezone.now()
+    position, played = PREVIEW_PLAYED["level"]
+    started = now - datetime.timedelta(minutes=played)
+    context = {
+        "preview": True,
+        "theme": theme,
+        "number": 1,
+        "game": SimpleNamespace(pk=0, date=timezone.localdate(), live_stage=LiveStage.REBUYS),
+        "clock": clock.clock_at(PREVIEW_LEVELS, position, started, None, now),
+        "totals": SimpleNamespace(
+            in_game=themes.SAMPLE_PLAYERS - 3,
+            players=themes.SAMPLE_PLAYERS,
+            bank=themes.SAMPLE_BANK,
+        ),
+        "controls": False,
+        "state_url": reverse("live:theme_preview_state", args=[pk]),
+        "sync_seconds": 3600,
+        "event_cursor": 0,
+        "tip_seconds": settings.THEME_TIP_SECONDS,
+        "preview_kinds": [
+            (kind, label) for kind, label in EventKind.choices if kind != EventKind.BREAK
+        ],
+    }
+    return _no_index(render(request, "live/tablo.html", context))
+
+
+@organizer_required
+@require_GET
+def theme_preview_state(request, pk: int):
+    theme = _theme(pk)
+    scene = request.GET.get("scene")
+    position, played = PREVIEW_PLAYED.get(scene, PREVIEW_PLAYED["level"])
+    now = timezone.now()
+    return _no_index(
+        JsonResponse(
+            {
+                "now": _epoch_ms(now),
+                "position": position,
+                "started": _epoch_ms(now - datetime.timedelta(minutes=played)),
+                "paused": None,
+                "levels": [row.as_json() for row in PREVIEW_LEVELS],
+                "stage": LiveStage.REBUYS,
+                "players": themes.SAMPLE_PLAYERS - 3,
+                "total": themes.SAMPLE_PLAYERS,
+                "bank": themes.SAMPLE_BANK,
+                "theme": themes.theme_payload(theme),
+                "samples": themes.sample_events(),
+            }
+        )
+    )
 
 
 # Seating.

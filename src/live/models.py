@@ -2,7 +2,8 @@ import secrets
 import uuid
 
 from django.conf import settings
-from django.db import models
+from django.core.exceptions import ValidationError
+from django.db import models, transaction
 from django.db.models import Q
 
 from club.models import LevelFields
@@ -117,6 +118,9 @@ class LiveAction(models.Model):
     )
     created_at = models.DateTimeField("когда", auto_now_add=True)
     undone_at = models.DateTimeField("отменено", null=True, blank=True)
+    # A bust only: the place the player got when it was pressed (the players still in at that
+    # moment). Later seats and restores change the count, so the display reads it from here.
+    place = models.PositiveSmallIntegerField("место при выбывании", null=True, blank=True)
 
     class Meta:
         verbose_name = "действие за столом"
@@ -206,3 +210,173 @@ class TimerLevel(LevelFields):
 
     def __str__(self) -> str:
         return self.label if self.is_break else f"{self.small_blind} / {self.big_blind}"
+
+
+# Theme nights (Тематика): what the display (табло) shows when something happens at the table.
+# Only one theme is active; without one the display uses live.themes.DEFAULTS.
+
+
+class EventKind(models.TextChoices):
+    BUST = "bust", "Выбыл"
+    BUST_ITM = "bust_itm", "Выбыл в призах"
+    BUBBLE_BURST = "bubble_burst", "Бабл лопнул"
+    REBUY = "rebuy", "Ребай"
+    WINNER = "winner", "Победитель"
+    BREAK = "break", "Перерыв"
+
+
+class OverlayStyle(models.TextChoices):
+    """The overlay presets: the ``tablo-overlay-<value>`` classes in frontend/source.css."""
+
+    STAMP = "stamp", "Штамп"
+    BAND = "band", "Полоса"
+    HEADLINE = "headline", "Заголовок"
+    LOWER_THIRD = "lower-third", "Плашка снизу"
+    FULLSCREEN = "fullscreen", "Весь экран"
+
+
+class SoundType(models.TextChoices):
+    MP3 = "audio/mpeg", "mp3"
+    OGG = "audio/ogg", "ogg"
+    WAV = "audio/wav", "wav"
+
+
+class Theme(models.Model):
+    name = models.CharField("название", max_length=100, unique=True)
+    is_active = models.BooleanField(
+        "включена",
+        default=False,
+        help_text="Включённая тематика одна: эта выключит остальные. "
+        "Без тематики табло объявляет по-клубному.",
+    )
+    tips = models.TextField(
+        "советы на перерыв",
+        blank=True,
+        default="",
+        help_text="По одному в строке; показываются по кругу во время перерыва, "
+        "если у тематики включено событие «Перерыв».",
+    )
+    updated_at = models.DateTimeField("изменена", auto_now=True)
+
+    class Meta:
+        verbose_name = "тематика"
+        verbose_name_plural = "тематики"
+        ordering = ["-is_active", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_active"], condition=Q(is_active=True), name="theme_one_active"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+    @property
+    def tip_list(self) -> list[str]:
+        return [line.strip() for line in self.tips.splitlines() if line.strip()]
+
+    def validate_constraints(self, exclude=None):
+        # Activating a theme switches the active one off in save(), so the one-active rule is no
+        # form error.
+        super().validate_constraints(exclude={*(exclude or ()), "is_active"})
+
+    def save(self, *args, **kwargs):
+        with transaction.atomic():
+            if self.is_active:
+                Theme.objects.filter(is_active=True).exclude(pk=self.pk).update(is_active=False)
+            super().save(*args, **kwargs)
+
+
+class ThemeSound(models.Model):
+    """An uploaded sound, kept in the database (the project has no media storage).
+
+    Served by its hash (``live.views.tablo_sound``), so the URL changes with the content and the
+    browser may cache it for good.
+    """
+
+    name = models.CharField("название", max_length=100)
+    content_type = models.CharField("формат", max_length=20, choices=SoundType)
+    size = models.PositiveIntegerField("размер, байт")
+    sha256 = models.CharField("хеш", max_length=64, unique=True, editable=False)
+    data = models.BinaryField("данные")
+    created_at = models.DateTimeField("загружен", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "звук"
+        verbose_name_plural = "звуки"
+        ordering = ["name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(content_type__in=SoundType.values), name="themesound_type_valid"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ThemeEvent(models.Model):
+    """How one kind of event looks in a theme. A kind without a row uses the default."""
+
+    theme = models.ForeignKey(
+        Theme, on_delete=models.CASCADE, related_name="events", verbose_name="тематика"
+    )
+    kind = models.CharField("событие", max_length=20, choices=EventKind)
+    enabled = models.BooleanField("показывать", default=True)
+    title = models.CharField(
+        "заголовок", max_length=60, blank=True, default="", help_text="Крупная строка."
+    )
+    caption = models.CharField(
+        "подпись", max_length=120, blank=True, default="", help_text="Строка под заголовком."
+    )
+    style = models.CharField(
+        "стиль", max_length=20, choices=OverlayStyle, default=OverlayStyle.STAMP
+    )
+    seconds = models.PositiveSmallIntegerField(
+        "секунд",
+        default=5,
+        help_text="Сколько держать на экране. Победитель: 0 значит до конца игры. "
+        "Перерыв держится весь перерыв.",
+    )
+    sound = models.ForeignKey(
+        ThemeSound,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="events",
+        verbose_name="звук",
+    )
+
+    class Meta:
+        verbose_name = "событие тематики"
+        verbose_name_plural = "события тематики"
+        ordering = ["theme", "kind"]
+        constraints = [
+            models.UniqueConstraint(fields=["theme", "kind"], name="themeevent_kind_unique"),
+            models.CheckConstraint(
+                condition=Q(kind__in=EventKind.values), name="themeevent_kind_valid"
+            ),
+            models.CheckConstraint(
+                condition=Q(style__in=OverlayStyle.values), name="themeevent_style_valid"
+            ),
+            models.CheckConstraint(condition=Q(seconds__lte=60), name="themeevent_seconds_max"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.theme}: {self.get_kind_display()}"
+
+    def clean(self):
+        from live import themes
+
+        super().clean()
+        errors = {}
+        for field in ("title", "caption"):
+            message = themes.template_error(self.kind, getattr(self, field))
+            if message:
+                errors[field] = message
+        if self.kind == EventKind.BREAK and self.style != OverlayStyle.FULLSCREEN:
+            errors["style"] = "Перерыв показывается только на весь экран."
+        if self.seconds == 0 and self.kind not in (EventKind.WINNER, EventKind.BREAK):
+            errors["seconds"] = "0 секунд можно только победителю: он стоит до конца игры."
+        if errors:
+            raise ValidationError(errors)

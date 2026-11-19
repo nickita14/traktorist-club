@@ -1,11 +1,11 @@
 {% load static tailwind_cli ledger live %}<!doctype html>
-{# The blind timer display. Standalone on purpose: the secret link must not render the site nav, the organizer shortcuts or the manifest, which hold ADMIN_URL. The server renders the first frame; assets/js/tablo.js counts from there. #}
+{# The blind timer display. Standalone on purpose: the secret link must not render the site nav, the organizer shortcuts or the manifest, which hold ADMIN_URL. The server renders the first frame; assets/js/tablo.js counts from there. The theme preview (live.views.theme_preview) renders it with an invented board and the preview bar. #}
 <html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <title>Табло · Турнир № {{ number }}</title>
+  <title>{% if preview %}Проверка тематики · {{ theme.name }}{% else %}Табло · Турнир № {{ number }}{% endif %}</title>
   <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
   {% tailwind_css %}
   {% include "includes/favicons.html" %}
@@ -13,8 +13,8 @@
   <script src="{% static 'js/tablo.js' %}" defer></script>
 </head>
 {% with row=clock.current next=clock.next_level pause=clock.next_break %}
-<body class="tablo{% if clock.paused %} tablo-is-paused{% endif %}{% if row.is_break %} tablo-is-break{% endif %}"
-      data-state-url="{{ state_url }}" data-sync-seconds="{{ sync_seconds }}"
+<body class="tablo{% if clock.paused %} tablo-is-paused{% endif %}{% if row.is_break %} tablo-is-break{% endif %}{% if preview %} tablo-is-preview{% endif %}"
+      data-state-url="{{ state_url }}" data-sync-seconds="{{ sync_seconds }}" data-event-cursor="{{ event_cursor }}" data-tip-seconds="{{ tip_seconds }}"{% if preview %} data-preview{% endif %}
       {% if controls %}data-act-url="{% url 'live:tablo_act' game.pk 'NAME' %}" data-csrf="{{ csrf_token }}"{% endif %}>
   <header class="tablo-head">
     <span class="font-display tablo-club">Кочующий Клуб Тракториста</span>
@@ -92,6 +92,40 @@
       {% endif %}
     </aside>
   </main>
+
+  {% if preview %}
+    <nav class="tablo-preview" aria-label="Проверка тематики">
+      <span class="tablo-preview-name">Проверка · {{ theme.name }}</span>
+      {% for kind, label in preview_kinds %}
+        <button type="button" class="btn" data-preview-kind="{{ kind }}">{{ label }}</button>
+      {% endfor %}
+      <button type="button" class="btn" data-preview-kind="break">Перерыв</button>
+      <p class="tablo-preview-note" data-preview-note role="status"></p>
+    </nav>
+  {% endif %}
+
+  {# Theme nights: filled by assets/js/tablo.js from the state's events and theme (live.themes). #}
+  <div class="tablo-overlay" data-overlay hidden>
+    <div class="tablo-overlay-box" role="status" aria-live="assertive" aria-atomic="true">
+      <p class="tablo-overlay-title" data-overlay-title></p>
+      <p class="tablo-overlay-caption" data-overlay-caption></p>
+      <p class="tablo-overlay-note" data-overlay-note></p>
+    </div>
+  </div>
+
+  <section class="tablo-break-screen" data-break-screen aria-label="Перерыв" hidden>
+    <div class="tablo-break-screen-main">
+      <p class="tablo-break-screen-theme" data-break-screen-theme></p>
+      <p class="tablo-break-screen-title" data-break-screen-title></p>
+      <p class="tablo-break-screen-clock font-num" data-break-screen-clock></p>
+      <p class="tablo-break-screen-next" data-break-screen-next></p>
+    </div>
+    <aside class="tablo-tip" data-tip-box hidden>
+      <p class="tablo-tip-head"><span class="tablo-tip-label">Совет</span><span class="tablo-tip-count font-num" data-tip-count></span></p>
+      <p class="tablo-tip-text" data-tip></p>
+    </aside>
+    <p class="tablo-break-screen-foot">Кочующий Клуб Тракториста</p>
+  </section>
 
   <button type="button" class="tablo-sound" data-sound-prompt>нажмите, чтобы включить звук</button>
 </body>
