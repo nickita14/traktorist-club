@@ -1,6 +1,9 @@
-"""Season creation: every code path that creates a season goes through ``season_for``."""
+"""Seasons: creation (every code path that creates one goes through ``season_for``) and the
+seasons the public pages offer (``with_finished_games``)."""
 
-from club.models import Season
+from django.db.models import Exists, OuterRef, QuerySet
+
+from club.models import Game, Season
 
 # What a new season takes from the nearest earlier season of its kind. Not ``sheet_title``:
 # a tab name belongs to one season.
@@ -45,3 +48,11 @@ def season_for(kind: str, year: int, *, sheet_managed: bool | None = None) -> Se
     season.full_clean(validate_unique=False, validate_constraints=False)
     season, _ = Season.objects.get_or_create(kind=kind, year=year, defaults=defaults)
     return season
+
+
+def with_finished_games(seasons: QuerySet[Season] | None = None) -> QuerySet[Season]:
+    """Seasons with at least one finished game: what the home page, the header nav and the
+    year switchers offer, so a season created ahead (or by a game still being played) does not
+    show as an empty page."""
+    seasons = Season.objects.all() if seasons is None else seasons
+    return seasons.filter(Exists(Game.objects.finished().filter(season=OuterRef("pk"))))
