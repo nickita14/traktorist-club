@@ -14,6 +14,7 @@ from importer.tests.sheet_builder import (
     fixture_sheets,
     sheet_named,
 )
+from live import actions
 from live.models import LiveAction
 
 pytestmark = pytest.mark.django_db
@@ -51,6 +52,25 @@ def edited_workbook(tmp_path):
 
 def record_live(game):
     LiveAction.objects.create(key=uuid.uuid4(), game=game, kind="start", summary="начата")
+
+
+class TestNewSeason:
+    def test_created_with_the_previous_rules_and_kept_in_the_sheet(self, run_import):
+        make_season(2025, SeasonKind.CASH, chips_per_lei=10, cash_step=20, sheet_managed=False)
+
+        run_import()
+
+        season = Season.objects.get(year=2026, kind=SeasonKind.CASH)
+        assert (season.chips_per_lei, season.cash_step, season.sheet_managed) == (10, 20, True)
+
+    def test_a_season_started_live_is_not_refused(self, run_import):
+        make_season(2025, SeasonKind.TOUR, sheet_managed=True)
+        actions.next_season(SeasonKind.TOUR, 2026)  # what the live start form does
+
+        out = run_import()
+
+        assert "refused" not in section(out, "Changes in ТУР2026_new")
+        assert Game.objects.filter(season__year=2026, season__kind=SeasonKind.TOUR).count() == 3
 
 
 class TestUnmanagedSeason:

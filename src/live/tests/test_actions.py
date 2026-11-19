@@ -538,6 +538,13 @@ class TestStartAndCancel:
         assert (season.payout_weights, season.payout_round) == ("6,4", 10)
         assert season.default_blinds == structure
 
+    def test_new_year_season_stays_in_the_sheet(self):
+        # The sheet sync refuses an unmanaged season: January's first game must not cause that.
+        make_season(2026, SeasonKind.TOUR, sheet_managed=True)
+        date = datetime.date(2027, 1, 10)
+        game = actions.start_game(key(), None, kind=SeasonKind.TOUR, date=date).action.game
+        assert (game.season.year, game.season.sheet_managed) == (2027, True)
+
     def test_first_season_of_a_kind_gets_the_defaults(self):
         season = actions.next_season(SeasonKind.CASH, 2026)
         assert (season.chips_per_lei, season.cash_step) == (100, 50)

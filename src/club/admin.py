@@ -57,6 +57,7 @@ from club.models import (
     SeasonKind,
     YearClosure,
 )
+from club.seasons import previous_season
 from importer.models import PlayerAlias
 from live.models import LiveAction
 
@@ -202,6 +203,14 @@ class SeasonAdmin(ModelAdmin):
         # theirs too), not the organizers'.
         readonly = super().get_readonly_fields(request, obj)
         return readonly if request.user.is_superuser else [*readonly, "sheet_managed"]
+
+    def save_model(self, request, obj, form, change):
+        # An organizer cannot set the flag, so a season they add keeps the previous one's
+        # (club.seasons): adding season 2027 must not take it away from the sheet sync.
+        if not change and "sheet_managed" not in form.fields:
+            previous = previous_season(obj.kind, obj.year)
+            obj.sheet_managed = previous.sheet_managed if previous else False
+        super().save_model(request, obj, form, change)
 
     @display(description="год", ordering="year", **number)
     def year_number(self, obj):
