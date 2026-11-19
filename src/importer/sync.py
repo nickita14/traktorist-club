@@ -1,10 +1,11 @@
 """Write a parsed workbook to the database. Idempotent: the sheet wins for sheet-derived fields.
 
-Natural keys: Season (year, kind), Player (name, nickname), Game (season, date),
-Result (game, player). Buy-in and payout come from the sheet, tour places are recomputed from
-payouts (a place beyond the paid ones, backfilled in the admin, is kept while the sheet pays that
-player nothing), and results missing from the sheet are deleted. Game.location, Result.chips_out,
-rebuys and addon are never touched; games that exist only in the database are kept and reported.
+Natural keys: Season (year, kind), Player (name, nickname), Game (season, date), Result (game,
+player); a new season copies the rules of the previous one (club.seasons). Buy-in and payout come
+from the sheet, tour places are recomputed from payouts (a place beyond the paid ones, backfilled in
+the admin, is kept while the sheet pays that player nothing), and results missing from the sheet are
+deleted. Game.location, Result.chips_out, rebuys and addon are never touched; games that exist only
+in the database are kept and reported.
 
 Guards (no override): a season whose ``sheet_managed`` is off is refused as a whole, and inside a
 managed season a game recorded on the live screens (it has LiveAction rows) or still in progress
@@ -22,6 +23,7 @@ from dataclasses import dataclass, field
 from django.db.models import Exists, OuterRef
 
 from club.models import Game, Player, Result, Season, SeasonKind
+from club.seasons import season_for
 from club.stats import suggest_places
 from importer.aliases import AmbiguousName, CanonicalPlayer, DbAliasMap
 from importer.report import (
@@ -70,6 +72,12 @@ class SheetPlan:
     not_selected: list[datetime.date] = field(default_factory=list)
     # A selection was given and none of it is on this sheet: the sheet is left as is.
     nothing_selected: bool = False
+
+
+def sheet_titles() -> dict[str, tuple[int, str]]:
+    """The explicitly named tabs (Season.sheet_title) for importer.workbook.season_of."""
+    seasons = Season.objects.exclude(sheet_title="").values_list("sheet_title", "year", "kind")
+    return {title: (year, kind) for title, year, kind in seasons}
 
 
 def plan_sheet(sheet: ParsedSheet, dates: set[datetime.date] | None = None) -> SheetPlan:
@@ -239,9 +247,8 @@ def _sync_sheet(plan: SheetPlan, player_by_row: dict[RowKey, Player]):
     changes.skipped_games = plan.skipped
     changes.not_selected = plan.not_selected
     if season is None:
-        season = Season(year=sheet.year, kind=sheet.kind, sheet_managed=True)
-        season.full_clean()
-        season.save()
+        # The tab exists, so the sheet keeps this season; the rules come from the previous one.
+        season = season_for(sheet.kind, sheet.year, sheet_managed=True)
         changes.counts["seasons created"] += 1
 
     entries_by_date = defaultdict(dict)

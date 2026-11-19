@@ -112,7 +112,8 @@ class TestOnly:
             parse_workbook(workbook_path, only=["ТУР1999", "ТУР2026_old version"])
         assert exc.value.errors == [
             "ТУР1999: no such sheet",
-            "ТУР2026_old version: not an import sheet (expected ТУРyyyy or КЭШyyyy)",
+            "ТУР2026_old version: not an import sheet "
+            "(expected ТУРyyyy, КЭШyyyy or a season's sheet title)",
         ]
 
 

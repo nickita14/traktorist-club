@@ -3,6 +3,7 @@ from collections import Counter
 from django.core.management.base import BaseCommand, CommandError
 
 from importer.management.commands.import_sheet import sheet_list
+from importer.sync import sheet_titles
 from importer.workbook import SheetError, parse_workbook
 
 
@@ -15,7 +16,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         try:
-            parsed = parse_workbook(options["path"], sheet_list(options["sheets"]))
+            parsed = parse_workbook(options["path"], sheet_list(options["sheets"]), sheet_titles())
         except FileNotFoundError as exc:
             raise CommandError(str(exc)) from exc
         except SheetError as exc:

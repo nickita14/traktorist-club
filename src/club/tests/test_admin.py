@@ -318,6 +318,53 @@ class TestSheetManaged:
         assert 'name="sheet_managed"' not in response.text
         assert "ведётся в таблице" in response.text.lower()
 
+    def test_superuser_can_name_the_tab(self, admin_client):
+        season = make_season()
+        response = admin_client.get(reverse("admin:club_season_change", args=[season.pk]))
+        assert 'name="sheet_title"' in response.text
+
+    def test_organizer_only_sees_the_tab_name(self, organizer_client):
+        season = make_season(sheet_title="Турниры 25")
+        response = organizer_client.get(reverse("admin:club_season_change", args=[season.pk]))
+        assert 'name="sheet_title"' not in response.text
+        assert "Турниры 25" in response.text
+
+
+class TestSeasonAddKeepsTheSheet:
+    """A season an organizer adds keeps the previous one's sheet flag (they cannot set it)."""
+
+    DATA = {
+        "year": 2027,
+        "kind": SeasonKind.CASH,
+        "chips_per_lei": 100,
+        "paid_places": 3,
+        "entry_price": 50,
+        "rebuy_price": 50,
+        "addon_price": 50,
+        "rebuy_minutes": 120,
+        "payout_weights": "5,3,2",
+        "payout_round": 50,
+        "cash_step": 50,
+    }
+
+    @pytest.mark.parametrize("managed", [True, False])
+    def test_organizer_inherits_the_flag(self, organizer_client, managed):
+        make_season(2026, SeasonKind.CASH, sheet_managed=managed)
+        response = organizer_client.post(reverse("admin:club_season_add"), self.DATA)
+        assert response.status_code == 302
+        assert Season.objects.get(year=2027).sheet_managed is managed
+
+    def test_organizer_first_season_is_not_managed(self, organizer_client):
+        response = organizer_client.post(reverse("admin:club_season_add"), self.DATA)
+        assert response.status_code == 302
+        assert Season.objects.get(year=2027).sheet_managed is False
+
+    def test_superuser_checkbox_is_explicit(self, admin_client):
+        make_season(2026, SeasonKind.CASH, sheet_managed=True)
+        response = admin_client.post(reverse("admin:club_season_add"), self.DATA)
+        assert response.status_code == 302
+        assert Season.objects.get(year=2027).sheet_managed is False
+
 
 class TestSeasonYear:
     def test_year_of_a_season_with_games_cannot_change(self, admin_client):

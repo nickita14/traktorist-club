@@ -11,6 +11,7 @@ from django.views.decorators.http import require_GET
 
 from club import achievements, charts, stats, year_report
 from club.models import Game, Player, Season, SeasonKind
+from club.seasons import with_finished_games
 from club.sorting import BADGES, CASH_STANDINGS, PLAYERS, TOUR_STANDINGS, parse_sort
 from live.access import is_organizer, signed_in
 
@@ -25,7 +26,8 @@ NAV_SECTION = {SeasonKind.TOUR: "tour", SeasonKind.CASH: "cash"}
 
 
 def home(request):
-    season = Season.objects.filter(kind=SeasonKind.TOUR).order_by("-year").first()
+    played = with_finished_games(Season.objects.filter(kind=SeasonKind.TOUR))
+    season = played.order_by("-year").first()
     return redirect(season if season is not None else "all_time")
 
 
@@ -36,7 +38,9 @@ def _season(year: int, kind: str) -> Season:
 
 def season_standings(request, year: int, kind: str):
     season = _season(year, kind)
-    years = list(Season.objects.filter(kind=kind).order_by("year").values_list("year", flat=True))
+    # Years with a finished game; the shown one too, if someone opens an empty season.
+    played = with_finished_games(Season.objects.filter(kind=kind))
+    years = sorted({*played.values_list("year", flat=True), season.year})
     sort = parse_sort(request.GET, CASH_STANDINGS if kind == SeasonKind.CASH else TOUR_STANDINGS)
     return render(
         request,

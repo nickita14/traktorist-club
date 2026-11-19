@@ -2,6 +2,7 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
+from club.context_processors import _latest_years
 from club.models import SeasonKind
 from club.tests.factories import make_game, make_player, make_result, make_season
 
@@ -102,7 +103,7 @@ class TestTourStandings:
         assert "По состоянию на" not in html
 
     def test_year_switcher_marks_current_year(self, client, season):
-        make_season(PAST_YEAR - 1, SeasonKind.TOUR)
+        make_game(make_season(PAST_YEAR - 1, SeasonKind.TOUR))
 
         html = get_page(client, season.year).content.decode()
 
@@ -315,3 +316,52 @@ class TestHome:
 
         assert response.status_code == 302
         assert response.url == f"/{PAST_YEAR}/tour/"
+
+
+class TestSeasonAhead:
+    """A season without a finished game (created ahead, or by a game still being played) is not
+    where the home page, the nav or the year switchers lead."""
+
+    @pytest.fixture
+    def ahead(self, club):
+        next_year = make_season(PAST_YEAR + 1, SeasonKind.TOUR)
+        make_game(
+            next_year, live_stage="rebuys", started_at=timezone.now()
+        )  # playing: counts nowhere yet
+        make_season(PAST_YEAR + 1, SeasonKind.CASH)
+        return next_year
+
+    def test_home_skips_it(self, client, ahead):
+        assert client.get("/").url == f"/{PAST_YEAR}/tour/"
+
+    def test_home_on_a_site_with_only_empty_seasons_shows_all_time(self, client):
+        make_season(PAST_YEAR, SeasonKind.TOUR)
+        assert client.get("/").url == reverse("all_time")
+
+    def test_nav_skips_it(self, client, ahead):
+        response = get_page(client, PAST_YEAR)
+        assert response.context["latest_years"] == {"tour": PAST_YEAR, "cash": PAST_YEAR}
+
+    def test_nav_falls_back_to_the_latest_season_without_games(self, client, season):
+        make_season(PAST_YEAR + 1, SeasonKind.CASH)  # no cash game at all
+        response = get_page(client, PAST_YEAR)
+        assert response.context["latest_years"] == {"tour": PAST_YEAR, "cash": PAST_YEAR + 1}
+
+    def test_nav_costs_one_query(self, ahead, django_assert_num_queries):
+        with django_assert_num_queries(1):
+            assert _latest_years() == {"tour": PAST_YEAR, "cash": PAST_YEAR}
+
+    def test_switcher_leaves_it_out(self, client, ahead):
+        response = get_page(client, PAST_YEAR)
+        assert response.context["years"] == [PAST_YEAR - 1, PAST_YEAR]
+        assert f"/{PAST_YEAR + 1}/tour/" not in response.content.decode()
+
+    def test_its_own_page_still_answers_and_lists_its_year(self, client, ahead):
+        response = get_page(client, PAST_YEAR + 1)
+        assert response.status_code == 200
+        assert response.context["years"] == [PAST_YEAR - 1, PAST_YEAR, PAST_YEAR + 1]
+
+    def test_it_appears_once_a_game_is_finished(self, client, ahead):
+        make_game(ahead, day=2)
+        assert client.get("/").url == f"/{PAST_YEAR + 1}/tour/"
+        assert get_page(client, PAST_YEAR).context["years"][-1] == PAST_YEAR + 1

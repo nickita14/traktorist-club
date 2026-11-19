@@ -22,7 +22,6 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 
 ### Wave 1. End of the 2026 season (deadline: the last game of December)
 
-- Before the first January game: season 2027 and the sheet: a season created from the live screen is not sheet-managed, so the first live game of January makes the importer refuse the whole 2027 season; decide before January whether 2027 stays in the sheet (then the flag must be set, or new seasons copy it from the previous one) or moves to the app.
 - Printable diplomas: a print stylesheet for titles and diplomas, to hand out on paper. No new dependencies. Mockup first.
 - Excel export, together with a printable season ledger.
 - Year report: the shared-rank line names the others in the nominative ("2–3 место · наравне: Марина") because `Player.label` cannot be declined; the mockup's "вместе с Мариной" needs a stored instrumental form per player (or another wording). Decide before the first January release.
@@ -64,7 +63,8 @@ Newest first. Dates are local (Europe/Chisinau), from the merge commits. Dependa
 
 | Item | Branch | Merged | PR |
 | --- | --- | --- | --- |
-| "Годовой отчёт за 2026" (форма № 7): club and player pages in the poster style, the release (organizers close the year in "Годовые отчёты", 1 January fallback, preliminary pages for organizers only), `club.YearClosure`, links from the card, `/honors/` and the standings | `year-report-pages` | | |
+| Season 2027 alongside the sheet: a new season (live screen, import, an organizer in the admin) copies the rules and "Ведётся в таблице" from the previous year's season of its kind; a season without a finished game is kept out of `/`, the header nav and the year switchers; `Season.sheet_title` maps a tab with any name to its season (superusers) | `season-2027` | | |
+| "Годовой отчёт за 2026" (форма № 7): club and player pages in the poster style, the release (organizers close the year in "Годовые отчёты", 1 January fallback, preliminary pages for organizers only), `club.YearClosure`, links from the card, `/honors/` and the standings | `year-report-pages` | 2026-11-16 | #60 |
 | Data check for the year report on production data: which year-report figures 2026 data can produce; result recorded in `PLAN.md` Stage 10 (duration, «Меценат» and hosts dropped; bubble only where every place is known) | `year-report` | 2026-11-16 | #59 |
 | Design decisions in the docs: "Celebration pages" in `CLAUDE.md` (poster style, `poster-red`, motion) and the year report, front page and "Итоги вечера" items | `design-decisions` | 2026-11-16 | #58 |
 | Backup and uptime monitoring on Cronitor heartbeats: `MONITOR_BACKUP_URL` / `MONITOR_SITE_URL` (renamed from `HEALTHCHECKS_*`), failures as `state=fail` through `deploy/monitor-ping.sh`, the URL never printed; runbook for the monitors and the server switch | `monitoring` | 2026-11-15 | #57 |

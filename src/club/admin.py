@@ -57,6 +57,7 @@ from club.models import (
     SeasonKind,
     YearClosure,
 )
+from club.seasons import previous_season
 from importer.models import PlayerAlias
 from live.models import LiveAction
 
@@ -181,6 +182,7 @@ class SeasonAdmin(ModelAdmin):
         "default_blinds",
         "cash_step",
         "sheet_managed",
+        "sheet_title",
     ]
     # Prices of the live game screens: only the ones of the chosen kind (Alpine expressions).
     conditional_fields = {
@@ -198,10 +200,20 @@ class SeasonAdmin(ModelAdmin):
         return stats.annotate_season_totals(super().get_queryset(request))
 
     def get_readonly_fields(self, request, obj=None):
-        # Whether the importer may write to a season is the superusers' call (the sheet sync is
-        # theirs too), not the organizers'.
+        # Whether the importer may write to a season, and from which tab, is the superusers'
+        # call (the sheet sync is theirs too), not the organizers'.
         readonly = super().get_readonly_fields(request, obj)
-        return readonly if request.user.is_superuser else [*readonly, "sheet_managed"]
+        if request.user.is_superuser:
+            return readonly
+        return [*readonly, "sheet_managed", "sheet_title"]
+
+    def save_model(self, request, obj, form, change):
+        # An organizer cannot set the flag, so a season they add keeps the previous one's
+        # (club.seasons): adding season 2027 must not take it away from the sheet sync.
+        if not change and "sheet_managed" not in form.fields:
+            previous = previous_season(obj.kind, obj.year)
+            obj.sheet_managed = previous.sheet_managed if previous else False
+        super().save_model(request, obj, form, change)
 
     @display(description="год", ordering="year", **number)
     def year_number(self, obj):

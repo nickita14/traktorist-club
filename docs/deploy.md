@@ -660,8 +660,10 @@ shred -u ~/import/* && rmdir ~/import
 The same from the command line, for one evening: `python manage.py import_sheet --from-google --dates 2026-10-17 --dry-run` (comma-separated for several; combines with `--sheets`). A date that is no game in the chosen sheets is an error, and nothing is imported.
 
 Guards, in the importer itself (the command obeys them too), with no override:
-- A season is imported only while "Ведётся в таблице" is on. Seasons that existed before this feature, and seasons the import creates, have it on; seasons created in the admin or on the live screens have it off.
+- A season is imported only while "Ведётся в таблице" is on. Seasons the import creates have it on. A season created on the live screens, or added in the admin by an organizer, copies it (and the rules) from the previous year's season of the same kind; a superuser adding one in the admin sets it explicitly.
 - In such a season, a date whose game was recorded on the live screens, or is still in progress, is left as is and listed in the report. To let the sheet overwrite it, delete that game in the admin first.
+
+**A new year.** Nothing to create ahead: the first game of the year (live screen) or the first import of its tab creates each season with the previous year's rules and flag. A season with no finished game yet is not linked from the home page, the header or the year switchers. The importer finds a tab named `ТУР2027` / `КЭШ2027` (optionally `_new`) by itself. For any other name, a superuser types the tab's exact name into the season's "Лист в таблице" in the admin (Сезоны > the season); an old tab of that season with a regular name is then ignored. The season must exist first: start its first game, or add it in the admin.
 
 Empty `GOOGLE_SHEET_ID` turns the feature off; the page then says so and offers nothing.
 

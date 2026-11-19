@@ -32,6 +32,7 @@ from club.models import (
     Season,
     SeasonKind,
 )
+from club.seasons import season_for
 from live import clock
 from live.models import TIMER_KINDS, ActionKind, BlindTimer, LiveAction, TimerLevel, display_token
 
@@ -189,26 +190,8 @@ PRE_GAME = (LiveStage.LINEUP, LiveStage.COLLECT)
 
 
 def next_season(kind: str, year: int) -> Season:
-    """The season of ``kind`` for ``year``, created with the rules of the latest one if missing."""
-    season = Season.objects.filter(kind=kind, year=year).first()
-    if season is not None:
-        return season
-    latest = Season.objects.filter(kind=kind).order_by("-year").first()
-    copied = (
-        "chips_per_lei",
-        "paid_places",
-        "entry_price",
-        "rebuy_price",
-        "addon_price",
-        "rebuy_minutes",
-        "payout_weights",
-        "payout_round",
-        "cash_step",
-        "default_blinds",
-    )
-    rules = {field: getattr(latest, field) for field in copied} if latest else {}
-    season, _ = Season.objects.get_or_create(kind=kind, year=year, defaults=rules)
-    return season
+    """The season of ``kind`` for ``year``, created like the previous one if missing."""
+    return season_for(kind, year)
 
 
 # ``blinds`` for start_game: the season's default structure.

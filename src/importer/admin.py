@@ -41,6 +41,7 @@ from importer.report import (
     SheetReport,
 )
 from importer.service import ReportChanged, UnknownDates, found_dates, run_import
+from importer.sync import sheet_titles
 from importer.verify import GAP, MISMATCH, TIE, Leftover
 from importer.workbook import SheetError, import_sheet_titles, parse_workbook
 
@@ -148,7 +149,7 @@ class SheetSyncView(UnfoldModelAdminViewMixin, TemplateView):
         SheetSnapshot.objects.all().delete()  # one preview at a time
         try:
             content = sources.fetch_sheet()
-            titles = import_sheet_titles(content)
+            titles = import_sheet_titles(content, sheet_titles())
         except sources.SheetFetchError as exc:
             messages.error(self.request, str(exc))
             return redirect(self.page_url())
@@ -169,14 +170,14 @@ class SheetSyncView(UnfoldModelAdminViewMixin, TemplateView):
         if snapshot is None:
             messages.error(self.request, GONE)
             return redirect(self.page_url())
-        titles = import_sheet_titles(bytes(snapshot.content))
+        titles = import_sheet_titles(bytes(snapshot.content), sheet_titles())
         chosen = [title for title in titles if title in self.request.POST.getlist("sheets")]
         if not chosen:
             messages.error(self.request, NO_SHEETS)
             return redirect(self.page_url(snapshot))
         dates = posted_dates(self.request.POST.getlist("dates"))
         try:
-            found = found_dates(parse_workbook(bytes(snapshot.content), chosen))
+            found = found_dates(parse_workbook(bytes(snapshot.content), chosen, sheet_titles()))
         except SheetError:
             found = None  # the preview shows the errors
         missing = [date for date in dates if found is not None and date not in found]
@@ -256,7 +257,7 @@ def preview(snapshot: SheetSnapshot) -> dict:
     "Применить" sends."""
     content = bytes(snapshot.content)
     try:
-        titles = import_sheet_titles(content)
+        titles = import_sheet_titles(content, sheet_titles())
         report = run_import(
             content, sheets=snapshot.sheets, dates=snapshot_dates(snapshot), dry_run=True
         )
