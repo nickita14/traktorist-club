@@ -104,6 +104,29 @@ jobs:
       - name: Pre-commit
         run: uv run --no-sync pre-commit run --all-files --show-diff-on-failure
 
+      - name: No Co-authored-by trailers
+        # CLAUDE.md forbids commit trailers; GitHub's "Commit autofix" adds this one. Git parses
+        # the trailers (the key matches in any case). A fetch error fails the step.
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags --unshallow origin "$BASE_SHA" "$HEAD_SHA"
+          bad=0
+          for sha in $(git rev-list "$BASE_SHA..$HEAD_SHA"); do
+            if [[ -n $(git log -1 --format='%(trailers:key=Co-authored-by)' "$sha") ]]; then
+              git log -1 --format='Co-authored-by trailer: %h %s' "$sha"
+              bad=1
+            fi
+          done
+          if (( bad )); then
+            echo "Pushed history is never rewritten: open a fresh branch from main and bring the"
+            echo "changes over without the trailer (git cherry-pick -n <sha>, then a new commit)."
+            exit 1
+          fi
+          echo "No Co-authored-by trailers in $(git rev-list --count "$BASE_SHA..$HEAD_SHA") commits."
+
   unit:
     # Every test that does not need Chromium (pytest -m "not browser"), with the compiled
     # messages, and the coverage report the sonar job reads. Both test jobs run in parallel
