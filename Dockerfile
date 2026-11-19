@@ -31,6 +31,14 @@ RUN set -a && . deploy/build.env && set +a \
     && /opt/venv/bin/python manage.py collectstatic --noinput
 
 FROM python:3.13-slim AS runtime
+# Debian security fixes on every build, without waiting for Docker to rebuild python:3.13-slim.
+# APT_REFRESH (the date, passed by deploy/server-deploy.sh) expires the cached layer once a day;
+# CI builds on fresh runners, without a cache. Error-Mode=any: an unreachable mirror fails the
+# build (a plain apt-get update exits 0 and the upgrade would quietly do nothing).
+ARG APT_REFRESH=
+RUN apt-get update -o APT::Update::Error-Mode=any \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 # No pip at runtime: the app runs from /opt/venv (made by uv, without pip), and the base image's
 # own pip only brings its vendored packages into the image and its vulnerability scans.
 RUN python -m pip uninstall --yes --no-input pip \

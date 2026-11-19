@@ -19,7 +19,11 @@ compose() { docker compose --project-directory "$APP_DIR" "$@"; }
 
 echo "==> Building"
 # --pull: the Python and uv base images get their security fixes on the next deploy.
-compose build --pull web
+# APT_REFRESH: the Dockerfile's apt-get upgrade layer is rebuilt on the first deploy of each day
+# (and the app restarted once, with the new image); later deploys that day reuse it. It needs
+# deb.debian.org: when the build fails, set -e stops here, before anything touches the running
+# containers, and the deploy fails.
+compose build --pull --build-arg APT_REFRESH="$(date +%F)" web
 # Postgres 17 and Caddy 2 minor releases, by tag. Unchanged images leave the containers running.
 compose pull --quiet db caddy
 
