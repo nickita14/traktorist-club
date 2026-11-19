@@ -47,8 +47,17 @@ def test_organizer_group_has_exact_permissions():
         "view_yearclosure",
         "add_yearclosure",
         "delete_yearclosure",
+        # live: theme nights (Тематика).
+        *(
+            f"{action}_{model}"
+            for model in ("theme", "themeevent", "themesound")
+            for action in ("view", "add", "change", "delete")
+        ),
     }
-    assert set(group.permissions.values_list("content_type__app_label", flat=True)) == {"club"}
+    assert set(group.permissions.values_list("content_type__app_label", flat=True)) == {
+        "club",
+        "live",
+    }
 
 
 def test_seeded_achievement_rules():

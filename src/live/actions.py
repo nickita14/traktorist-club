@@ -11,6 +11,7 @@ nothing: the caller gets the logged action back with ``replayed`` set.
 Rule violations raise RuleError with a message for the organizer; they are not server errors.
 """
 
+import dataclasses
 import datetime
 import uuid
 from collections.abc import Callable, Mapping
@@ -76,6 +77,8 @@ class Change:
     result_id: int | None = None
     before: dict | None = None
     after: dict | None = None
+    # A bust: the place it gave (LiveAction.place).
+    place: int | None = None
 
 
 def _lock(game_pk: int, *, live: bool = True) -> Game:
@@ -118,6 +121,7 @@ def perform(
             summary=change.summary,
             before=change.before,
             after=change.after,
+            place=change.place,
             user=user if user and user.is_authenticated else None,
         )
         return Outcome(action)
@@ -479,12 +483,13 @@ def eliminate(
             raise RuleError(f"{result.player.label} остался один: это победитель.")
         if place is not None and place != in_game:
             raise RuleError("Пока вы подтверждали, выбыл кто-то ещё: проверьте место.")
-        return _update(
+        change = _update(
             result,
             ActionKind.ELIMINATE,
             f"Выбыл: {result.player.label}",
             out_order=_next_out_order(),
         )
+        return dataclasses.replace(change, place=in_game)
 
     return perform(game_pk, key, user, operation)
 

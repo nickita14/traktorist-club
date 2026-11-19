@@ -1,4 +1,5 @@
-"""Design tokens: poster-red belongs to the celebration pages (CLAUDE.md "Celebration pages")."""
+"""Design tokens: poster-red and gold belong to the celebration surfaces (CLAUDE.md "Celebration
+pages")."""
 
 import re
 
@@ -42,3 +43,33 @@ def test_celebration_pattern():
     assert CELEBRATION.match("club/includes/year_report/sheet.html")
     assert not CELEBRATION.match("club/honors.html")
     assert not CELEBRATION.match("live/year_report.html")
+
+
+# The display's theme overlays (табло) are the only other celebration surface: their colors live
+# in frontend/source.css, so no template names gold either.
+GOLD = re.compile(r"\bgold\b|#f2b630", re.IGNORECASE)
+
+
+def test_gold_is_a_token():
+    tokens = (settings.BASE_DIR / "assets/css/tokens.css").read_text(encoding="utf-8")
+    source = (settings.BASE_DIR / "frontend/source.css").read_text(encoding="utf-8")
+
+    assert "--gold: #f2b630;" in tokens
+    assert "--color-gold: var(--gold);" in source
+
+
+def test_gold_only_in_celebration_templates():
+    found = [
+        name
+        for name, text in templates().items()
+        if GOLD.search(text) and not CELEBRATION.match(name)
+    ]
+
+    assert found == []
+
+
+def test_russo_one_only_in_the_display_overlays():
+    source = (settings.BASE_DIR / "frontend/source.css").read_text(encoding="utf-8")
+    uses = [line for line in source.splitlines() if "--font-stack-poster" in line]
+    assert len(uses) == 1  # the band and headline title rule
+    assert all("Russo One" not in text for text in templates().values())

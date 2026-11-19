@@ -505,8 +505,8 @@ class TestQueries:
 
     def test_public_page(self, client, timed, django_assert_num_queries):
         url = reverse("tablo_public", args=[timer(timed).display_token])
-        # The state's three plus the game's number.
-        with django_assert_num_queries(4):
+        # The state's three plus the game's number and the latest action (the event cursor).
+        with django_assert_num_queries(5):
             client.get(url)
 
     def test_organizer_state(self, org, timed, django_assert_num_queries):

@@ -213,6 +213,15 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LIVE_POLL_SECONDS = 20
 # The blind timer display counts seconds itself and resyncs with the server this often.
 TIMER_SYNC_SECONDS = 5
+# Theme nights: a bust or a rebuy reaches the display only once it is this old (a wrong tap undone
+# within the hold is never shown), and not at all once it is older than the max age (a display
+# back online does not replay the evening; the winner is the exception).
+THEME_EVENT_HOLD_SECONDS = 0
+THEME_EVENT_MAX_AGE_SECONDS = 60
+# The break screen shows each of the theme's tips this long.
+THEME_TIP_SECONDS = 12
+# Uploaded theme sounds (mp3, ogg, wav) are stored in the database: keep them small.
+THEME_SOUND_MAX_BYTES = 1024 * 1024
 
 # Behind Caddy in production: the client address is the last X-Forwarded-For entry, which Caddy
 # sets itself (a client-sent value is replaced), and the app port is reachable only through Caddy.

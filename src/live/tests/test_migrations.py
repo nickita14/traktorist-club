@@ -34,3 +34,32 @@ def test_orphaned_actions_are_removed():
     LiveAction = apps.get_model("live", "LiveAction")
     assert list(LiveAction.objects.values_list("pk", flat=True)) == [kept.pk]
     migrate(MigrationExecutor(connection).loader.graph.leaf_nodes())
+
+
+THEME_PERMISSIONS = {
+    f"{action}_{model}"
+    for model in ("theme", "themeevent", "themesound")
+    for action in ("view", "add", "change", "delete")
+}
+
+
+def organizer_theme_permissions(apps) -> set[str]:
+    Group = apps.get_model("auth", "Group")
+    group = Group.objects.filter(name="Organizer").first()
+    if group is None:
+        return set()
+    return set(
+        group.permissions.filter(content_type__app_label="live").values_list("codename", flat=True)
+    )
+
+
+def test_theme_permissions_forward_and_back():
+    apps = migrate([("live", "0005_theme_nights")])
+    assert organizer_theme_permissions(apps) == set()
+
+    apps = migrate([("live", "0006_organizer_theme_permissions")])
+    assert organizer_theme_permissions(apps) == THEME_PERMISSIONS
+
+    apps = migrate([("live", "0005_theme_nights")])
+    assert organizer_theme_permissions(apps) == set()
+    migrate(MigrationExecutor(connection).loader.graph.leaf_nodes())

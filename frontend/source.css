@@ -14,6 +14,7 @@
   --color-rule: var(--rule);
   --color-accent: var(--accent);
   --color-poster-red: var(--poster-red);
+  --color-gold: var(--gold);
 
   --font-*: initial;
   --font-display: var(--font-stack-display);
@@ -3094,6 +3095,443 @@
   100% {
     opacity: 1;
     transform: scale(1) rotate(-7deg);
+  }
+}
+
+/*
+ * Theme nights on the display (табло): the announcement overlay and the break screen, a
+ * celebration surface (CLAUDE.md "Celebration pages"), so poster-red and gold are allowed here.
+ * assets/js/tablo.js fills .tablo-overlay and sets .tablo-has-overlay plus .tablo-overlay-<style>
+ * on <body> (the presets are live.models.OverlayStyle): the preset restyles the board under the
+ * overlay and the overlay itself. Russo One only in the band and headline presets. Each overlay
+ * enters once (.is-entering); under reduced motion the text just appears.
+ */
+@layer components {
+  .tablo-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .tablo-overlay-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5vh;
+    max-width: 100%;
+    padding: 0 4vw;
+    text-align: center;
+  }
+
+  .tablo-overlay-title,
+  .tablo-overlay-caption,
+  .tablo-overlay-note {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .tablo-overlay-num {
+    font-family: var(--font-stack-num);
+    font-style: normal;
+    word-spacing: var(--number-word-spacing);
+  }
+
+  .tablo-overlay-note {
+    font-family: var(--font-stack-head);
+    font-size: min(2.2vw, 3.6vh);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  :is(.tablo-head, .tablo-grid) {
+    transition: opacity 0.2s, filter 0.2s;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :is(.tablo-head, .tablo-grid) {
+      transition: none;
+    }
+  }
+
+  /* stamp: the club's own announcement, a red stamp over the faded board. */
+  .tablo-overlay-stamp :is(.tablo-head, .tablo-grid) {
+    opacity: 0.2;
+  }
+
+  .tablo-overlay-stamp .tablo-overlay-title {
+    padding: 0.5vh 2.5vw;
+    border: 0.5vw double var(--poster-red);
+    background: var(--paper);
+    color: var(--poster-red);
+    font-family: var(--font-stack-head);
+    font-size: min(6vw, 10vh);
+    font-weight: 700;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    transform: rotate(-5deg);
+  }
+
+  .tablo-overlay-stamp .tablo-overlay-caption {
+    margin-top: 2vh;
+    font-family: var(--font-stack-body);
+    font-size: min(7vw, 12vh);
+    font-weight: 700;
+    line-height: 1.05;
+  }
+
+  .tablo-overlay-stamp .tablo-overlay-note {
+    padding-top: 1.5vh;
+    border-top: 1px solid var(--ink);
+    color: var(--muted);
+  }
+
+  /* band and headline: the board goes grey or dim, a dark band carries a big caption. */
+  .tablo-overlay-band :is(.tablo-head, .tablo-grid) {
+    filter: grayscale(1) brightness(0.45) contrast(1.1);
+  }
+
+  .tablo-overlay-headline :is(.tablo-head, .tablo-grid) {
+    filter: brightness(0.55);
+  }
+
+  /* The paper is the page's own background, which a filter on the board does not reach. */
+  .tablo.tablo-overlay-band {
+    background: color-mix(in srgb, var(--paper) 40%, var(--ink));
+  }
+
+  .tablo.tablo-overlay-headline {
+    background: color-mix(in srgb, var(--paper) 55%, var(--ink));
+  }
+
+  :is(.tablo-overlay-band, .tablo-overlay-headline) .tablo-overlay-box {
+    width: 100%;
+    padding: 5vh 4vw;
+    background: color-mix(in srgb, var(--ink) 80%, transparent);
+    color: var(--paper);
+  }
+
+  :is(.tablo-overlay-band, .tablo-overlay-headline) .tablo-overlay-title {
+    font-family: var(--font-stack-poster);
+    font-size: min(11vw, 19vh);
+    line-height: 1;
+    letter-spacing: 0.03em;
+    paint-order: stroke fill;
+    -webkit-text-stroke: 0.06em var(--ink);
+  }
+
+  .tablo-overlay-band .tablo-overlay-title {
+    color: var(--poster-red);
+  }
+
+  .tablo-overlay-headline .tablo-overlay-title {
+    color: var(--gold);
+    font-size: min(8.5vw, 14vh);
+  }
+
+  :is(.tablo-overlay-band, .tablo-overlay-headline) .tablo-overlay-caption {
+    font-family: var(--font-stack-head);
+    font-size: min(3.4vw, 5.6vh);
+    font-weight: 700;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  :is(.tablo-overlay-band, .tablo-overlay-headline) .tablo-overlay-note {
+    color: var(--rule);
+  }
+
+  /* lower-third: a plaque at the bottom, the clock stays readable. */
+  .tablo-overlay-lower-third .tablo-overlay {
+    align-items: flex-end;
+    padding: 0 2.5vw 2.5vw;
+  }
+
+  .tablo-overlay-lower-third .tablo-overlay-box {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5vh 3vw;
+    width: 100%;
+    padding: 2.5vh 3vw;
+    border-top: 0.6vh solid var(--poster-red);
+    background: var(--ink);
+    color: var(--paper);
+    text-align: left;
+  }
+
+  .tablo-overlay-lower-third .tablo-overlay-title {
+    color: var(--gold);
+    font-family: var(--font-stack-head);
+    font-size: min(4.5vw, 7.5vh);
+    font-weight: 700;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .tablo-overlay-lower-third .tablo-overlay-caption {
+    grid-column: 1;
+    font-family: var(--font-stack-head);
+    font-size: min(2.8vw, 4.6vh);
+  }
+
+  .tablo-overlay-lower-third .tablo-overlay-note {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    color: var(--rule);
+    text-align: right;
+  }
+
+  /* fullscreen: the board makes way for an ink sheet. */
+  .tablo-overlay-fullscreen :is(.tablo-head, .tablo-grid) {
+    visibility: hidden;
+  }
+
+  .tablo-overlay-fullscreen .tablo-overlay {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .tablo-overlay-fullscreen .tablo-overlay-title {
+    color: var(--gold);
+    font-family: var(--font-stack-head);
+    font-size: min(9vw, 15vh);
+    font-weight: 700;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .tablo-overlay-fullscreen .tablo-overlay-caption {
+    font-family: var(--font-stack-body);
+    font-size: min(6vw, 10vh);
+    font-weight: 700;
+  }
+
+  .tablo-overlay-fullscreen .tablo-overlay-note {
+    color: var(--rule);
+  }
+
+  /* The break screen: the countdown stays large, the theme's tips rotate beside it. */
+  .tablo-break-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 34vw);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 4vh 4vw;
+    padding: 5vh 4vw;
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .tablo-has-break-screen :is(.tablo-head, .tablo-grid) {
+    visibility: hidden;
+  }
+
+  .tablo-break-screen-main {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .tablo-break-screen p {
+    margin: 0;
+  }
+
+  .tablo-break-screen-theme,
+  .tablo-tip-label {
+    color: var(--gold);
+    font-family: var(--font-stack-head);
+    font-size: min(2.6vw, 4.4vh);
+    font-weight: 700;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .tablo-break-screen-title {
+    font-family: var(--font-stack-head);
+    font-size: min(9vw, 15vh);
+    font-weight: 700;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .tablo-break-screen-clock {
+    font-size: min(16vw, 26vh);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .tablo-break-screen-next {
+    color: var(--rule);
+    font-family: var(--font-stack-head);
+    font-size: min(2.4vw, 4vh);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .tablo-tip {
+    display: flex;
+    flex-direction: column;
+    align-self: center;
+    gap: 2vh;
+    padding: 4vh 2.5vw;
+    border: 3px solid var(--gold);
+  }
+
+  .tablo-tip-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .tablo-tip-count {
+    color: var(--rule);
+    font-size: min(1.8vw, 3vh);
+  }
+
+  .tablo-tip-text {
+    font-family: var(--font-stack-body);
+    font-size: min(3vw, 5vh);
+    line-height: 1.25;
+  }
+
+  .tablo-break-screen-foot {
+    grid-column: 1 / -1;
+    padding-top: 2vh;
+    border-top: 1px solid var(--muted);
+    color: var(--rule);
+    font-family: var(--font-stack-display);
+    font-size: min(1.8vw, 3vh);
+    text-transform: uppercase;
+  }
+
+  /* The theme preview page: a bar of buttons over the sample board. */
+  .tablo-preview {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 30;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 2.5vw;
+    border-bottom: 1px solid var(--ink);
+    background: var(--surface);
+    font-family: var(--font-stack-head);
+  }
+
+  .tablo-preview-name {
+    margin-right: auto;
+    font-weight: 700;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+
+  .tablo-preview-note {
+    flex-basis: 100%;
+    min-height: 1.25em;
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+
+  .tablo-is-preview {
+    padding-top: 7.5rem;
+  }
+
+  @media (max-width: 48rem) {
+    .tablo-break-screen {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto auto;
+      overflow-y: auto;
+    }
+
+    .tablo-overlay-lower-third .tablo-overlay-box {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .tablo-overlay-lower-third .tablo-overlay-note {
+      grid-column: 1;
+      grid-row: auto;
+      text-align: left;
+    }
+  }
+
+  /* Entrances, once per overlay; under reduced motion the text just appears. */
+  @media (prefers-reduced-motion: no-preference) {
+    .tablo-overlay.is-entering .tablo-overlay-box {
+      animation: tablo-overlay-in 0.3s ease-out both;
+    }
+
+    .tablo-overlay-stamp .tablo-overlay.is-entering .tablo-overlay-title {
+      animation: tablo-stamp-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s both;
+    }
+
+    :is(.tablo-overlay-band, .tablo-overlay-headline) .tablo-overlay.is-entering .tablo-overlay-box {
+      animation: tablo-band-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    .tablo-overlay-lower-third .tablo-overlay.is-entering .tablo-overlay-box {
+      animation: tablo-rise-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    .tablo-break-screen.is-entering .tablo-tip-text {
+      animation: tablo-overlay-in 0.4s ease-out both;
+    }
+  }
+}
+
+@keyframes tablo-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tablo-stamp-in {
+  0% {
+    opacity: 0;
+    transform: scale(2.2) rotate(-5deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.94) rotate(-5deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-5deg);
+  }
+}
+
+@keyframes tablo-band-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes tablo-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

@@ -11,6 +11,14 @@
  *   has its own idempotency key; a press that got no answer is sent again with the same key.
  * - A short beep a minute before a level ends and at the level change (Web Audio, after the
  *   first tap: browsers block sound until a gesture), and the Screen Wake Lock where supported.
+ * - Theme nights (live.themes): each sync passes the last action seen (data-event-cursor, the
+ *   latest one when the page was rendered, so nothing is replayed) and gets the table events
+ *   since and the theme. Events play one after another in the overlay, each for its seconds; a
+ *   winner with 0 seconds stays, until a sync shows more than one player in again (an undo) or
+ *   the game ends (the display stops, the winner stays). A theme sound plays only once sound is
+ *   on; without it the overlay still shows. During a break with the theme's break event on, the
+ *   break screen rotates the theme's tips.
+ * - The theme preview (data-preview): no cursor; the buttons play the server's sample events.
  */
 (() => {
   "use strict";
@@ -24,6 +32,18 @@
   let offset = 0; // server epoch ms minus local epoch ms
   let rendered = null; // what the last frame showed, to spot changes
   let busy = false;
+
+  const preview = "preview" in body.dataset;
+  const TIP_MS = Number(body.dataset.tipSeconds || 12) * 1000;
+  let cursor = body.dataset.eventCursor || "0";
+  let theme = null;
+  let samples = {};
+  let scene = ""; // preview only: "break" shows the sample break
+  const queue = [];
+  let showing = null; // { event, persistent, timer }
+  let breakScreen = false;
+  let tipIndex = 0;
+  let tipShownAt = 0;
 
   const localNow = () => performance.timeOrigin + performance.now();
   const serverNow = () => localNow() + offset;
@@ -116,7 +136,211 @@
     }
 
     sounds(clock);
+    breakFrame(clock, Boolean(rendered));
     rendered = { position: row.position, remaining: clock.remaining, finished: clock.finished };
+  }
+
+  // Theme nights.
+
+  const overlay = find("overlay");
+  const config = (kind) => theme?.events?.[kind] || null;
+
+  // "{name} · {place} место" with the values; "{{" and "}}" are the braces themselves.
+  function substitute(template, event) {
+    const values = {
+      name: event.name ?? "",
+      place: event.place == null ? "" : String(event.place),
+      amount: event.amount == null ? "" : clockApi.money(event.amount),
+      count: event.count == null ? "" : String(event.count),
+    };
+    return (template || "").replace(/\{\{|\}\}|\{(\w+)\}/g, (match, key) => {
+      if (match === "{{") {
+        return "{";
+      }
+      if (match === "}}") {
+        return "}";
+      }
+      return values[key] ?? "";
+    });
+  }
+
+  // Text into an element, its figures in PT Mono (as the |figures filter does on the site).
+  function figures(name, value) {
+    const element = find(name);
+    if (!element) {
+      return;
+    }
+    const parts = value.split(/(\d(?:[\d\u00a0]*\d)?)/).filter(Boolean);
+    element.replaceChildren(
+      ...parts.map((part) => {
+        if (!/^\d/.test(part)) {
+          return document.createTextNode(part);
+        }
+        const span = document.createElement("span");
+        span.className = "tablo-overlay-num";
+        span.textContent = part;
+        return span;
+      }),
+    );
+    element.hidden = value === "";
+  }
+
+  function setStyle(style) {
+    for (const name of [...body.classList]) {
+      if (name.startsWith("tablo-overlay-")) {
+        body.classList.remove(name);
+      }
+    }
+    body.classList.toggle("tablo-has-overlay", Boolean(style));
+    if (style) {
+      body.classList.add(`tablo-overlay-${style}`);
+    }
+  }
+
+  function hideOverlay() {
+    if (showing) {
+      clearTimeout(showing.timer);
+    }
+    showing = null;
+    overlay.hidden = true;
+    overlay.classList.remove("is-entering");
+    setStyle("");
+  }
+
+  function showEvent(event) {
+    const shown = config(event.kind);
+    if (!shown) {
+      return;
+    }
+    figures("overlay-title", substitute(shown.title, event));
+    figures("overlay-caption", substitute(shown.caption, event));
+    figures("overlay-note", event.note || "");
+    setStyle(shown.style);
+    overlay.hidden = false;
+    overlay.classList.remove("is-entering");
+    void overlay.offsetWidth; // restart the entrance
+    overlay.classList.add("is-entering");
+    playSound(shown.sound);
+    const persistent = event.kind === "winner" && !shown.seconds;
+    showing = { event, persistent, timer: null };
+    if (!persistent) {
+      showing.timer = setTimeout(() => {
+        hideOverlay();
+        playNext();
+      }, Math.max(shown.seconds, 1) * 1000);
+    }
+  }
+
+  // The next queued event, unless one is on screen; a winner that stays makes way for it.
+  function playNext() {
+    if (showing && !showing.persistent) {
+      return;
+    }
+    const event = queue.shift();
+    if (!event) {
+      return;
+    }
+    hideOverlay();
+    showEvent(event);
+  }
+
+  function enqueue(events) {
+    for (const event of events) {
+      if (config(event.kind)?.enabled) {
+        queue.push(event);
+      }
+    }
+    playNext();
+  }
+
+  // Sounds: fetched once per URL (same origin: connect-src 'self'), decoded on first play.
+  const soundCache = new Map();
+
+  function loadSound(url) {
+    if (!url || soundCache.has(url)) {
+      return;
+    }
+    const bytes = fetch(url, { credentials: "same-origin" })
+      .then((response) => (response.ok ? response.arrayBuffer() : null))
+      .catch(() => null);
+    soundCache.set(url, { bytes, decoded: null });
+  }
+
+  async function playSound(url) {
+    if (!url || !audio || audio.state !== "running") {
+      return;
+    }
+    loadSound(url);
+    const entry = soundCache.get(url);
+    try {
+      const bytes = await entry.bytes;
+      if (!bytes) {
+        return;
+      }
+      if (!entry.decoded) {
+        entry.decoded = await audio.decodeAudioData(bytes.slice(0));
+      }
+      const source = audio.createBufferSource();
+      source.buffer = entry.decoded;
+      source.connect(audio.destination);
+      source.start();
+    } catch {
+      // A file the browser cannot play: the overlay is enough.
+    }
+  }
+
+  function setTheme(next) {
+    theme = next;
+    for (const shown of Object.values(theme.events || {})) {
+      loadSound(shown.sound);
+    }
+  }
+
+  function showTip(tips) {
+    const box = find("tip-box");
+    box.hidden = tips.length === 0;
+    if (!tips.length) {
+      return;
+    }
+    tipIndex %= tips.length;
+    text("tip", tips[tipIndex]);
+    text("tip-count", `${tipIndex + 1} / ${tips.length}`);
+    tipShownAt = localNow();
+    const screen = find("break-screen");
+    screen.classList.remove("is-entering");
+    void screen.offsetWidth;
+    screen.classList.add("is-entering");
+  }
+
+  function breakFrame(clock, running) {
+    const shown = config("break");
+    const row = clock.current;
+    const on = Boolean(row.isBreak && shown?.enabled);
+    const tips = theme?.tips || [];
+    if (on !== breakScreen) {
+      breakScreen = on;
+      show("break-screen", on);
+      body.classList.toggle("tablo-has-break-screen", on);
+      if (on) {
+        tipIndex = 0;
+        showTip(tips);
+        if (running) {
+          playSound(shown.sound);
+        }
+      }
+    }
+    if (!on) {
+      return;
+    }
+    text("break-screen-theme", theme.name || "");
+    text("break-screen-title", substitute(shown.title, {}) || row.label);
+    text("break-screen-clock", clockApi.format(clock.remaining));
+    const next = clock.nextLevel;
+    text("break-screen-next", next ? `Дальше: уровень ${next.number} · ${blinds(next)}` : "");
+    if (tips.length && localNow() - tipShownAt >= TIP_MS) {
+      tipIndex += 1;
+      showTip(tips);
+    }
   }
 
   // Sound.
@@ -169,11 +393,31 @@
   function apply(data, sentAt, receivedAt) {
     offset = data.now - (sentAt + receivedAt) / 2;
     state = data;
+    if (data.theme) {
+      setTheme(data.theme);
+    }
+    if (data.samples) {
+      samples = data.samples;
+    }
+    if (data.cursor !== undefined) {
+      cursor = String(data.cursor);
+    }
+    // An undone last bust: the game goes on, so the winner leaves the screen.
+    if (showing?.persistent && data.players > 1) {
+      hideOverlay();
+    }
+    if (data.events) {
+      enqueue(data.events);
+    }
     render();
   }
 
   function stop(message) {
     state = null;
+    queue.length = 0;
+    if (!showing?.persistent) {
+      hideOverlay(); // the winner stays on a finished game
+    }
     text("level-line", message);
     text("clock", "--:--");
     show("offline", false);
@@ -182,7 +426,13 @@
   async function sync() {
     const sentAt = localNow();
     try {
-      const response = await fetch(body.dataset.stateUrl, {
+      const url = new URL(body.dataset.stateUrl, window.location.href);
+      if (!preview) {
+        url.searchParams.set("after", cursor);
+      } else if (scene) {
+        url.searchParams.set("scene", scene);
+      }
+      const response = await fetch(url, {
         cache: "no-store",
         credentials: "same-origin",
         headers: { Accept: "application/json" },
@@ -260,12 +510,43 @@
     }
   }
 
+  // The theme preview's buttons.
+  function previewEvent(kind) {
+    const note = (message) => text("preview-note", message);
+    if (kind === "break") {
+      scene = scene === "break" ? "" : "break";
+      if (scene && !config("break")?.enabled) {
+        note("Перерыв в этой тематике выключен: табло покажет обычный перерыв.");
+      } else {
+        note("");
+      }
+      sync();
+      return;
+    }
+    if (scene) {
+      scene = "";
+      sync();
+    }
+    const sample = samples[kind];
+    if (!sample) {
+      return;
+    }
+    note(config(kind)?.enabled ? "" : "Это событие в тематике выключено: на табло его не будет.");
+    queue.length = 0;
+    hideOverlay();
+    enqueue([sample]);
+  }
+
   document.addEventListener("click", (event) => {
     unlockSound();
     const button = event.target.closest("[data-act]");
     if (button) {
       button.blur(); // the space bar must not press it again
       press(button.dataset.act);
+    }
+    const sample = event.target.closest("[data-preview-kind]");
+    if (sample) {
+      previewEvent(sample.dataset.previewKind);
     }
   });
 

@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.contrib import admin
-from django.urls import include, path, register_converter
+from django.urls import include, path, re_path, register_converter
 
 from club import auth, views
 from club.models import SeasonKind
@@ -37,6 +37,7 @@ urlpatterns = [
     path("prokhodnaya/", auth.LoginView.as_view(), name="login"),
     path("prokhodnaya/vykhod/", auth.logout_view, name="logout"),
     # The blind timer display through its secret link: read-only, no login, outside ADMIN_URL.
+    re_path(r"^tablo/sound/(?P<digest>[0-9a-f]{64})/$", live_views.tablo_sound, name="tablo_sound"),
     path("tablo/<str:token>/", live_views.tablo_public, name="tablo_public"),
     path("tablo/<str:token>/state/", live_views.tablo_public_state, name="tablo_public_state"),
     # The live game screens sit under the admin prefix (organizers only), before the admin's
