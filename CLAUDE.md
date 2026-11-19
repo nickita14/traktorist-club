@@ -58,8 +58,9 @@ Fonts (SIL OFL, self-hosted in `assets/fonts/<family>/` with their `OFL.txt`; cy
 - **PT Serif** 400, 400 italic, 700: body text and player names (`font-body`, the default)
 - **PT Mono** 400: every number: money, counts, dates, ranks (`font-num`)
 - **Ruslan Display** 400: only the club name in the header (`font-display`)
+- **Russo One** 400 (cyrillic and latin only): only the titles of the display's `band` and `headline` theme overlays (`--font-stack-poster`)
 
-Tokens (`assets/css/tokens.css`, the only place with raw color values): `paper` #F2EDE3 page background, `ink` #1D1B18 text, `muted` #6B655C nicknames, captions, column headers, `faint` #9A9285 zero values, `rule` #C9C1B2 row lines, `accent` #B3261E stamp red, the only accent on reference pages (`poster-red` on celebration pages: see "Celebration pages"), `surface` #FBF9F5 near-white for admin panels and inputs. `poster-red` #C8281E, celebration pages only. `frontend/source.css` maps them into the Tailwind theme and removes Tailwind's default palettes and font stacks.
+Tokens (`assets/css/tokens.css`, the only place with raw color values): `paper` #F2EDE3 page background, `ink` #1D1B18 text, `muted` #6B655C nicknames, captions, column headers, `faint` #9A9285 zero values, `rule` #C9C1B2 row lines, `accent` #B3261E stamp red, the only accent on reference pages (`poster-red` on celebration pages: see "Celebration pages"), `surface` #FBF9F5 near-white for admin panels and inputs. `poster-red` #C8281E, celebration pages only. `gold` #F2B630, the display's theme overlays only. `frontend/source.css` maps them into the Tailwind theme and removes Tailwind's default palettes and font stacks.
 
 Admin (a work tool that echoes the ledger, it does not copy it): Unfold scales are mixed from the same tokens in `UNFOLD["COLORS"]` (in oklab: oklch loses the hue of near-neutral colors). Primary is **ink**; stamp red only for danger and warning states (`assets/css/admin.css` remaps Unfold's red and orange). Fonts: **PT Sans** 400/700 for the UI, PT Sans Narrow only for page titles (`h1`) and table headers, PT Mono for numbers (display methods in `src/club/admin.py` return `number_cell` / `net_cell` with `formatting="price"`); no PT Serif in the admin. **Light mode only**: `UNFOLD["THEME"]` alone does not win over a theme stored in localStorage, so `assets/js/admin-theme.js` forces it; `src/club/tests/test_admin_browser.py` checks it in Chromium. Unfold ships no translations: set `search_help_text` on every ModelAdmin with `search_fields`.
 
@@ -87,7 +88,7 @@ Implementation:
 
 Two modes. **Reference pages** (standings, game sheets, player cards, honors, the admin, the live screens) stay the ledger, with every rule and ban above.
 
-**Celebration pages** are the year report (форма № 7), and later the evening results screen ("Итоги вечера") and Табло 2.0. They follow the poster style (Soviet agitprop):
+**Celebration pages** are the year report (форма № 7), the display's theme overlays and break screen (Табло 2.0, "Theme nights" below), and later the evening results screen ("Итоги вечера"). They follow the poster style (Soviet agitprop):
 - sheets that alternate paper, ink and red backgrounds
 - tilted ink or red plaques for headings
 - very large PT Mono figures
@@ -97,7 +98,7 @@ Two modes. **Reference pages** (standings, game sheets, player cards, honors, th
 
 On these pages the "no hero sections" ban does not apply; every other ban does (no gradients, glass, glow, large shadows, emoji, Inter, default palettes).
 
-Color: a second accent token for celebration pages only, `poster-red` #C8281E (`tokens.css`, Tailwind `poster-red`). `accent` #B3261E stays the stamp red everywhere else. `src/club/tests/test_tokens.py` fails when a template outside the year report (`club/year_report*.html`, `club/includes/year_report/`) names it.
+Color: a second accent token for celebration pages only, `poster-red` #C8281E (`tokens.css`, Tailwind `poster-red`). `accent` #B3261E stays the stamp red everywhere else. `src/club/tests/test_tokens.py` fails when a template outside the year report (`club/year_report*.html`, `club/includes/year_report/`) names it. The display's overlays add `gold` #F2B630 (`tokens.css`, Tailwind `gold`) and Russo One, both used only by the `tablo-overlay-*` / `tablo-break-screen` rules in `frontend/source.css` (no template names them; `test_tokens.py` checks that too).
 
 ## Player years
 
@@ -155,6 +156,19 @@ While the club's Google Sheet is the main record, superusers pull it into the ap
 - `assets/js/blind-clock.js` mirrors `clock_at`; `src/live/tests/clock_cases.json` runs through both (pytest and Chromium). Keep them in step.
 - Display: organizer page `<ADMIN_URL>live/<pk>/tablo/` (controls, space bar) and the secret link `/tablo/<token>/` (no login, no controls, standalone template: never the site nav, shortcuts or manifest, so no ADMIN_URL; `X-Robots-Tag`, `Disallow: /tablo/`). A new token revokes the old link; finished games 404. `assets/js/tablo.js` counts locally, resyncs every `TIMER_SYNC_SECONDS` with a clock offset, shows "нет связи" when a sync fails, beeps (Web Audio) and holds a Wake Lock.
 - The phone strip shows the timer when there is one; at the add-on break it suggests "Перерыв на аддон" but never changes the stage.
+
+## Theme nights
+
+"Тематика": what the display (табло) announces at the table, set up by organizers in the admin. Nothing of a real game goes into the repository (names, captions, sounds, fonts, art): captions and sounds are admin content; tests and fixtures use invented neutral captions.
+- Models (`live`): `Theme` (name, `is_active`: at most one, `save()` switches the other off; `tips`, one per line), `ThemeEvent` (inline, one per kind and theme: `bust`, `bust_itm`, `bubble_burst`, `rebuy`, `winner`, `break`; `enabled`, `title`, `caption`, `style`, `seconds`, `sound`), `ThemeSound` (bytes in the database, `sha256`, mp3/ogg/wav up to `THEME_SOUND_MAX_BYTES`, checked by extension and first bytes in `live.themes.read_sound`; uploaded in the event row or on its own page). Organizer group: view/add/change/delete on all three (migration `0006`).
+- Captions and titles take only bare placeholders, per kind (`themes.PLACEHOLDERS`: `{name}` `{place}` `{amount}` `{count}`; `{{`/`}}` are braces), checked in `ThemeEvent.clean` (`themes.template_error`). The server never formats them; `assets/js/tablo.js` substitutes and sets `textContent`. `seconds` 0 only for the winner (stays until the game ends) and the break; the break is always `fullscreen`.
+- Presets (`OverlayStyle`, CSS only, `tablo-overlay-<value>` on `body`): `stamp` (default, club poster style), `band`, `headline`, `lower-third` (the clock stays visible), `fullscreen`.
+- Defaults (`themes.DEFAULTS`): no active theme, or a kind without a row, gets the club's plain announcement for busts and the winner; rebuys and the break screen are off until a theme turns them on.
+- Events (`themes.table_events`): from `LiveAction` rows after the display's cursor, ELIMINATE and REBUY only. `LiveAction.place` (stored by `actions.eliminate`, the players still in) decides the kind: place `paid_places + 1` is `bubble_burst`, a prize place `bust_itm`, else `bust`; place 2 adds `winner` (the one player still in). An undone action, or a bust reversed by "вернуть" (the result's `out_order` no longer the one it gave), is never sent. `{amount}` and `{count}` are for rebuys only: busts and the winner carry no prize amount, since payouts are known only on the results screen (the bank split among the places actually filled in, editable). Presses wait `THEME_EVENT_HOLD_SECONDS` (0) and are dropped after `THEME_EVENT_MAX_AGE_SECONDS` (the winner is not). Per game, actions are serialized by the game row lock, so a pk cursor never skips one.
+- Payload: the state takes `?after=<cursor>` and adds `cursor`, `events` (`id`, `kind`, `name` = `Player.label`, `place`, `amount`, `count`, `note`: nothing else) and `theme`; without `after` the state is as before (the organizer's timer buttons). The page renders `data-event-cursor` (the latest action), so nothing is replayed; a garbage cursor gets the latest. Public state with a winner: 7 queries (`test_theme_views.py`).
+- Display: events play one at a time; a winner with 0 seconds stays until a sync shows more than one player in (an undo) and through the 404 once the game is finished. Sounds: `/tablo/sound/<sha256>/` (public, cached for good, ETag), fetched by `tablo.js` and played through Web Audio only after the sound prompt was tapped (`connect-src 'self'`; no CSP change). The break screen rotates the tips every `THEME_TIP_SECONDS`. Under reduced motion the entrances are off (`prefers-reduced-motion: no-preference` gates them).
+- Preview: "Проверить на табло" (Unfold detail action) opens `<ADMIN_URL>live/themes/<pk>/preview/` (organizers, strict CSP): the display with an invented board, a button per kind and the break; any theme, active or not; nothing is written.
+- Tests: `src/live/tests/test_themes.py`, `test_theme_views.py`, `test_browser_theme.py`, `test_migrations.py`.
 
 ## Achievements
 

@@ -130,6 +130,16 @@ After the first real live game (18.10.2026).
 - [x] "Не садился": remove a seated player who never played, also after the start
 - [x] Bust confirmation near the money (place `<= paid_places + 1`), refused if the place changed meanwhile
 
+## Stage 7d. Theme nights on the display (branch `theme-nights`)
+
+The first slice of Табло 2.0, for the first theme evening (the display's check at a real table).
+
+- [x] Admin: themes (one active), an event row per kind with title, caption (placeholders checked), preset, seconds and an uploaded sound; sounds in the database (mp3/ogg/wav, 1 MB)
+- [x] Events from the action log after the display's cursor: bust, prize-place bust, bubble burst, winner, rebuy; undone or reversed presses never sent; public fields only
+- [x] Display: overlays one at a time in five CSS presets, the club's own stamp without a theme, the winner through the end of the game and gone after an undo, the break screen with rotating tips, sounds after the tap, reduced motion
+- [x] Preview page from the theme's admin page, with invented values
+- [x] Russo One and the `gold` token for the overlays only
+
 ## Stage 8. Club fund (cancelled)
 
 Cancelled 2026-10-27: there is no club pot; the cash leftover is a remainder dropped at the end of the evening (`CLAUDE.md`, Core principles). The text below is kept as history.

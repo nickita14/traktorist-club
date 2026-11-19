@@ -36,8 +36,9 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 
 ### Wave 3. The evening, live
 
-- Blind timer and display (табло) checked at a real table (the live screen itself was checked at a real game in October 2026). Blocks the next item.
-- Табло 2.0: bust announcement with the place, a bubble banner when one player is left before the money, bank and players left, a winner screen.
+- Theme nights, next steps found while building them: an add-on announcement (ADDON_ON is not an event yet), a per-theme accent color for the presets, and a sound for the level change in place of the beep.
+- Blind timer and display (табло) checked at a real table (the live screen itself was checked at a real game in October 2026); the first theme evening is that check.
+- Табло 2.0: bust announcement with the place, a bubble banner when one player is left before the money, bank and players left, a winner screen. First slice (bust with the place, bubble burst, winner, themes) done in `theme-nights`; left: the bubble banner while one player is left before the money, bank and players left.
 - "Итоги вечера": a phone screen right after a game ends (dark table, a falling chip, the winner large, places appearing one by one, a badge stamp). Poster style per `CLAUDE.md` "Celebration pages"; it doubles as the final screen of Табло 2.0.
 - Live cash game closed the next day: the 2026 audit found cash games finished about 20 hours after the start, so "ЗАВЕРШИТЬ" was pressed the next afternoon. Any duration figure must not trust the finish time of a cash game; consider a reminder on the live index for a game left open overnight.
 - "Хроника вечера" on the game sheet: a timeline of seats, top-ups, rebuys and exits from the live action log (live games only, public fields only). Mockup first.
@@ -63,7 +64,8 @@ Newest first. Dates are local (Europe/Chisinau), from the merge commits. Dependa
 
 | Item | Branch | Merged | PR |
 | --- | --- | --- | --- |
-| Season 2027 alongside the sheet: a new season (live screen, import, an organizer in the admin) copies the rules and "Ведётся в таблице" from the previous year's season of its kind; a season without a finished game is kept out of `/`, the header nav and the year switchers; `Season.sheet_title` maps a tab with any name to its season (superusers) | `season-2027` | | |
+| Theme nights (Тематика) on the display (табло): admin themes with captions, overlay presets and uploaded sounds (stored in the database); bust with the place, prize-place bust, bubble burst, winner, rebuy and the break screen with tips, from the action log; the club's own stamp when no theme is active; a preview page (the first slice of Табло 2.0) | `theme-nights` | | |
+| Season 2027 alongside the sheet: a new season (live screen, import, an organizer in the admin) copies the rules and "Ведётся в таблице" from the previous year's season of its kind; a season without a finished game is kept out of `/`, the header nav and the year switchers; `Season.sheet_title` maps a tab with any name to its season (superusers) | `season-2027` | 2026-11-19 | #61 |
 | "Годовой отчёт за 2026" (форма № 7): club and player pages in the poster style, the release (organizers close the year in "Годовые отчёты", 1 January fallback, preliminary pages for organizers only), `club.YearClosure`, links from the card, `/honors/` and the standings | `year-report-pages` | 2026-11-16 | #60 |
 | Data check for the year report on production data: which year-report figures 2026 data can produce; result recorded in `PLAN.md` Stage 10 (duration, «Меценат» and hosts dropped; bubble only where every place is known) | `year-report` | 2026-11-16 | #59 |
 | Design decisions in the docs: "Celebration pages" in `CLAUDE.md` (poster style, `poster-red`, motion) and the year report, front page and "Итоги вечера" items | `design-decisions` | 2026-11-16 | #58 |
