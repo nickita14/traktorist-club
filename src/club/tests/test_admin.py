@@ -318,6 +318,17 @@ class TestSheetManaged:
         assert 'name="sheet_managed"' not in response.text
         assert "ведётся в таблице" in response.text.lower()
 
+    def test_superuser_can_name_the_tab(self, admin_client):
+        season = make_season()
+        response = admin_client.get(reverse("admin:club_season_change", args=[season.pk]))
+        assert 'name="sheet_title"' in response.text
+
+    def test_organizer_only_sees_the_tab_name(self, organizer_client):
+        season = make_season(sheet_title="Турниры 25")
+        response = organizer_client.get(reverse("admin:club_season_change", args=[season.pk]))
+        assert 'name="sheet_title"' not in response.text
+        assert "Турниры 25" in response.text
+
 
 class TestSeasonAddKeepsTheSheet:
     """A season an organizer adds keeps the previous one's sheet flag (they cannot set it)."""

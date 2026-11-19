@@ -74,6 +74,12 @@ class SheetPlan:
     nothing_selected: bool = False
 
 
+def sheet_titles() -> dict[str, tuple[int, str]]:
+    """The explicitly named tabs (Season.sheet_title) for importer.workbook.season_of."""
+    seasons = Season.objects.exclude(sheet_title="").values_list("sheet_title", "year", "kind")
+    return {title: (year, kind) for title, year, kind in seasons}
+
+
 def plan_sheet(sheet: ParsedSheet, dates: set[datetime.date] | None = None) -> SheetPlan:
     """Apply the guards, then the date selection, to one sheet before anything is written."""
     season = Season.objects.filter(year=sheet.year, kind=sheet.kind).first()

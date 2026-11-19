@@ -11,7 +11,7 @@ from django.db import transaction
 
 from importer.aliases import AliasMap, upsert_aliases
 from importer.report import ImportReport, SheetReport
-from importer.sync import ImportProblem, import_workbook
+from importer.sync import ImportProblem, import_workbook, sheet_titles
 from importer.verify import verify
 from importer.workbook import ParsedWorkbook, parse_workbook
 
@@ -59,7 +59,7 @@ def run_import(
     back and raises ReportChanged. With ``dates`` (empty means all), only games on those dates
     are synced; a date that is no game in the chosen sheets raises UnknownDates.
     """
-    parsed = parse_workbook(source, sheets)
+    parsed = parse_workbook(source, sheets, sheet_titles())
     selected = sorted(set(dates)) if dates else None
     report = ImportReport(
         dry_run=dry_run,

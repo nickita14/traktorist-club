@@ -5,12 +5,17 @@ Layout (the same on every import sheet):
   every second column; the column after each date holds a net formula and is not data.
 - Each player takes two rows: the name row (column B, buy-in under the date) and the payout row.
 - Player rows end at the first row where column B or D reads ``Закупка``.
+
+A tab holds a season when its name is ``ТУРyyyy`` / ``КЭШyyyy`` (optionally ``_new``) or the exact
+title a season names (``Season.sheet_title``, passed in as ``titles``); the year of the dates
+comes from that season.
 """
 
 import datetime
 import io
 import re
 import zipfile
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -100,21 +105,36 @@ class ParsedWorkbook:
     skipped: list[str]
 
 
-def season_of(title: str) -> tuple[int, str] | None:
+# Explicit tab names: title -> (year, kind), from Season.sheet_title (importer.sync.sheet_titles).
+SheetTitles = Mapping[str, tuple[int, str]]
+
+
+def season_of(title: str, titles: SheetTitles | None = None) -> tuple[int, str] | None:
+    """The (year, kind) a tab holds: its explicit title first, else a ТУРyyyy / КЭШyyyy name,
+    unless that season reads another, explicitly named tab (an old tab left in the workbook)."""
+    titles = titles or {}
+    if title in titles:
+        return titles[title]
     match = SHEET_NAME_RE.match(title)
     if not match:
         return None
-    return int(match.group(2)), KIND_BY_PREFIX[match.group(1)]
+    season = int(match.group(2)), KIND_BY_PREFIX[match.group(1)]
+    return None if season in titles.values() else season
 
 
 def clean_name(value: str) -> str:
     return " ".join(value.split())
 
 
-def parse_workbook(source: str | Path | bytes, only: list[str] | None = None) -> ParsedWorkbook:
+def parse_workbook(
+    source: str | Path | bytes,
+    only: list[str] | None = None,
+    titles: SheetTitles | None = None,
+) -> ParsedWorkbook:
     """Parse every import sheet (or only the named ones); raise SheetError listing all problems.
 
     ``source`` is a path or the file's bytes (the sheet sync keeps fetched bytes, never a file).
+    ``titles`` maps explicitly named tabs to their seasons (see ``season_of``).
     """
     formulas = _load(source)
     cached = _load(source, data_only=True)
@@ -124,14 +144,14 @@ def parse_workbook(source: str | Path | bytes, only: list[str] | None = None) ->
         unknown = [name for name in only if name not in formulas.sheetnames]
         errors += [f"{name}: no such sheet" for name in unknown]
         errors += [
-            f"{name}: not an import sheet (expected ТУРyyyy or КЭШyyyy)"
+            f"{name}: not an import sheet (expected ТУРyyyy, КЭШyyyy or a season's sheet title)"
             for name in only
-            if name not in unknown and season_of(name) is None
+            if name not in unknown and season_of(name, titles) is None
         ]
 
     sheets, skipped, seen = [], [], {}
     for ws in formulas.worksheets:
-        season = season_of(ws.title)
+        season = season_of(ws.title, titles)
         if season is None:
             skipped.append(ws.title)
             continue
@@ -151,9 +171,10 @@ def parse_workbook(source: str | Path | bytes, only: list[str] | None = None) ->
     return ParsedWorkbook(sheets=sheets, skipped=skipped)
 
 
-def import_sheet_titles(source: str | Path | bytes) -> list[str]:
+def import_sheet_titles(source: str | Path | bytes, titles: SheetTitles | None = None) -> list[str]:
     """The import sheets of a workbook, in order (old versions and other sheets left out)."""
-    return [title for title in _load(source, read_only=True).sheetnames if season_of(title)]
+    sheetnames = _load(source, read_only=True).sheetnames
+    return [title for title in sheetnames if season_of(title, titles)]
 
 
 def _load(source: str | Path | bytes, **options) -> openpyxl.Workbook:

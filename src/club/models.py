@@ -165,6 +165,18 @@ class Season(models.Model):
             "Импорт из таблицы обновляет игры этого сезона. Игры с живого экрана он не трогает."
         ),
     )
+    # The tab of the club spreadsheet that holds this season, when its name does not follow
+    # ТУРyyyy / КЭШyyyy (importer.workbook.season_of). Not copied to a new season.
+    sheet_title = models.CharField(
+        "лист в таблице",
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=(
+            "Точное название листа, если оно не вида ТУР2027 или КЭШ2027. "
+            "Пусто: лист ищется по такому названию."
+        ),
+    )
 
     class Meta:
         verbose_name = "сезон"
@@ -201,6 +213,12 @@ class Season(models.Model):
                 condition=Q(payout_weights__regex=r"^[1-9][0-9]*(,[1-9][0-9]*)*$"),
                 name="season_payout_weights_format",
             ),
+            models.UniqueConstraint(
+                fields=["sheet_title"],
+                condition=~Q(sheet_title=""),
+                name="season_sheet_title_unique",
+                violation_error_message="Этот лист уже указан у другого сезона.",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -235,6 +253,8 @@ class Season(models.Model):
     def clean(self):
         super().clean()
         self._clean_payout_weights()
+        # A tab name is matched exactly; stray spaces typed around it never belong to it.
+        self.sheet_title = self.sheet_title.strip()
         if self.pk is None:
             return
         # The other side of Game.clean: a game's date lies in its season's year, so the year of
