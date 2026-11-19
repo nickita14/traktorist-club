@@ -685,8 +685,10 @@ Empty `GOOGLE_SHEET_ID` turns the feature off; the page then says so and offers 
 
 Other details:
 - **Pre-deploy dumps.** A deploy with pending migrations saves a dump to `/var/backups/traktorist/pre-deploy/` before migrating. The last 5 are kept.
-- **Image updates.** Each deploy pulls newer `python:3.13-slim`, `postgres:17` and `caddy:2-alpine` images. Unchanged images and code leave the running containers alone, so a repeated deploy restarts nothing.
-  - Base images only change on a deploy. The `image-scan` workflow (Trivy, weekly and on every push) shows when the base has a fixable HIGH/CRITICAL issue. Once Docker has rebuilt `python:3.13-slim` with the fix, run `deploy/deploy.sh` to rebuild the current `main` on it. A finding that the latest base does not fix yet waits for it: the image does not run `apt-get upgrade`.
+- **Image updates.** Each deploy pulls newer `python:3.13-slim`, `postgres:17` and `caddy:2-alpine` images. Unchanged images and code leave the running containers alone, so a repeated deploy on the same day restarts nothing.
+  - Debian security fixes: the runtime stage of the `Dockerfile` runs `apt-get upgrade`, so a fix Debian has published reaches the image without waiting for Docker to rebuild `python:3.13-slim`. `server-deploy.sh` passes `APT_REFRESH` (today's date) to the build: the first deploy of a day rebuilds that layer (about half a minute) and restarts the app once with the new image; later deploys that day reuse it.
+  - **The build needs `deb.debian.org`** (the Debian mirrors, over the network from the server). If they cannot be reached, the build fails (`apt-get update` runs with `Error-Mode=any`, so a failed fetch is an error, not a warning) and the deploy stops right there: the running containers are untouched, nothing is migrated, started or pruned, and the deploy (CI job or `deploy.sh`) exits non-zero. The server checkout is already at the new commit; run the deploy again once the mirrors answer (`deploy/tests/test_server_deploy.py` covers the stop).
+  - Updates only reach the server on a deploy. The `image-scan` workflow (Trivy, weekly and on every push) shows a fixable HIGH/CRITICAL issue: if a deploy has happened since the fix was published, the next build has it; otherwise run `deploy/deploy.sh` to rebuild the current `main`. A finding Debian has not fixed yet is not reported (`ignore-unfixed`).
   - The runtime image has no pip. The app runs from `/opt/venv`, built by uv from `uv.lock`. Never `pip install` into a container: change the lockfile and deploy.
 - **Server edits.** Don't edit files in `/srv/traktorist` on the server (except `.env`): `deploy.sh` and CI deploys refuse to run while the checkout has local changes. `git -C /srv/traktorist status` shows them.
 - **Changing `.env`.** Run `dc up -d` afterwards. Compose recreates the containers whose settings changed.
@@ -832,7 +834,7 @@ git fetch origin
 "${ci[@]}" "$host" "$(git rev-parse origin/main)" # a real deploy: "==> At ..." and the usual output
 ```
 
-The last command redeploys the commit that is already running. That is harmless: it builds from cache and restarts nothing. **Server:** the requests are logged:
+The last command redeploys the commit that is already running. That is harmless: it builds from cache and restarts nothing (unless it is the day's first deploy, which rebuilds the apt layer: see "Image updates" in section 9). **Server:** the requests are logged:
 
 ```bash
 journalctl -t traktorist-ci-deploy -n 10

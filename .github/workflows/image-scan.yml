@@ -1,10 +1,11 @@
 name: Image scan
 
-# Advisory: known fixable HIGH/CRITICAL vulnerabilities in the production image. New ones land in
-# the Debian base image independently of our code, so this blocks neither merges nor deploys.
-# Weekly as well as on pushes, so a new base-image CVE shows up without a push. A red run: once
-# the fix is in a rebuilt python:3.13-slim, deploy/deploy.sh rebuilds the current main on it
-# (docs/deploy.md, "Image updates"). Rerun by hand from the Actions tab (workflow_dispatch).
+# Advisory: known fixable HIGH/CRITICAL vulnerabilities in the production image. New ones land
+# independently of our code, so this blocks neither merges nor deploys. The Dockerfile's runtime
+# stage runs apt-get upgrade, so Debian fixes are in every fresh build; the server gets them on its
+# next deploy (deploy/deploy.sh rebuilds the current main; docs/deploy.md, "Image updates").
+# Weekly as well as on pushes, so a new CVE shows up without a push. Rerun by hand from the
+# Actions tab (workflow_dispatch).
 
 on:
   push:
