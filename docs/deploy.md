@@ -748,9 +748,11 @@ Measured on the production image and compose file running locally with test data
 | Ubuntu 24.04 (systemd, journald, sshd, cron, timers) | not measured | 150-200 MB |
 | dockerd and containerd | not measured | 80-100 MB |
 | `db`: Postgres, `shared_buffers=128MB`, up to 20 connections | 42 MB idle | 180 MB once the buffers fill |
-| `web`: gunicorn master and 2 workers, `preload_app` | 98 MB after 60 requests | 200 MB (workers recycle every ~1000 requests) |
+| `web`: gunicorn master and 2 workers, `preload_app` | 98 MB after 60 requests | 200 MB (workers recycle every 20000-22000 requests) |
 | `caddy` | 15 MB | 40 MB |
 | **Total in steady state** | | **650-720 MB** |
+
+**An open display (табло)** syncs every second (`TIMER_SYNC_SECONDS`): one request with 6 queries and a 3.3 KB JSON answer (about 0.5 KB after Caddy's compression), 7-8 ms of Django time measured locally (2026-11, a game with 12 players, 15 levels and an active theme; a worker's memory stayed flat over 3000 of them). Two displays over a 4-hour evening are about 29000 requests: 2-3% of one worker, a dozen small queries a second for Postgres, about 6 MB of gunicorn access log (Docker keeps 3 x 10 MB per container, so older lines roll out after a few evenings), and at most one recycle per worker (`deploy/gunicorn.conf.py`).
 
 That leaves about 300 MB for the page cache. Swap covers the peaks: an image build (uv, the Tailwind binary) or a Postgres restart during a deploy. Swap use above a few hundred MB during normal traffic, seen with `free -m`, means it's time to drop to one gunicorn worker or move to a 2 GB plan.
 
