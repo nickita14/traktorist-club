@@ -66,6 +66,8 @@ class GameGone(Exception):
 class Outcome:
     action: LiveAction
     replayed: bool = False
+    # An undo that restored only part of the action: what the organizer should know.
+    note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -566,9 +568,35 @@ def advance_stage(
             before["started_at"] = game.started_at.isoformat()
             after["started_at"] = timezone.now().isoformat()
         Game.objects.filter(pk=game.pk).update(**after)
+        if (from_stage, target) == (LiveStage.ADDON, LiveStage.FINAL):
+            moved = _leave_addon_break(game)
+            if moved is not None:
+                row, before["timer"], after["timer"] = moved
+                summary = f"{summary}, таймер: {_row_name(row)}"
         return Change(ActionKind.STAGE, summary, before=before, after=after)
 
     return perform(game_pk, key, user, operation)
+
+
+def _leave_addon_break(game: Game) -> tuple[clock.Row, dict, dict] | None:
+    """The final stage starts after the add-on: a timer still on the add-on break moves to the
+    next row, starting now (a paused timer stays paused, as with "УР. ▶"). Returns the new row
+    and the timer's snapshots, or None when the timer is elsewhere (or there is none)."""
+    timer = BlindTimer.objects.filter(game=game).first()
+    if timer is None:
+        return None
+    now = timezone.now()
+    current = _clock(timer, now)
+    index = current.index + 1
+    if not current.at_addon_break or index >= len(current.rows):
+        return None
+    row = current.rows[index]
+    before = _timer_snapshot(timer)
+    BlindTimer.objects.filter(pk=timer.pk).update(
+        position=row.position, started_at=timer.paused_at or now
+    )
+    timer.refresh_from_db(fields=TIMER_FIELDS)
+    return row, before, _timer_snapshot(timer)
 
 
 def save_results(
@@ -1044,13 +1072,14 @@ def undo(action_pk: int, user) -> Outcome:
             raise RuleError("Это действие не отменяется.")
         if timezone.now() - action.created_at > UNDO_WINDOW:
             raise RuleError("Отменить уже нельзя: прошло слишком много времени.")
-        _undo_change(game, action)
+        note = _undo_change(game, action)
         action.undone_at = timezone.now()
         action.save(update_fields=["undone_at"])
-        return Outcome(action)
+        return Outcome(action, note=note)
 
 
 CHANGED_SINCE = "Отменить нельзя: после этого запись уже изменили."
+TIMER_LEFT = "Этап вернули, таймер оставили как есть."
 
 
 def _superseded(game: Game, action: LiveAction) -> bool:
@@ -1079,7 +1108,24 @@ def _reseat(game: Game, before: dict) -> int:
     return 1
 
 
-def _undo_change(game: Game, action: LiveAction) -> None:
+def _undo_stage_timer(game: Game, action: LiveAction) -> str | None:
+    """The timer part of a stage change that left the add-on break: restored while no timer
+    action came after it (and was not undone), else left as it is, and the organizer is told.
+    The stage itself is always restored: there is no other way back from the final stage."""
+    later = game.live_actions.filter(
+        pk__gt=action.pk, undone_at__isnull=True, kind__in=TIMER_KINDS
+    ).exists()
+    if not later:
+        restored = BlindTimer.objects.filter(game=game, **action.after["timer"]).update(
+            **action.before["timer"]
+        )
+        if restored:
+            return None
+    return TIMER_LEFT
+
+
+def _undo_change(game: Game, action: LiveAction) -> str | None:
+    """Restore ``action``; returns a note when only part of it could be restored."""
     if action.kind == ActionKind.STAGE:
         # Timer presses in between do not touch the stage.
         latest = (
@@ -1090,7 +1136,11 @@ def _undo_change(game: Game, action: LiveAction) -> None:
         )
         if latest != action:
             raise RuleError(CHANGED_SINCE)
-        changed = Game.objects.filter(pk=game.pk, **action.after).update(**action.before)
+        before = {field: value for field, value in action.before.items() if field != "timer"}
+        after = {field: value for field, value in action.after.items() if field != "timer"}
+        changed = Game.objects.filter(pk=game.pk, **after).update(**before)
+        if changed and "timer" in action.before:
+            return _undo_stage_timer(game, action)
     elif action.kind in TIMER_KINDS:
         changed = BlindTimer.objects.filter(game=game, **action.after).update(**action.before)
     elif action.kind == ActionKind.SEAT:
@@ -1107,3 +1157,4 @@ def _undo_change(game: Game, action: LiveAction) -> None:
             changed = 0  # the old out_order was taken by someone else meanwhile
     if not changed:
         raise RuleError(CHANGED_SINCE)
+    return None
