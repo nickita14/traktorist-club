@@ -367,6 +367,41 @@
     for (const shown of Object.values(theme.events || {})) {
       loadSound(shown.sound);
     }
+    breakArt();
+  }
+
+  // The theme's accent and cover on the break screen. The cover is loaded as soon as the theme
+  // names it (its URL is its hash, cached for good), so it is ready when the break starts;
+  // without a cover, or if it fails to load, the break screen keeps its plain layout.
+  let coverFailed = "";
+
+  function breakArt() {
+    const screen = find("break-screen");
+    const cover = find("break-cover");
+    if (theme.accent) {
+      screen.style.setProperty("--theme-accent", theme.accent);
+    } else {
+      screen.style.removeProperty("--theme-accent");
+    }
+    const url = theme.cover || "";
+    if (url && cover.getAttribute("src") !== url) {
+      cover.src = url;
+    } else if (!url && cover.hasAttribute("src")) {
+      cover.removeAttribute("src");
+    }
+    const split = Boolean(url) && coverFailed !== url;
+    cover.hidden = !split;
+    screen.classList.toggle("tablo-break-screen-split", split);
+  }
+
+  function watchCover() {
+    const cover = find("break-cover");
+    cover?.addEventListener("error", () => {
+      coverFailed = cover.getAttribute("src") || "";
+      if (theme) {
+        breakArt();
+      }
+    });
   }
 
   function showTip(tips) {
@@ -405,8 +440,10 @@
     text("break-screen-theme", theme.name || "");
     text("break-screen-title", substitute(shown.title, {}) || row.label);
     text("break-screen-clock", clockApi.format(clock.remaining));
+    show("break-screen-addon", Boolean(row.addon));
     const next = clock.nextLevel;
-    text("break-screen-next", next ? `Дальше: уровень ${next.number} · ${blinds(next)}` : "");
+    text("break-screen-next-label", next ? `Дальше: уровень ${next.number} · ` : "");
+    text("break-screen-next-blinds", next ? blinds(next) : "");
     if (tips.length && localNow() - tipShownAt >= TIP_MS) {
       tipIndex += 1;
       showTip(tips);
@@ -696,6 +733,7 @@
     }
   });
 
+  watchCover();
   keepAwake();
   sync();
   setInterval(render, 250);

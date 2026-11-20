@@ -31,7 +31,7 @@ from live import manifest as app_manifest
 from live.access import is_organizer, organizer_required
 from live.actions import GameGone, Outcome, RuleError
 from live.forms import ExitForm, NewPlayerForm, StartForm, parse_int
-from live.models import BlindTimer, EventKind, LiveAction, ThemeSound
+from live.models import BlindTimer, EventKind, LiveAction, ThemeCover, ThemeSound
 
 SEAT_CANDIDATES = 30
 # Quick-add buttons on the lineup before anything is searched.
@@ -660,21 +660,33 @@ def tablo_public_state(request, token: str):
     return _no_index(JsonResponse(state))
 
 
-@require_GET
-def tablo_sound(request, digest: str):
-    """A theme sound by its hash, for the display and the admin. The URL changes with the bytes,
-    so it is cached for good; nothing in it names a game or a display link."""
+def _by_hash(request, model, digest: str) -> HttpResponse:
+    """A stored file by its hash, cached for good: the URL changes with the bytes. Several rows
+    may hold the same bytes (two themes with one cover), so any of them will do."""
     etag = f'"{digest}"'
     if request.headers.get("If-None-Match") == etag:
         response = HttpResponse(status=304)
     else:
-        sound = ThemeSound.objects.filter(sha256=digest).only("data", "content_type").first()
-        if sound is None:
+        row = model.objects.filter(sha256=digest).only("data", "content_type").first()
+        if row is None:
             raise Http404
-        response = HttpResponse(bytes(sound.data), content_type=sound.content_type)
+        response = HttpResponse(bytes(row.data), content_type=row.content_type)
     response["ETag"] = etag
     response["Cache-Control"] = "public, max-age=31536000, immutable"
     return _no_index(response)
+
+
+@require_GET
+def tablo_sound(request, digest: str):
+    """A theme sound by its hash, for the display and the admin. Nothing in the URL names a game
+    or a display link."""
+    return _by_hash(request, ThemeSound, digest)
+
+
+@require_GET
+def tablo_cover(request, digest: str):
+    """A theme's break screen image by its hash, for the display and the admin."""
+    return _by_hash(request, ThemeCover, digest)
 
 
 # The theme preview ("Проверить" on a theme in the admin): the display with an invented board and

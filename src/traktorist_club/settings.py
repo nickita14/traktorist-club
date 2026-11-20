@@ -224,6 +224,8 @@ THEME_EVENT_MAX_AGE_SECONDS = 60
 THEME_TIP_SECONDS = 12
 # Uploaded theme sounds (mp3, ogg, wav) are stored in the database: keep them small.
 THEME_SOUND_MAX_BYTES = 1024 * 1024
+# A theme's break screen image (Обложка): jpg, png or webp, stored in the database.
+THEME_COVER_MAX_BYTES = 3 * 1024 * 1024
 
 # Behind Caddy in production: the client address is the last X-Forwarded-For entry, which Caddy
 # sets itself (a client-sent value is replaced), and the app port is reachable only through Caddy.

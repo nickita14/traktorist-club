@@ -38,6 +38,7 @@ urlpatterns = [
     path("prokhodnaya/vykhod/", auth.logout_view, name="logout"),
     # The blind timer display through its secret link: read-only, no login, outside ADMIN_URL.
     re_path(r"^tablo/sound/(?P<digest>[0-9a-f]{64})/$", live_views.tablo_sound, name="tablo_sound"),
+    re_path(r"^tablo/cover/(?P<digest>[0-9a-f]{64})/$", live_views.tablo_cover, name="tablo_cover"),
     path("tablo/<str:token>/", live_views.tablo_public, name="tablo_public"),
     path("tablo/<str:token>/state/", live_views.tablo_public_state, name="tablo_public_state"),
     # The live game screens sit under the admin prefix (organizers only), before the admin's
