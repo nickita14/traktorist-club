@@ -1,9 +1,12 @@
 """Theme nights on the display (табло) in Chromium: announcements from the phone's presses, one
-after another, the lower third over a visible clock, the break screen's tips, no replay after a
-reload, the winner through the end of the game and gone after an undo, reduced motion, sound
-only after the tap, and the admin's preview page. Every page is checked for CSP violations."""
+after another and within a second on both display routes, the lower third over a visible clock,
+the break screen's tips, no replay after a reload, the winner through the end of the game and gone
+after an undo, reduced motion, sound only after the tap, each sound as long as its overlay, the
+break music looping while the break runs, and the admin's preview page. Every page is checked for
+CSP violations."""
 
 import io
+import re
 import wave
 
 import pytest
@@ -23,14 +26,38 @@ expect = sync_api.expect
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-# Counts the theme sounds that started playing (Web Audio buffer sources).
-COUNT_SOUNDS = """
-window.soundsStarted = 0;
+# Records every theme sound (Web Audio buffer source) that started: whether it loops, when it was
+# told to stop (seconds after the call: the fade) and whether it ended.
+RECORD_SOUNDS = """
+window.sounds = [];
 const start = AudioBufferSourceNode.prototype.start;
 AudioBufferSourceNode.prototype.start = function (...args) {
-  window.soundsStarted += 1;
+  const entry = { loop: this.loop, stop: null, ended: false };
+  window.sounds.push(entry);
+  this.recorded = entry;
+  this.addEventListener("ended", () => { entry.ended = true; });
   return start.apply(this, args);
 };
+const stop = AudioBufferSourceNode.prototype.stop;
+AudioBufferSourceNode.prototype.stop = function (when = 0) {
+  if (this.recorded) {
+    this.recorded.stop = when ? when - this.context.currentTime : 0;
+  }
+  return stop.call(this, when);
+};
+"""
+
+# Whether the "нет связи" mark was ever shown since the page loaded.
+WATCH_OFFLINE = """
+window.offlineShown = false;
+document.addEventListener("DOMContentLoaded", () => {
+  const mark = document.querySelector("[data-offline]");
+  new MutationObserver(() => {
+    if (!mark.hidden) {
+      window.offlineShown = true;
+    }
+  }).observe(mark, { attributes: true, attributeFilter: ["hidden"] });
+});
 """
 
 
@@ -38,15 +65,46 @@ AudioBufferSourceNode.prototype.start = function (...args) {
 MORE = ("Чарли", "Дельта", "Эхо", "Фокстрот", "Гольф", "Хотел")
 
 
-def wav() -> bytes:
-    """A tenth of a second of silence: a sound Chromium can decode."""
+def wav(seconds: float = 0.1) -> bytes:
+    """Silence of that length: a sound Chromium can decode."""
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as file:
         file.setnchannels(1)
         file.setsampwidth(2)
         file.setframerate(8000)
-        file.writeframes(bytes(1600))
+        file.writeframes(bytes(2 * round(8000 * seconds)))
     return buffer.getvalue()
+
+
+def sound_page(browser, live_server, path):
+    """A display with the sound recorder, sound already switched on (the tap)."""
+    context = browser.new_context(**LAPTOP)
+    context.add_init_script(COLLECT_CSP_VIOLATIONS)
+    context.add_init_script(RECORD_SOUNDS)
+    page = context.new_page()
+    page.goto(live_server.url + path)
+    page.mouse.click(5, 5)  # any tap switches sound on
+    until(page, "window.sounds !== undefined")
+    return page
+
+
+def until(page, expression, timeout=5000):
+    """Poll ``expression`` until it is true. Not wait_for_function: under the strict CSP its
+    polling evaluates a string, which 'unsafe-eval' would have to allow."""
+    for _ in range(timeout // 100):
+        if page.evaluate(expression):
+            return
+        page.wait_for_timeout(100)
+    raise AssertionError(f"still false after {timeout} ms: {expression}")
+
+
+def sounds(page):
+    return page.evaluate("window.sounds")
+
+
+def faded(entry) -> bool:
+    """Told to stop with the fade (about 300 ms), not cut."""
+    return entry["stop"] is not None and 0.2 <= entry["stop"] <= 0.35
 
 
 def tablo_url(game):
@@ -162,7 +220,8 @@ def test_break_screen_rotates_the_tips(laptop, fast_sync, settings):  # noqa: F8
     expect(screen).to_be_visible()
     expect(page.locator("[data-break-screen-title]")).to_have_text("Перекур")
     expect(page.locator("[data-break-screen-theme]")).to_have_text("Проверочная")
-    expect(page.locator("[data-break-screen-clock]")).to_have_text("00:50", timeout=3000)
+    # A running clock: started with 50 s left, a few seconds gone by the time the page shows it.
+    expect(page.locator("[data-break-screen-clock]")).to_have_text(re.compile(r"^00:[45]\d$"))
     expect(page.locator("[data-tip]")).to_have_text("первый")
     expect(page.locator("[data-tip-count]")).to_have_text("1 / 2")
     expect(page.locator("[data-tip]")).to_have_text("второй", timeout=3000)
@@ -238,19 +297,175 @@ def test_sound_only_after_the_tap(browser, live_server, fast_sync):  # noqa: F81
     game, results = table(*MORE)
     context = browser.new_context(**LAPTOP)
     context.add_init_script(COLLECT_CSP_VIOLATIONS)
-    context.add_init_script(COUNT_SOUNDS)
+    context.add_init_script(RECORD_SOUNDS)
     page = context.new_page()
     try:
         page.goto(live_server.url + tablo_url(game))
         bust(game, results[0])
         expect(page.locator("[data-overlay-caption]")).to_have_text("Альфа")
         page.wait_for_timeout(500)
-        assert page.evaluate("window.soundsStarted") == 0
+        assert page.evaluate("window.sounds.length") == 0
 
         page.locator("[data-sound-prompt]").click()
         bust(game, results[1])
         expect(page.locator("[data-overlay-caption]")).to_have_text("Браво", timeout=4000)
-        page.wait_for_function("window.soundsStarted === 1")
+        until(page, "window.sounds.length === 1")
+        assert_clean(page)
+    finally:
+        context.close()
+
+
+def test_sound_ends_with_its_overlay(browser, live_server):
+    """A 5 s file on 2 s overlays: each fades out when its overlay ends, the next one's start
+    included."""
+    sound = themes.store_sound("long.wav", wav(5), "audio/wav")
+    theme(bust={"title": "Мимо", "caption": "{name}", "seconds": 2, "sound": sound})
+    game, results = table(*MORE)
+    page = sound_page(browser, live_server, tablo_url(game))
+    try:
+        bust(game, results[0])
+        bust(game, results[1])
+        caption = page.locator("[data-overlay-caption]")
+        expect(caption).to_have_text("Альфа")
+        until(page, "window.sounds.length === 1")
+        assert sounds(page)[0]["stop"] is None  # plays while its overlay is up
+
+        expect(caption).to_have_text("Браво", timeout=4000)
+        until(page, "window.sounds.length === 2")
+        first, second = sounds(page)
+        assert faded(first)
+        assert second["stop"] is None
+
+        expect(overlay(page)).to_be_hidden(timeout=4000)
+        assert faded(sounds(page)[1])
+        assert not any(entry["loop"] for entry in sounds(page))
+        assert_clean(page)
+    finally:
+        page.context.close()
+
+
+def test_winner_sound_plays_once_to_the_end(browser, live_server):
+    sound = themes.store_sound("fanfare.wav", wav(0.5), "audio/wav")
+    theme(
+        bust_itm={"title": "Призёр", "caption": "{name}", "seconds": 1},
+        winner={"title": "Победитель", "caption": "{name}", "seconds": 0, "sound": sound},
+    )
+    game, results = table()  # Альфа and Браво: the first bust leaves the winner
+    page = sound_page(browser, live_server, tablo_url(game))
+    try:
+        bust(game, results[0])
+        expect(page.locator("[data-overlay-title]")).to_have_text("Победитель", timeout=4000)
+        until(page, "window.sounds.some((entry) => entry.ended)", timeout=4000)
+        (entry,) = [entry for entry in sounds(page) if entry["ended"]]
+        assert entry["stop"] is None and not entry["loop"]
+        expect(overlay(page)).to_be_visible()
+        assert_clean(page)
+    finally:
+        page.context.close()
+
+
+def test_break_music_loops_while_the_break_runs(browser, live_server):
+    sound = themes.store_sound("break.wav", wav(1), "audio/wav")
+    theme(
+        **{
+            EventKind.BREAK: {
+                "title": "Перекур",
+                "style": OverlayStyle.FULLSCREEN,
+                "seconds": 0,
+                "sound": sound,
+            }
+        }
+    )
+    game, _ = table()
+    running(game, left_seconds=50, position=3)  # the add-on break
+    page = sound_page(browser, live_server, tablo_url(game))
+    try:
+        expect(page.locator("[data-break-screen]")).to_be_visible()
+        until(page, "window.sounds.length === 1")
+        page.wait_for_timeout(1500)  # longer than the file: still the one looping source
+        (music,) = sounds(page)
+        assert music["loop"] and music["stop"] is None
+
+        actions.set_paused(game.pk, key(), None, True)
+        until(page, "window.sounds[0].stop !== null", timeout=3000)
+        assert faded(sounds(page)[0])
+        assert len(sounds(page)) == 1  # nothing while paused
+
+        actions.set_paused(game.pk, key(), None, False)
+        until(page, "window.sounds.length === 2", timeout=3000)
+        assert sounds(page)[1]["loop"]
+
+        running(game, left_seconds=1, position=3)  # the break ends in a second
+        expect(page.locator("[data-break-screen]")).to_be_hidden(timeout=4000)
+        until(page, "window.sounds[1].stop !== null")
+        assert faded(sounds(page)[1])
+        assert len(sounds(page)) == 2
+        assert_clean(page)
+    finally:
+        page.context.close()
+
+
+def test_break_music_stops_when_the_theme_is_switched_off(browser, live_server):
+    sound = themes.store_sound("break.wav", wav(1), "audio/wav")
+    created = theme(
+        **{EventKind.BREAK: {"style": OverlayStyle.FULLSCREEN, "seconds": 0, "sound": sound}}
+    )
+    game, _ = table()
+    running(game, left_seconds=50, position=3)
+    page = sound_page(browser, live_server, tablo_url(game))
+    try:
+        until(page, "window.sounds.length === 1")
+        Theme.objects.filter(pk=created.pk).update(is_active=False)
+        until(page, "window.sounds[0].stop !== null", timeout=3000)
+        assert faded(sounds(page)[0])
+        expect(page.locator("[data-break-screen]")).to_be_hidden()
+        assert_clean(page)
+    finally:
+        page.context.close()
+
+
+@pytest.mark.parametrize("route", ["public", "organizer"])
+def test_overlay_within_the_sync_interval(laptop, route):  # noqa: F811
+    """With the default interval (no fast_sync): a bust shows on both display routes in about a
+    second."""
+    game, results = table("Чарли", "Дельта", "Эхо")
+    if route == "public":
+        page = laptop(tablo_url(game), signed_in=False)
+    else:
+        page = laptop(reverse("live:tablo", args=[game.pk]))
+    expect(page.locator("[data-clock]")).not_to_have_text("--:--")
+
+    bust(game, results[0])
+    # One interval (1 s) plus the request and a frame.
+    expect(overlay(page)).to_be_visible(timeout=1600)
+    assert_clean(page)
+
+
+def test_one_lost_sync_does_not_show_no_connection(browser, live_server):
+    game, _ = table()
+    context = browser.new_context(**LAPTOP)
+    context.add_init_script(COLLECT_CSP_VIOLATIONS)
+    context.add_init_script(WATCH_OFFLINE)
+    page = context.new_page()
+    try:
+        page.goto(live_server.url + tablo_url(game))
+        expect(page.locator("[data-clock]")).not_to_have_text("--:--")
+        lost = []
+
+        def lose_once(route):
+            if not lost:
+                lost.append(route.request.url)
+                route.abort()
+            else:
+                route.continue_()
+
+        page.route("**/tablo/*/state/**", lose_once)
+        page.wait_for_timeout(3000)
+        assert lost
+        assert not page.evaluate("window.offlineShown")
+
+        page.route("**/tablo/*/state/**", lambda route: route.abort())
+        expect(page.locator("[data-offline]")).to_be_visible(timeout=6000)
         assert_clean(page)
     finally:
         context.close()
@@ -281,3 +496,49 @@ def test_preview_page(laptop):  # noqa: F811
     expect(page.locator("[data-break-screen-title]")).to_have_text("Перекур")
     assert_touch_targets(page, ".tablo-preview .btn")
     assert_clean(page)
+
+
+def test_preview_sounds(browser, live_server, admin_user, client):
+    """The preview plays the same way: an event's sound ends with its overlay, the break music
+    loops until the break is switched off."""
+    hit = themes.store_sound("hit.wav", wav(5), "audio/wav")
+    music = themes.store_sound("break.wav", wav(1), "audio/wav")
+    created = theme(
+        bust={"title": "Мимо", "caption": "{name}", "seconds": 1, "sound": hit},
+        **{
+            EventKind.BREAK: {
+                "title": "Перекур",
+                "style": OverlayStyle.FULLSCREEN,
+                "seconds": 0,
+                "sound": music,
+            }
+        },
+    )
+    client.force_login(admin_user)
+    context = browser.new_context(**LAPTOP)
+    context.add_cookies(
+        [{"name": "sessionid", "value": client.cookies["sessionid"].value, "url": live_server.url}]
+    )
+    context.add_init_script(COLLECT_CSP_VIOLATIONS)
+    context.add_init_script(RECORD_SOUNDS)
+    page = context.new_page()
+    try:
+        page.goto(live_server.url + reverse("live:theme_preview", args=[created.pk]))
+        page.mouse.click(5, 5)  # sound on
+        until(page, "window.sounds !== undefined")
+
+        page.locator('[data-preview-kind="bust"]').click()
+        until(page, "window.sounds.length === 1")
+        expect(overlay(page)).to_be_hidden(timeout=3000)
+        until(page, "window.sounds[0].stop !== null")
+        assert faded(sounds(page)[0])
+
+        page.locator('[data-preview-kind="break"]').click()
+        until(page, "window.sounds.length === 2", timeout=3000)
+        assert sounds(page)[1]["loop"]
+        page.locator('[data-preview-kind="break"]').click()  # the break off again
+        until(page, "window.sounds[1].stop !== null", timeout=3000)
+        assert faded(sounds(page)[1])
+        assert_clean(page)
+    finally:
+        context.close()
