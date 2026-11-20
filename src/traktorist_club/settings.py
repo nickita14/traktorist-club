@@ -211,8 +211,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Live game screens: how often an open board fetches what the other phones changed.
 LIVE_POLL_SECONDS = 20
-# The blind timer display counts seconds itself and resyncs with the server this often.
-TIMER_SYNC_SECONDS = 5
+# The blind timer display counts seconds itself and resyncs with the server this often; the sync
+# also brings the table events, so this is how late an announcement can be (docs/deploy.md
+# "Resource budget" has the cost per display).
+TIMER_SYNC_SECONDS = 1
 # Theme nights: a bust or a rebuy reaches the display only once it is this old (a wrong tap undone
 # within the hold is never shown), and not at all once it is older than the max age (a display
 # back online does not replay the evening; the winner is the exception).

@@ -5,8 +5,11 @@
  *   data-sync-seconds. The server's clock wins: each sync measures the offset between the
  *   device and the server (the server's "now" against the middle of the request), and the
  *   display counts on a monotonic clock (performance.now) shifted by it.
- * - A failed sync keeps the local clock running, through the levels it already has, and shows a
- *   small "нет связи" mark until a sync succeeds again.
+ * - One sync at a time (a tick is skipped while one is out; a request gives up after
+ *   SYNC_TIMEOUT_MS). A failed sync keeps the local clock running, through the levels it already
+ *   has. The small "нет связи" mark shows after OFFLINE_FAILURES failures in a row or once no sync
+ *   has succeeded for offlineMs (a few intervals), and goes away with the next success: one lost
+ *   request at a 1 s interval does not make it flicker.
  * - Organizer controls (only when data-act-url is set): buttons and the space bar. Every press
  *   has its own idempotency key; a press that got no answer is sent again with the same key.
  * - A short beep a minute before a level ends and at the level change (Web Audio, after the
@@ -16,8 +19,12 @@
  *   since and the theme. Events play one after another in the overlay, each for its seconds; a
  *   winner with 0 seconds stays, until a sync shows more than one player in again (an undo) or
  *   the game ends (the display stops, the winner stays). A theme sound plays only once sound is
- *   on; without it the overlay still shows. During a break with the theme's break event on, the
- *   break screen rotates the theme's tips.
+ *   on; without it the overlay still shows. An event's sound lasts as long as its overlay: it
+ *   fades out (FADE_SECONDS) when the overlay ends or the next event replaces it; a winner that
+ *   stays plays its file once, to the end. During a break with the theme's break event on, the
+ *   break screen rotates the theme's tips, and the break sound loops while the clock runs on that
+ *   break row; it fades out when the break ends, the clock is paused, the row changes, the theme
+ *   turns the break off or the display stops, and starts again on resume.
  * - The theme preview (data-preview): no cursor; the buttons play the server's sample events.
  */
 (() => {
@@ -27,6 +34,11 @@
   const clockApi = window.BlindClock;
   const find = (name) => document.querySelector(`[data-${name}]`);
   const WARN_AT = 60 * 1000;
+  const SYNC_MS = Number(body.dataset.syncSeconds || 5) * 1000;
+  const SYNC_TIMEOUT_MS = 4000;
+  const OFFLINE_FAILURES = 3;
+  const offlineMs = Math.max(5000, 3 * SYNC_MS);
+  const FADE_SECONDS = 0.3;
 
   let state = null;
   let offset = 0; // server epoch ms minus local epoch ms
@@ -41,6 +53,8 @@
   let scene = ""; // preview only: "break" shows the sample break
   const queue = [];
   let showing = null; // { event, persistent, timer }
+  let eventSound = null; // the sound of the event on screen (a handle from startSound)
+  let breakSound = null; // { key, handle }: the break music playing, key = row and file
   let breakScreen = false;
   let tipIndex = 0;
   let tipShownAt = 0;
@@ -67,6 +81,7 @@
   // Drawing one frame.
 
   function render() {
+    connection();
     if (!state) {
       return;
     }
@@ -136,7 +151,8 @@
     }
 
     sounds(clock);
-    breakFrame(clock, Boolean(rendered));
+    breakFrame(clock);
+    breakMusic(clock);
     rendered = { position: row.position, remaining: clock.remaining, finished: clock.finished };
   }
 
@@ -201,6 +217,8 @@
     if (showing) {
       clearTimeout(showing.timer);
     }
+    stopSound(eventSound);
+    eventSound = null;
     showing = null;
     overlay.hidden = true;
     overlay.classList.remove("is-entering");
@@ -220,7 +238,7 @@
     overlay.classList.remove("is-entering");
     void overlay.offsetWidth; // restart the entrance
     overlay.classList.add("is-entering");
-    playSound(shown.sound);
+    eventSound = startSound(shown.sound);
     const persistent = event.kind === "winner" && !shown.seconds;
     showing = { event, persistent, timer: null };
     if (!persistent) {
@@ -266,27 +284,82 @@
     soundCache.set(url, { bytes, decoded: null });
   }
 
-  async function playSound(url) {
+  // Starts a sound (looped or once) and returns its handle for stopSound, or null without
+  // sound. The file may still be loading: a handle stopped before it is ready never plays.
+  function startSound(url, loop = false) {
     if (!url || !audio || audio.state !== "running") {
-      return;
+      return null;
     }
+    const handle = { source: null, gain: null, stopped: false };
     loadSound(url);
     const entry = soundCache.get(url);
-    try {
-      const bytes = await entry.bytes;
-      if (!bytes) {
-        return;
+    (async () => {
+      try {
+        const bytes = await entry.bytes;
+        if (!bytes) {
+          return;
+        }
+        if (!entry.decoded) {
+          entry.decoded = await audio.decodeAudioData(bytes.slice(0));
+        }
+        if (handle.stopped) {
+          return;
+        }
+        handle.gain = audio.createGain();
+        handle.source = audio.createBufferSource();
+        handle.source.buffer = entry.decoded;
+        handle.source.loop = loop;
+        handle.source.connect(handle.gain).connect(audio.destination);
+        handle.source.start();
+      } catch {
+        // A file the browser cannot play: the overlay is enough.
       }
-      if (!entry.decoded) {
-        entry.decoded = await audio.decodeAudioData(bytes.slice(0));
-      }
-      const source = audio.createBufferSource();
-      source.buffer = entry.decoded;
-      source.connect(audio.destination);
-      source.start();
-    } catch {
-      // A file the browser cannot play: the overlay is enough.
+    })();
+    return handle;
+  }
+
+  // Fades a sound out and stops it; a sound that already ended or never started is fine.
+  function stopSound(handle) {
+    if (!handle || handle.stopped) {
+      return;
     }
+    handle.stopped = true;
+    if (!handle.source) {
+      return;
+    }
+    const now = audio.currentTime;
+    const level = handle.gain.gain;
+    level.cancelScheduledValues(now);
+    level.setValueAtTime(level.value, now);
+    level.linearRampToValueAtTime(0, now + FADE_SECONDS);
+    try {
+      handle.source.stop(now + FADE_SECONDS);
+    } catch {
+      // Stopped already.
+    }
+  }
+
+  // The break music: what should play now (the break row and its file), compared every frame.
+  function breakMusic(clock) {
+    const shown = config("break");
+    const row = clock.current;
+    const wanted =
+      breakScreen && !clock.paused && !clock.finished && shown?.sound
+        ? `${row.position}|${shown.sound}`
+        : "";
+    if ((breakSound?.key || "") === wanted) {
+      return;
+    }
+    stopBreakMusic();
+    const handle = wanted ? startSound(shown.sound, true) : null;
+    if (handle) {
+      breakSound = { key: wanted, handle }; // without sound yet: tried again next frame
+    }
+  }
+
+  function stopBreakMusic() {
+    stopSound(breakSound?.handle);
+    breakSound = null;
   }
 
   function setTheme(next) {
@@ -312,7 +385,7 @@
     screen.classList.add("is-entering");
   }
 
-  function breakFrame(clock, running) {
+  function breakFrame(clock) {
     const shown = config("break");
     const row = clock.current;
     const on = Boolean(row.isBreak && shown?.enabled);
@@ -324,9 +397,6 @@
       if (on) {
         tipIndex = 0;
         showTip(tips);
-        if (running) {
-          playSound(shown.sound);
-        }
       }
     }
     if (!on) {
@@ -418,13 +488,45 @@
     if (!showing?.persistent) {
       hideOverlay(); // the winner stays on a finished game
     }
+    stopBreakMusic();
     text("level-line", message);
     text("clock", "--:--");
+    answered();
+  }
+
+  // The connection mark: off on any answer, on after several failures or a long silence.
+  let failures = 0;
+  let lastAnswer = localNow();
+
+  function answered() {
+    failures = 0;
+    lastAnswer = localNow();
     show("offline", false);
   }
 
-  async function sync() {
+  function failed() {
+    failures += 1;
+    connection();
+  }
+
+  function connection() {
+    if (failures >= OFFLINE_FAILURES || localNow() - lastAnswer >= offlineMs) {
+      show("offline", true);
+    }
+  }
+
+  let syncing = false;
+  let syncAgain = false; // a sync asked for while one was out (the preview's scene buttons)
+
+  async function sync(force = false) {
+    if (syncing) {
+      syncAgain = syncAgain || force;
+      return;
+    }
+    syncing = true;
     const sentAt = localNow();
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), SYNC_TIMEOUT_MS);
     try {
       const url = new URL(body.dataset.stateUrl, window.location.href);
       if (!preview) {
@@ -436,6 +538,7 @@
         cache: "no-store",
         credentials: "same-origin",
         headers: { Accept: "application/json" },
+        signal: abort.signal,
       });
       if (response.status === 404) {
         stop("Табло отключено: турнир завершён или ссылка заменена.");
@@ -446,9 +549,16 @@
       }
       const data = await response.json();
       apply(data, sentAt, localNow());
-      show("offline", false);
+      answered();
     } catch {
-      show("offline", true);
+      failed();
+    } finally {
+      clearTimeout(timeout);
+      syncing = false;
+      if (syncAgain) {
+        syncAgain = false;
+        sync();
+      }
     }
   }
 
@@ -494,13 +604,13 @@
           }
           const data = await response.json();
           apply(data, sentAt, localNow());
-          show("offline", false);
+          answered();
           if (data.error) {
             text("message", data.error);
           }
           return;
         } catch {
-          show("offline", true);
+          failed();
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       }
@@ -520,12 +630,12 @@
       } else {
         note("");
       }
-      sync();
+      sync(true);
       return;
     }
     if (scene) {
       scene = "";
-      sync();
+      sync(true);
     }
     const sample = samples[kind];
     if (!sample) {
@@ -589,5 +699,5 @@
   keepAwake();
   sync();
   setInterval(render, 250);
-  setInterval(sync, Number(body.dataset.syncSeconds || 5) * 1000);
+  setInterval(sync, SYNC_MS);
 })();

@@ -169,6 +169,25 @@ class TestBoardActions:
         assert "Отменено: Таймер: +1 минута" in response.text
         assert '<span class="font-num" data-clock>15:00</span>' in response.text
 
+    def test_undo_of_the_final_stage_says_the_timer_stayed(self, org, timed, frozen):
+        act(org, timed, "timer-run")
+        actions.advance_stage(timed.pk, key(), None, Game.Stage.REBUYS)
+        frozen.advance(minutes=65)  # on the add-on break
+        act(org, timed, "stage", **{"from": Game.Stage.ADDON})
+        stage = LiveAction.objects.filter(kind=ActionKind.STAGE).latest("pk")
+        assert timer(timed).position == 5
+        act(org, timed, "timer-pause")
+
+        response = org.post(
+            reverse("live:undo", args=[timed.pk, stage.pk]),
+            headers={"HX-Request": "true", "HX-Target": "board"},
+        )
+
+        assert "Этап вернули, таймер оставили как есть." in response.text
+        timed.refresh_from_db()
+        assert timed.live_stage == Game.Stage.ADDON
+        assert timer(timed).position == 5
+
 
 class TestStructureEditor:
     def url(self, game):

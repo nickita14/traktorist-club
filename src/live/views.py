@@ -445,7 +445,8 @@ def undo(request, pk: int, action_pk: int):
         return refresh(request, pk, message=str(error))
     except GameGone:
         return gone(request, pk)
-    return refresh(request, pk, message=f"Отменено: {outcome.action.summary}", warning=False)
+    message = outcome.note or f"Отменено: {outcome.action.summary}"
+    return refresh(request, pk, message=message, warning=False)
 
 
 # Blind structure of a game.

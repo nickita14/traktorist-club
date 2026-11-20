@@ -454,6 +454,108 @@ class TestUndo:
         assert game.live_stage == Game.Stage.REBUYS
 
 
+class TestFinalStageLeavesAddonBreak:
+    """Starting the final stage while the timer is on the add-on break moves the timer on."""
+
+    @pytest.fixture
+    def at_addon(self, frozen, structure):
+        """A tournament in the add-on stage, its timer running on the add-on break (row 4)."""
+        game = live_game(SeasonKind.TOUR)
+        seat(game, "Альфа", "Браво")
+        actions.start_timer(game.pk, key(), None, structure.pk)
+        actions.advance_stage(game.pk, key(), None, Game.Stage.REBUYS)
+        run(game)
+        frozen.advance(minutes=65)  # 5 minutes into the add-on break
+        assert where(game) == (4, "10:00")
+        return game
+
+    def final(self, game, same=None):
+        return actions.advance_stage(game.pk, same or key(), None, Game.Stage.ADDON)
+
+    def test_moves_to_the_next_level_starting_now(self, at_addon, frozen):
+        outcome = self.final(at_addon)
+        at_addon.refresh_from_db()
+        assert at_addon.live_stage == Game.Stage.FINAL
+        assert where(at_addon) == (5, "20:00")
+        assert not state(at_addon).paused
+        assert outcome.action.kind == ActionKind.STAGE
+        assert outcome.action.summary.startswith("Начат финальный этап, таймер: уровень 4")
+        frozen.advance(minutes=3)
+        assert where(at_addon) == (5, "17:00")
+
+    def test_paused_timer_stays_paused(self, at_addon, frozen):
+        pause(at_addon)
+        self.final(at_addon)
+        frozen.advance(minutes=10)
+        assert where(at_addon) == (5, "20:00")
+        assert state(at_addon).paused
+
+    def test_timer_elsewhere_is_not_moved(self, at_addon, frozen):
+        actions.step_level(at_addon.pk, key(), None, 4, -1)  # back to level 3
+        outcome = self.final(at_addon)
+        assert where(at_addon) == (3, "20:00")
+        assert "timer" not in outcome.action.after
+        assert outcome.action.summary == "Начат финальный этап"
+
+    def test_other_break_is_not_moved(self, at_addon, frozen):
+        actions.step_level(at_addon.pk, key(), None, 4, 1)
+        actions.step_level(at_addon.pk, key(), None, 5, 1)  # the plain break, row 6
+        self.final(at_addon)
+        assert where(at_addon) == (6, "10:00")
+
+    def test_other_stage_changes_do_not_move_the_timer(self, frozen, structure):
+        game = live_game(SeasonKind.TOUR)
+        seat(game, "Альфа", "Браво")
+        actions.start_timer(game.pk, key(), None, structure.pk)
+        run(game)
+        frozen.advance(minutes=65)
+        actions.advance_stage(game.pk, key(), None, Game.Stage.REBUYS)  # to the add-on stage
+        assert where(game) == (4, "10:00")
+
+    def test_without_a_timer(self, frozen):
+        game = live_game(SeasonKind.TOUR)
+        seat(game, "Альфа", "Браво")
+        actions.advance_stage(game.pk, key(), None, Game.Stage.REBUYS)
+        outcome = self.final(game)
+        assert outcome.action.summary == "Начат финальный этап"
+
+    def test_same_key_moves_once(self, at_addon, frozen):
+        same = key()
+        first = self.final(at_addon, same)
+        frozen.advance(minutes=2)
+        again = self.final(at_addon, same)
+        assert again.replayed
+        assert again.action.pk == first.action.pk
+        assert where(at_addon) == (5, "18:00")
+        assert LiveAction.objects.filter(game=at_addon, kind=ActionKind.STAGE).count() == 2
+
+    def test_undo_restores_stage_and_timer(self, at_addon, frozen):
+        outcome = self.final(at_addon)
+        frozen.advance(minutes=1)
+        undone = actions.undo(outcome.action.pk, None)
+        assert undone.note is None
+        at_addon.refresh_from_db()
+        assert at_addon.live_stage == Game.Stage.ADDON
+        assert where(at_addon) == (4, "09:00")  # as if never moved: the break kept running
+
+    def test_undo_after_a_timer_press_keeps_the_timer(self, at_addon, frozen):
+        outcome = self.final(at_addon)
+        pause(at_addon)
+        undone = actions.undo(outcome.action.pk, None)
+        assert undone.note == "Этап вернули, таймер оставили как есть."
+        at_addon.refresh_from_db()
+        assert at_addon.live_stage == Game.Stage.ADDON
+        assert where(at_addon) == (5, "20:00")
+        assert state(at_addon).paused
+
+    def test_undo_after_an_undone_timer_press_restores_the_timer(self, at_addon, frozen):
+        outcome = self.final(at_addon)
+        paused = pause(at_addon)
+        actions.undo(paused.action.pk, None)
+        assert actions.undo(outcome.action.pk, None).note is None
+        assert where(at_addon) == (4, "10:00")
+
+
 class TestEngine:
     def test_same_key_applies_once(self, timed):
         same = key()
