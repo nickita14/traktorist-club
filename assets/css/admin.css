@@ -515,3 +515,50 @@ a.sync-button {
   gap: 1rem;
   margin-top: 1.5rem;
 }
+
+/*
+ * File inputs (theme cover, sound file): the browser's own button drawn like Unfold's secondary
+ * button. Its text ("Browse…", "Обзор…") comes from the browser; the field label says "Файл".
+ */
+input[type="file"] {
+  font-size: 0.875rem;
+  max-width: 100%;
+}
+
+input[type="file"]::file-selector-button {
+  background: var(--surface);
+  border: 1px solid var(--color-base-200);
+  border-radius: var(--border-radius, 6px);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  margin-right: 0.75rem;
+  min-height: 2.375rem;
+  padding: 0.5rem 0.75rem;
+}
+
+input[type="file"]::file-selector-button:hover {
+  background: var(--color-base-50);
+}
+
+input[type="file"]:focus-visible::file-selector-button {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Theme admin: the accent swatch and the current cover. */
+.admin-swatch {
+  border: 1px solid var(--color-base-200);
+  display: block;
+}
+
+.admin-cover {
+  border: 1px solid var(--color-base-200);
+  display: block;
+  margin-bottom: 0.5rem;
+  max-height: 12rem;
+  max-width: 20rem;
+  object-fit: contain;
+}

@@ -3,6 +3,7 @@ import uuid
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.db import models, transaction
 from django.db.models import Q
 
@@ -241,6 +242,17 @@ class SoundType(models.TextChoices):
     WAV = "audio/wav", "wav"
 
 
+class CoverType(models.TextChoices):
+    JPEG = "image/jpeg", "jpg"
+    PNG = "image/png", "png"
+    WEBP = "image/webp", "webp"
+
+
+# The accent is drawn on ink (the break screen): large text and markers, so 3:1 (WCAG AA large).
+ACCENT_MIN_CONTRAST = 3.0
+HEX_COLOR = RegexValidator(r"^#[0-9a-fA-F]{6}$", "Цвет в виде #RRGGBB.")
+
+
 class Theme(models.Model):
     name = models.CharField("название", max_length=100, unique=True)
     is_active = models.BooleanField(
@@ -255,6 +267,15 @@ class Theme(models.Model):
         default="",
         help_text="По одному в строке; показываются по кругу во время перерыва, "
         "если у тематики включено событие «Перерыв».",
+    )
+    accent = models.CharField(
+        "акцент",
+        max_length=7,
+        blank=True,
+        default="",
+        validators=[HEX_COLOR],
+        help_text="Цвет названия, разделителя и метки совета на экране перерыва. "
+        "Пусто: как обычно.",
     )
     updated_at = models.DateTimeField("изменена", auto_now=True)
 
@@ -274,6 +295,21 @@ class Theme(models.Model):
     @property
     def tip_list(self) -> list[str]:
         return [line.strip() for line in self.tips.splitlines() if line.strip()]
+
+    def clean(self):
+        from live import themes
+
+        super().clean()
+        self.accent = self.accent.strip().lower()
+        if self.accent and HEX_COLOR.regex.match(self.accent):
+            ratio = themes.contrast_on_ink(self.accent)
+            if ratio < ACCENT_MIN_CONTRAST:
+                raise ValidationError(
+                    {
+                        "accent": f"Слишком тёмный для экрана перерыва: контраст "
+                        f"{ratio:.1f}:1, нужно не меньше {ACCENT_MIN_CONTRAST:.0f}:1."
+                    }
+                )
 
     def validate_constraints(self, exclude=None):
         # Activating a theme switches the active one off in save(), so the one-active rule is no
@@ -313,6 +349,35 @@ class ThemeSound(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class ThemeCover(models.Model):
+    """A theme's break screen image (Обложка), kept in the database like the sounds.
+
+    A separate row, so loading a theme (every display sync) never reads the bytes. Served by its
+    hash (``live.views.tablo_cover``); two themes may share an image, so the hash is no key.
+    """
+
+    theme = models.OneToOneField(
+        Theme, on_delete=models.CASCADE, related_name="cover", verbose_name="тематика"
+    )
+    content_type = models.CharField("формат", max_length=20, choices=CoverType)
+    size = models.PositiveIntegerField("размер, байт")
+    sha256 = models.CharField("хеш", max_length=64, db_index=True, editable=False)
+    data = models.BinaryField("данные")
+    created_at = models.DateTimeField("загружена", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "обложка"
+        verbose_name_plural = "обложки"
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(content_type__in=CoverType.values), name="themecover_type_valid"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.theme}: обложка"
 
 
 class ThemeEvent(models.Model):

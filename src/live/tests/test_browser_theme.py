@@ -1,13 +1,16 @@
 """Theme nights on the display (табло) in Chromium: announcements from the phone's presses, one
 after another and within a second on both display routes, the lower third over a visible clock,
-the break screen's tips, no replay after a reload, the winner through the end of the game and gone
-after an undo, reduced motion, sound only after the tap, each sound as long as its overlay, the
-break music looping while the break runs, and the admin's preview page. Every page is checked for
-CSP violations."""
+the break screen's tips, with and without the theme's cover and accent, no replay after a reload,
+the winner through the end of the game and gone after an undo, reduced motion, sound only after the
+tap, each sound as long as its overlay, the break music looping while the break runs, the admin's
+preview page and the theme admin (the sound player follows the select, the file button). Every
+page is checked for CSP violations."""
 
 import io
 import re
+import struct
 import wave
+import zlib
 
 import pytest
 from django.urls import reverse
@@ -74,6 +77,25 @@ def wav(seconds: float = 0.1) -> bytes:
         file.setframerate(8000)
         file.writeframes(bytes(2 * round(8000 * seconds)))
     return buffer.getvalue()
+
+
+def png(width: int = 64, height: int = 40) -> bytes:
+    """A real image Chromium can decode (stripes of two greys), without an imaging library."""
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    rows = b"".join(
+        b"\x00" + bytes([90 if (x // 8) % 2 else 160 for x in range(width)]) for _ in range(height)
+    )
+    header = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)  # 8-bit greyscale
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )
 
 
 def sound_page(browser, live_server, path):
@@ -227,6 +249,118 @@ def test_break_screen_rotates_the_tips(laptop, fast_sync, settings):  # noqa: F8
     expect(page.locator("[data-tip]")).to_have_text("второй", timeout=3000)
     expect(page.locator("[data-tip]")).to_have_text("первый", timeout=3000)
     assert_clean(page)
+
+
+BREAK_ROW = {"title": "Перекур", "style": OverlayStyle.FULLSCREEN, "seconds": 0}
+
+# The break screen's geometry and colours, as computed: what the mockup fixes on 1280x800.
+BREAK_LAYOUT = """() => {
+  const box = (selector) => document.querySelector(selector).getBoundingClientRect();
+  const style = (selector) => getComputedStyle(document.querySelector(selector));
+  const cover = document.querySelector("[data-break-cover]");
+  const column = document.querySelector(".tablo-break-screen-body");
+  return {
+    split: document.querySelector("[data-break-screen]").classList.contains(
+      "tablo-break-screen-split"
+    ),
+    coverShown: !cover.hidden && box("[data-break-cover]").width > 0,
+    coverLoaded: cover.complete && cover.naturalWidth > 0,
+    coverLeft: box("[data-break-cover]").left,
+    coverFit: style("[data-break-cover]").objectFit,
+    coverPosition: style("[data-break-cover]").objectPosition,
+    columnWidth: box(".tablo-break-screen-body").width,
+    columnOverflows: column.scrollWidth > column.clientWidth + 1
+      || column.scrollHeight > column.clientHeight + 1,
+    stripe: style(".tablo-break-screen-body").borderRightColor,
+    stripeWidth: style(".tablo-break-screen-body").borderRightWidth,
+    themeColor: style("[data-break-screen-theme]").color,
+    themeFont: style("[data-break-screen-theme]").fontFamily,
+    titleFont: style("[data-break-screen-title]").fontFamily,
+    titleSize: style("[data-break-screen-title]").fontSize,
+    clockFont: style("[data-break-screen-clock]").fontFamily,
+    clockFits: (() => {
+      const clock = document.querySelector("[data-break-screen-clock]");
+      return clock.scrollWidth <= clock.clientWidth;
+    })(),
+    tipBorder: style("[data-tip-box]").borderLeftColor,
+    tipTop: box("[data-tip-box]").top,
+    nextTop: box("[data-break-screen-next]").top,
+    nextBottom: box("[data-break-screen-next]").bottom,
+    blindsFont: style("[data-break-screen-next-blinds]").fontFamily,
+    pageScrolls: document.documentElement.scrollWidth > window.innerWidth,
+  };
+}"""
+
+PAPER_RGB = "rgb(242, 237, 227)"
+GOLD_RGB = "rgb(242, 182, 48)"
+
+
+def test_break_screen_with_a_cover(laptop, fast_sync):  # noqa: F811
+    created = theme(**{EventKind.BREAK: BREAK_ROW})
+    created.accent = "#f2ede3"
+    created.save()
+    themes.store_cover(created, png(), "image/png")
+    game, _ = table()
+    running(game, left_seconds=50, position=3)  # the add-on break
+    page = laptop(tablo_url(game), signed_in=False)
+
+    expect(page.locator("[data-break-screen]")).to_be_visible()
+    expect(page.locator("[data-break-cover]")).to_be_visible()
+    until(page, "document.querySelector('[data-break-cover]').naturalWidth > 0")
+    page.evaluate("document.fonts.ready")
+    expect(page.locator("[data-break-screen-addon]")).to_have_text("Перерыв на аддон")
+    expect(page.locator("[data-break-screen-next-label]")).to_have_text("Дальше: уровень 3 · ")
+    expect(page.locator("[data-break-screen-next-blinds]")).to_have_text("100 / 200")
+    layout = page.evaluate(BREAK_LAYOUT)
+
+    assert layout["split"] and layout["coverShown"] and layout["coverLoaded"]
+    assert layout["columnWidth"] == pytest.approx(580, abs=1)
+    assert layout["coverLeft"] == pytest.approx(580, abs=1)
+    assert (layout["coverFit"], layout["coverPosition"]) == ("cover", "50% 30%")
+    assert layout["stripe"] == layout["themeColor"] == layout["tipBorder"] == PAPER_RGB
+    assert layout["stripeWidth"] == "6px"
+    assert layout["themeFont"].startswith('"Russo One"')
+    assert layout["titleFont"].startswith('"Russo One"')
+    assert layout["titleSize"] == "96px"
+    assert layout["clockFont"].startswith('"PT Mono"') and layout["clockFits"]
+    assert layout["blindsFont"].startswith('"PT Mono"')
+    # The tip and the next level sit at the bottom, in that order; nothing spills out.
+    assert layout["tipTop"] < layout["nextTop"]
+    assert layout["nextBottom"] == pytest.approx(800 - 40, abs=2)
+    assert not layout["columnOverflows"] and not layout["pageScrolls"]
+    assert_clean(page)
+
+
+def test_break_screen_without_a_cover_stays_plain(laptop, fast_sync):  # noqa: F811
+    theme(**{EventKind.BREAK: BREAK_ROW})
+    game, _ = table()
+    running(game, left_seconds=50, position=3)
+    page = laptop(tablo_url(game), signed_in=False)
+
+    expect(page.locator("[data-break-screen]")).to_be_visible()
+    expect(page.locator("[data-break-screen-addon]")).to_be_visible()
+    expect(page.locator("[data-break-screen-next-blinds]")).to_have_text("100 / 200")
+    layout = page.evaluate(BREAK_LAYOUT)
+
+    assert not layout["split"]
+    assert page.locator("[data-break-cover]").is_hidden()
+    assert page.locator("[data-break-cover]").get_attribute("src") is None
+    assert layout["themeColor"] == layout["tipBorder"] == GOLD_RGB  # no accent: as before
+    assert not layout["blindsFont"].startswith('"PT Mono"')  # the plain line is unchanged
+    assert not layout["pageScrolls"]
+    assert_clean(page)
+
+
+def test_cover_that_fails_to_load_keeps_the_plain_layout(laptop, fast_sync):  # noqa: F811
+    created = theme(**{EventKind.BREAK: BREAK_ROW})
+    themes.store_cover(created, b"\x89PNG\r\n\x1a\n" + bytes(32), "image/png")  # broken
+    game, _ = table()
+    running(game, left_seconds=50, position=3)
+    page = laptop(tablo_url(game), signed_in=False)
+
+    expect(page.locator("[data-break-screen]")).to_be_visible()
+    expect(page.locator("[data-break-cover]")).to_be_hidden()
+    assert not page.evaluate(BREAK_LAYOUT)["split"]
 
 
 def test_no_replay_after_a_reload(laptop, fast_sync):  # noqa: F811
@@ -496,6 +630,70 @@ def test_preview_page(laptop):  # noqa: F811
     expect(page.locator("[data-break-screen-title]")).to_have_text("Перекур")
     assert_touch_targets(page, ".tablo-preview .btn")
     assert_clean(page)
+
+
+def test_preview_shows_the_cover_and_accent(laptop):  # noqa: F811
+    created = Theme.objects.create(name="Обложечная", accent="#f2ede3")  # not active
+    ThemeEvent.objects.create(theme=created, kind=EventKind.BREAK, **BREAK_ROW)
+    themes.store_cover(created, png(), "image/png")
+    page = laptop(reverse("live:theme_preview", args=[created.pk]))
+
+    page.locator('[data-preview-kind="break"]').click()
+    expect(page.locator("[data-break-cover]")).to_be_visible()
+    until(page, "document.querySelector('[data-break-cover]').naturalWidth > 0")
+    layout = page.evaluate(BREAK_LAYOUT)
+    assert layout["split"] and layout["coverLoaded"]
+    assert layout["stripe"] == layout["themeColor"] == PAPER_RGB
+    expect(page.locator("[data-break-screen-theme]")).to_have_text("Обложечная")
+    assert_clean(page)
+
+
+def test_theme_admin_plays_the_selected_sound(laptop):  # noqa: F811
+    gong = themes.store_sound("gong.wav", wav(), "audio/wav")
+    bell = themes.store_sound("bell.wav", wav(0.2), "audio/wav")
+    created = Theme.objects.create(name="Вечер")
+    ThemeEvent.objects.create(theme=created, kind=EventKind.BUST, sound=gong)
+    ThemeEvent.objects.create(theme=created, kind=EventKind.WINNER)
+    page = laptop(reverse("admin:live_theme_change", args=[created.pk]))
+    page.wait_for_load_state("networkidle")
+    players = page.locator("audio[data-sound-player]")
+    selects = page.locator("select[name$='-sound']")
+
+    assert players.nth(0).get_attribute("src") == themes.sound_url(gong)
+    expect(players.nth(1)).to_be_hidden()
+
+    selects.nth(1).select_option(str(bell.pk))
+    expect(players.nth(1)).to_be_visible()
+    assert players.nth(1).get_attribute("src") == themes.sound_url(bell)
+    selects.nth(0).select_option("")
+    expect(players.nth(0)).to_be_hidden()
+    assert players.nth(0).get_attribute("src") is None
+    assert page.locator("input[name$='-upload']").count() == 0
+
+    # The cover input: the browser's button drawn like Unfold's secondary button.
+    button = page.locator("input[name=cover]").evaluate(
+        """el => {
+          const style = getComputedStyle(el, "::file-selector-button");
+          return {
+            border: style.borderTopWidth, radius: style.borderTopLeftRadius,
+            height: parseFloat(style.height), cursor: style.cursor,
+          };
+        }"""
+    )
+    assert button["border"] == "1px" and button["radius"] != "0px"
+    assert button["cursor"] == "pointer"
+    assert page.evaluate("window.cspViolations") == []
+
+
+def test_sound_page_shows_the_file(laptop):  # noqa: F811
+    sound = themes.store_sound("gong.wav", wav(), "audio/wav")
+    page = laptop(reverse("admin:live_themesound_change", args=[sound.pk]))
+    page.wait_for_load_state("networkidle")
+
+    expect(page.locator("audio")).to_have_attribute("src", themes.sound_url(sound))
+    expect(page.locator("body")).to_contain_text("wav · 2 КБ")
+    expect(page.locator("input[type=file][name=upload]")).to_be_visible()
+    assert page.evaluate("window.cspViolations") == []
 
 
 def test_preview_sounds(browser, live_server, admin_user, client):

@@ -1,15 +1,28 @@
 """Theme nights (live.themes): caption rules, sounds, the theme payload and the table events the
 display announces, derived from the action log."""
 
+import hashlib
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from club import stats
 from club.models import SeasonKind
 from live import actions, themes
-from live.models import EventKind, LiveAction, OverlayStyle, Theme, ThemeEvent, ThemeSound
+from live.models import (
+    ACCENT_MIN_CONTRAST,
+    EventKind,
+    LiveAction,
+    OverlayStyle,
+    Theme,
+    ThemeCover,
+    ThemeEvent,
+    ThemeSound,
+)
 from live.tests.conftest import key, live_game, seat
 from live.tests.test_timer import FrozenClock
 
@@ -19,6 +32,10 @@ MP3 = b"ID3\x04\x00" + bytes(64)
 MP3_FRAME = b"\xff\xfb\x90\x00" + bytes(64)
 OGG = b"OggS\x00\x02" + bytes(64)
 WAV = b"RIFF\x24\x00\x00\x00WAVEfmt " + bytes(64)
+JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + bytes(64)
+PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + bytes(64)
+WEBP = b"RIFF\x24\x00\x00\x00WEBPVP8 " + bytes(64)
+SVG = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
 
 
 @pytest.fixture
@@ -168,12 +185,91 @@ class TestSounds:
         assert (first.size, len(first.sha256)) == (len(MP3), 64)
 
 
+class TestCovers:
+    @pytest.mark.parametrize(
+        ("name", "data", "kind"),
+        [
+            ("a.jpg", JPEG, "image/jpeg"),
+            ("b.JPEG", JPEG, "image/jpeg"),
+            ("c.png", PNG, "image/png"),
+            ("d.webp", WEBP, "image/webp"),
+        ],
+    )
+    def test_accepted(self, name, data, kind):
+        assert themes.read_cover(upload(name, data)) == (data, kind)
+
+    @pytest.mark.parametrize(
+        ("name", "data", "message"),
+        [
+            ("a.svg", SVG, "только jpg, png или webp"),
+            ("a.gif", b"GIF89a" + bytes(32), "только jpg, png или webp"),
+            ("noext", JPEG, "только jpg, png или webp"),
+            # A script dressed as a picture: the bytes decide, not the name.
+            ("a.png", SVG, "Это не png"),
+            ("a.jpg", b"<html>" + bytes(32), "Это не jpg"),
+            ("a.jpg", PNG, "Это не jpg"),
+            ("a.webp", WAV, "Это не webp"),
+            ("a.png", b"", "Файл пустой."),
+        ],
+    )
+    def test_refused(self, name, data, message):
+        with pytest.raises(ValidationError, match=message):
+            themes.read_cover(upload(name, data))
+
+    def test_size_limit(self, settings):
+        assert settings.THEME_COVER_MAX_BYTES == 3 * 1024 * 1024
+        data = JPEG + bytes(settings.THEME_COVER_MAX_BYTES)
+        with pytest.raises(ValidationError, match="Обложка больше 3 МБ."):
+            themes.read_cover(upload("a.jpg", data))
+        just = JPEG + bytes(settings.THEME_COVER_MAX_BYTES - len(JPEG))
+        assert themes.read_cover(upload("a.jpg", just))[1] == "image/jpeg"
+
+    def test_store_replaces(self, db):
+        theme = Theme.objects.create(name="Вечер")
+        first = themes.store_cover(theme, JPEG, "image/jpeg")
+        second = themes.store_cover(theme, PNG, "image/png")
+
+        assert first.pk == second.pk
+        cover = ThemeCover.objects.get()
+        assert (cover.content_type, cover.size, bytes(cover.data)) == ("image/png", len(PNG), PNG)
+        assert cover.sha256 == hashlib.sha256(PNG).hexdigest()
+
+
+class TestAccent:
+    def test_contrast(self):
+        assert themes.contrast("#000000", "#ffffff") == pytest.approx(21)
+        assert themes.contrast("#777777", "#777777") == pytest.approx(1)
+
+    @pytest.mark.parametrize("color", ["#F2B630", "#f2ede3", "#c8281e", "#ffffff"])
+    def test_light_enough_on_ink(self, color):
+        theme = Theme(name="Вечер", accent=color)
+        theme.full_clean()
+        assert theme.accent == color.lower()
+        assert themes.contrast_on_ink(theme.accent) >= ACCENT_MIN_CONTRAST
+
+    @pytest.mark.parametrize("color", ["#b3261e", "#1d1b18", "#333333"])
+    def test_too_dark_on_ink(self, color):
+        with pytest.raises(ValidationError, match="Слишком тёмный") as error:
+            Theme(name="Вечер", accent=color).full_clean()
+        assert "accent" in error.value.message_dict
+
+    @pytest.mark.parametrize("color", ["red", "#fff", "#gggggg", "f2b630", "#f2b6300"])
+    def test_hex_only(self, color):
+        with pytest.raises(ValidationError) as error:
+            Theme(name="Вечер", accent=color).full_clean()
+        assert "accent" in error.value.message_dict
+
+    def test_empty_is_the_plain_look(self):
+        Theme(name="Вечер", accent="").full_clean()
+
+
 class TestPayload:
     def test_defaults_without_a_theme(self, db, django_assert_num_queries):
         with django_assert_num_queries(1):
             payload = themes.theme_payload(themes.active_theme())
 
         assert payload["name"] == "" and payload["tips"] == []
+        assert payload["accent"] == "" and payload["cover"] is None
         assert set(payload["events"]) == set(EventKind.values)
         assert payload["events"]["bust"] == {
             "enabled": True,
@@ -212,6 +308,26 @@ class TestPayload:
             "sound": f"/tablo/sound/{sound.sha256}/",
         }
         assert payload["events"]["bust"] == themes.DEFAULTS["bust"]
+
+    def test_accent_and_cover(self, db, django_assert_num_queries):
+        theme = Theme.objects.create(name="Вечер", is_active=True, accent="#f2ede3")
+        cover = themes.store_cover(theme, JPEG, "image/jpeg")
+        with django_assert_num_queries(2):
+            payload = themes.theme_payload(themes.active_theme())
+        assert payload["accent"] == "#f2ede3"
+        assert payload["cover"] == f"/tablo/cover/{cover.sha256}/"
+
+        cover.delete()
+        assert themes.theme_payload(themes.active_theme())["cover"] is None
+
+    def test_cover_bytes_are_never_loaded(self, db):
+        theme = Theme.objects.create(name="Вечер", is_active=True)
+        themes.store_cover(theme, JPEG, "image/jpeg")
+        with CaptureQueriesContext(connection) as queries:
+            themes.theme_payload(themes.active_theme())
+        sql = " ".join(query["sql"] for query in queries.captured_queries)
+        assert '"live_themecover"."sha256"' in sql
+        assert '"live_themecover"."data"' not in sql
 
     def test_inactive_theme_is_ignored(self, db):
         Theme.objects.create(name="Вечер")

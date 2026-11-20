@@ -71,5 +71,6 @@ def test_gold_only_in_celebration_templates():
 def test_russo_one_only_in_the_display_overlays():
     source = (settings.BASE_DIR / "frontend/source.css").read_text(encoding="utf-8")
     uses = [line for line in source.splitlines() if "--font-stack-poster" in line]
-    assert len(uses) == 1  # the band and headline title rule
+    # The band and headline title rule, and the split break screen's theme name and title.
+    assert len(uses) == 2
     assert all("Russo One" not in text for text in templates().values())

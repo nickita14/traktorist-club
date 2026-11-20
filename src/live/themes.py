@@ -27,11 +27,13 @@ from club import stats
 from club.models import Game, Season
 from live.models import (
     ActionKind,
+    CoverType,
     EventKind,
     LiveAction,
     OverlayStyle,
     SoundType,
     Theme,
+    ThemeCover,
     ThemeEvent,
     ThemeSound,
 )
@@ -164,23 +166,130 @@ def sound_url(sound: ThemeSound | None) -> str | None:
     return None if sound is None else reverse("tablo_sound", args=[sound.sha256])
 
 
+def size_label(size: int) -> str:
+    """A file size for the admin: "12 КБ", "1,4 МБ"."""
+    if size < 1024 * 1024:
+        return f"{max(round(size / 1024), 1)} КБ"
+    return f"{size / (1024 * 1024):.1f} МБ".replace(".", ",")
+
+
+# The break screen image (Обложка). No SVG: it can carry scripts, and uploads are served from
+# the site's own origin.
+
+COVER_EXTENSIONS = {
+    ".jpg": CoverType.JPEG,
+    ".jpeg": CoverType.JPEG,
+    ".png": CoverType.PNG,
+    ".webp": CoverType.WEBP,
+}
+
+
+def sniff_cover(head: bytes) -> str | None:
+    """The image type the file's first bytes say, or None."""
+    if head.startswith(b"\xff\xd8\xff"):
+        return CoverType.JPEG
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return CoverType.PNG
+    if head.startswith(b"RIFF") and head[8:12] == b"WEBP":
+        return CoverType.WEBP
+    return None
+
+
+def read_cover(upload) -> tuple[bytes, str]:
+    """The bytes and type of an uploaded cover; ValidationError for a wrong one."""
+    limit = settings.THEME_COVER_MAX_BYTES
+    too_big = f"Обложка больше {limit // (1024 * 1024)} МБ."
+    name = upload.name or ""
+    extension = name[name.rfind(".") :].lower() if "." in name else ""
+    expected = COVER_EXTENSIONS.get(extension)
+    if expected is None:
+        raise ValidationError("Обложка: только jpg, png или webp.")
+    if upload.size is not None and upload.size > limit:
+        raise ValidationError(too_big)
+    data = b"".join(upload.chunks())
+    if len(data) > limit:
+        raise ValidationError(too_big)
+    if not data:
+        raise ValidationError("Файл пустой.")
+    if sniff_cover(data[:16]) != expected:
+        raise ValidationError(f"Это не {expected.label}: файл не похож на картинку такого формата.")
+    return data, expected
+
+
+def store_cover(theme: Theme, data: bytes, content_type: str) -> ThemeCover:
+    """Sets (or replaces) the theme's cover."""
+    cover, _ = ThemeCover.objects.update_or_create(
+        theme=theme,
+        defaults={
+            "content_type": content_type,
+            "size": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "data": data,
+        },
+    )
+    return cover
+
+
+def theme_cover(theme: Theme | None) -> ThemeCover | None:
+    """The theme's cover, or None (no query when ``cover`` was select_related)."""
+    if theme is None or theme.pk is None:
+        return None
+    try:
+        return theme.cover
+    except ThemeCover.DoesNotExist:
+        return None
+
+
+def cover_url(cover: ThemeCover | None) -> str | None:
+    return None if cover is None else reverse("tablo_cover", args=[cover.sha256])
+
+
+# The accent colour.
+
+
+def _luminance(color: str) -> float:
+    def channel(hex_pair: str) -> float:
+        value = int(hex_pair, 16) / 255
+        return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+
+    red, green, blue = (channel(color[i : i + 2]) for i in (1, 3, 5))
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
+def contrast(first: str, second: str) -> float:
+    """The WCAG contrast ratio of two #rrggbb colours."""
+    light, dark = sorted((_luminance(first), _luminance(second)), reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
+def contrast_on_ink(color: str) -> float:
+    """Contrast of ``color`` on the break screen's background (the ink token)."""
+    from live.manifest import tokens
+
+    return contrast(color, tokens()["ink"])
+
+
 # The theme.
 
 
-def active_theme() -> Theme | None:
-    """The active theme with its events and their sounds (not the sound bytes). Two queries,
-    one when no theme is active."""
+def _themes():
+    """Themes with their cover row (not its bytes), events and sounds (not their bytes)."""
     events = ThemeEvent.objects.select_related("sound").defer("sound__data")
     return (
-        Theme.objects.filter(is_active=True)
+        Theme.objects.select_related("cover")
+        .defer("cover__data")
         .prefetch_related(Prefetch("events", queryset=events))
-        .first()
     )
 
 
+def active_theme() -> Theme | None:
+    """The active theme with its cover, events and sounds (no file bytes). Two queries, one
+    when no theme is active."""
+    return _themes().filter(is_active=True).first()
+
+
 def theme_with_events(pk: int) -> Theme | None:
-    events = ThemeEvent.objects.select_related("sound").defer("sound__data")
-    return Theme.objects.prefetch_related(Prefetch("events", queryset=events)).filter(pk=pk).first()
+    return _themes().filter(pk=pk).first()
 
 
 def theme_payload(theme: Theme | None) -> dict:
@@ -203,6 +312,8 @@ def theme_payload(theme: Theme | None) -> dict:
     return {
         "name": theme.name if theme else "",
         "tips": theme.tip_list if theme else [],
+        "accent": theme.accent if theme else "",
+        "cover": cover_url(theme_cover(theme)),
         "events": events,
     }
 

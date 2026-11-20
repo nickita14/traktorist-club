@@ -3332,6 +3332,19 @@
     visibility: hidden;
   }
 
+  /* The body wraps the main column and the tip only for the split layout below. */
+  .tablo-break-screen-body {
+    display: contents;
+  }
+
+  .tablo-break-screen-addon {
+    color: var(--rule);
+    font-family: var(--font-stack-head);
+    font-size: min(2.4vw, 4vh);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
   .tablo-break-screen-main {
     display: flex;
     flex-direction: column;
@@ -3345,7 +3358,7 @@
 
   .tablo-break-screen-theme,
   .tablo-tip-label {
-    color: var(--gold);
+    color: var(--theme-accent, var(--gold));
     font-family: var(--font-stack-head);
     font-size: min(2.6vw, 4.4vh);
     font-weight: 700;
@@ -3381,7 +3394,7 @@
     align-self: center;
     gap: 2vh;
     padding: 4vh 2.5vw;
-    border: 3px solid var(--gold);
+    border: 3px solid var(--theme-accent, var(--gold));
   }
 
   .tablo-tip-head {
@@ -3409,6 +3422,115 @@
     font-family: var(--font-stack-display);
     font-size: min(1.8vw, 3vh);
     text-transform: uppercase;
+  }
+
+  /*
+   * The break screen with the theme's cover (live.ThemeCover; tablo.js sets the class once the
+   * theme names one): an ink column on the left, the accent as a stripe, the image on the right.
+   * Measured on a 1280x800 display; --break-px is one of its pixels at any size.
+   */
+  .tablo-break-screen-split {
+    --break-px: min(calc(100vw / 1280), calc(100vh / 800));
+    grid-template-columns: 45.3125% minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
+    padding: 0;
+  }
+
+  .tablo-break-screen-split .tablo-break-screen-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    padding: calc(48 * var(--break-px)) calc(48 * var(--break-px)) calc(40 * var(--break-px));
+    border-right: calc(6 * var(--break-px)) solid var(--theme-accent, var(--gold));
+  }
+
+  .tablo-break-screen-split .tablo-break-screen-main {
+    display: contents;
+  }
+
+  .tablo-break-screen-split :is(.tablo-break-screen-theme, .tablo-break-screen-title) {
+    font-family: var(--font-stack-poster);
+    font-weight: 400;
+  }
+
+  .tablo-break-screen-split .tablo-break-screen-theme {
+    font-size: calc(26 * var(--break-px));
+    letter-spacing: 0.08em;
+  }
+
+  .tablo-break-screen-split .tablo-break-screen-title {
+    margin-top: calc(20 * var(--break-px));
+    font-size: calc(96 * var(--break-px));
+    line-height: 1;
+  }
+
+  /* 158, not the mockup's 168: "00:00" (five PT Mono cells of 0.6em) has to fit the 484px. */
+  .tablo-break-screen-split .tablo-break-screen-clock {
+    color: var(--paper);
+    font-size: calc(158 * var(--break-px));
+    line-height: 1;
+  }
+
+  .tablo-break-screen-split .tablo-break-screen-addon {
+    font-size: calc(24 * var(--break-px));
+  }
+
+  .tablo-break-screen-split .tablo-tip {
+    order: 1;
+    align-self: stretch;
+    gap: calc(8 * var(--break-px));
+    margin-top: auto;
+    padding: 0 0 0 calc(20 * var(--break-px));
+    border: 0;
+    border-left: calc(6 * var(--break-px)) solid var(--theme-accent, var(--gold));
+  }
+
+  .tablo-break-screen-split .tablo-tip-label {
+    color: var(--muted);
+    font-size: calc(18 * var(--break-px));
+    letter-spacing: 0.14em;
+  }
+
+  .tablo-break-screen-split .tablo-tip-count {
+    font-size: calc(18 * var(--break-px));
+  }
+
+  .tablo-break-screen-split .tablo-tip-text {
+    font-size: calc(32 * var(--break-px));
+    line-height: 1.2;
+  }
+
+  .tablo-break-screen-split .tablo-break-screen-next {
+    order: 2;
+    margin-top: calc(24 * var(--break-px));
+    padding-top: calc(12 * var(--break-px));
+    border-top: 1px solid var(--muted);
+    color: var(--muted);
+    font-size: calc(22 * var(--break-px));
+  }
+
+  /* No tip: the next level line goes to the bottom on its own. */
+  .tablo-break-screen-split .tablo-break-screen-body:has(.tablo-tip[hidden]) .tablo-break-screen-next {
+    margin-top: auto;
+  }
+
+  .tablo-break-screen-split .tablo-break-screen-next-blinds {
+    color: var(--paper);
+    font-family: var(--font-stack-num);
+  }
+
+  .tablo-break-cover {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    object-fit: cover;
+    object-position: 50% 30%;
+  }
+
+  .tablo-break-screen-split .tablo-break-screen-foot {
+    display: none;
   }
 
   /* The theme preview page: a bar of buttons over the sample board. */
