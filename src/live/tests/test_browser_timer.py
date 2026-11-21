@@ -295,7 +295,7 @@ def test_share_falls_back_to_copying(phone):  # noqa: F811
 
     page.get_by_role("button", name="Поделиться табло").click()
 
-    expect(page.locator(".toast")).to_have_text("Ссылка на табло скопирована.")
+    expect(page.locator(".toast-text")).to_have_text("Ссылка на табло скопирована.")
     assert page.evaluate("navigator.clipboard.readText()").endswith(public_url(game))
     assert_clean(page)
 

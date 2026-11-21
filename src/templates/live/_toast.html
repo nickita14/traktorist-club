@@ -1,13 +1,15 @@
-{# Out-of-band: what just happened, with "отменить" for a few seconds (CSS hides it). #}
+{# Out-of-band: what just happened, with "отменить" for a few seconds (CSS hides it). "×", a
+   sideways swipe or Escape removes it earlier (assets/js/live.js). #}
 <div id="toast" hx-swap-oob="true">
   {% if toast_message %}
     <div class="toast{% if toast_warning %} toast-warn{% endif %}" role="status">
-      <span>{{ toast_message }}</span>
+      <span class="toast-text">{{ toast_message }}</span>
       {% if toast_action %}
         <form hx-post="{% url 'live:undo' game.pk toast_action.pk %}" hx-target="#{{ undo_target }}" hx-swap="outerHTML transition:true" hx-include="#search" hx-disabled-elt="find button">
           <button type="submit" class="btn-link">отменить</button>
         </form>
       {% endif %}
+      <button type="button" class="toast-close" data-toast-close aria-label="Закрыть">×</button>
     </div>
   {% endif %}
 </div>

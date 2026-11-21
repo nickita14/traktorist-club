@@ -1597,7 +1597,8 @@
     word-spacing: var(--number-word-spacing);
   }
 
-  /* What just happened, with "отменить"; it fades out on its own (no script needed). */
+  /* What just happened, with "отменить"; it fades out on its own (no script needed) and stays
+     hidden after the fade. live.js removes it after the fade, on "×", a sideways swipe or Escape. */
   .toast {
     position: fixed;
     inset-inline: 1rem;
@@ -1615,10 +1616,53 @@
     color: var(--paper);
     font-size: var(--text-sm);
     animation: toast-life 8s forwards;
+    /* Vertical moves still scroll the page; horizontal ones are the swipe (live.js). */
+    touch-action: pan-y;
+    transition: transform 0.15s ease-out;
   }
 
   .toast-warn {
     background: var(--accent);
+  }
+
+  .toast-text {
+    flex: 1;
+  }
+
+  .toast :focus-visible {
+    outline-color: currentColor;
+  }
+
+  /* "×": 44x44, reaching the toast's right edge without making it taller. */
+  .toast-close {
+    flex: none;
+    width: 2.75rem;
+    height: 2.75rem;
+    margin-block: -0.25rem;
+    margin-inline: -0.5rem -0.75rem;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: var(--text-xl);
+    line-height: 1;
+  }
+
+  /* Held by a finger: the fade waits (live.js moves it with the pointer). */
+  .toast-dragging {
+    animation-play-state: paused;
+    transition: none;
+  }
+
+  /* Swiped away: slides off the screen (live.js sets the end position), then is removed. */
+  .toast-leaving {
+    transition: transform 0.18s ease-in;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toast,
+    .toast-leaving {
+      transition: none;
+    }
   }
 
   @keyframes toast-life {

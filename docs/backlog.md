@@ -18,7 +18,7 @@ How it stays true (the rule is in `CLAUDE.md`, "Code conventions"):
 
 - Gender-neutral award texts: the badge name "Снял кассу" (printed at a player's name on game sheets and the player card) and the «Меценат» rule "больше всех оставил на столе" assume a man; Player has no gender, so reword them impersonally (as "оставлено 12,30" already is). "Бабл-гёрл" is a deliberate joke name: decide whether it stays.
 - shellcheck for `deploy/*.sh` in pre-commit or CI (a one-off run is clean; today nothing runs it).
-- Live screen behavior audit: messages after actions (readable long enough, no stacking, never over buttons), sheets on native `<dialog>` / Popover, keyboard access. No new dependencies.
+- Live screen behavior audit: messages after actions (readable long enough, no stacking, never over buttons), sheets on native `<dialog>` / Popover, keyboard access. No new dependencies. Dismissable toasts done (`toast-dismiss`).
 
 ### Wave 1. End of the 2026 season (deadline: the last game of December)
 
@@ -66,7 +66,8 @@ Newest first. Dates are local (Europe/Chisinau), from the merge commits. Dependa
 
 | Item | Branch | Merged | PR |
 | --- | --- | --- | --- |
-| Bust while rebuys are open: in the rebuy stage every "ВЫБЫЛ" opens the bust sheet, which asks "Ребаи ещё открыты. <имя> выбывает без ребая?" and offers "Ребай +<цена>" beside the bust (one sheet with the near-money lines too; focus on "Отмена"), since a mis-tap is now announced on the display | `bust-while-rebuys` | | |
+| Live screen behavior audit, first slice: dismissable toasts ("×", a sideways swipe, Escape from inside; dismissing removes the element, and so does the end of the fade; a drag that starts on a toast never clicks "отменить" or what lies under it) | `toast-dismiss` | | |
+| Bust while rebuys are open: in the rebuy stage every "ВЫБЫЛ" opens the bust sheet, which asks "Ребаи ещё открыты. <имя> выбывает без ребая?" and offers "Ребай +<цена>" beside the bust (one sheet with the near-money lines too; focus on "Отмена"), since a mis-tap is now announced on the display | `bust-while-rebuys` | 2026-11-21 | #67 |
 | Theme admin cleanup and break art: sounds managed only on "Звуки" (the event rows keep the select, with a player that follows it; a sound's file can be replaced, its format and size shown; file inputs drawn as the admin's secondary button), a theme accent colour (3:1 on ink) and a cover image (jpg, png, webp by their first bytes, no SVG, 3 MB, stored in the database, served by its hash) for a split break screen; the add-on note on the break screen | `theme-break-art` | 2026-11-20 | #66 |
 | Display (табло) fixes before a club evening: theme sounds end with their overlay (300 ms fade; the winner's plays once to the end), the break music loops while the break runs and stops on pause, row change or theme off; sync every 1 s with a debounced "нет связи" (cost measured in `docs/deploy.md`), gunicorn `max_requests` 20000 with jitter; starting the final stage on the add-on break moves the timer on (one action, the undo keeps the stage recoverable) | `tablo-evening-fixes` | 2026-11-20 | #65 |
 | Debian security fixes in the runtime image without waiting for the base: `apt-get upgrade` in the runtime stage (an unreachable mirror fails the build), its cached layer expired daily on the server by `APT_REFRESH`, a test that a failed build stops the deploy; expired `.trivyignore` entries removed | `image-apt-upgrade` | 2026-11-20 | #64 |
