@@ -6,7 +6,7 @@
 FROM ghcr.io/astral-sh/uv:0.13.8 AS uv
 
 # Dependencies only, into /opt/venv (outside /app, so compilemessages never walks into it).
-FROM python:3.13-slim AS builder
+FROM python:3.15-slim AS builder
 COPY --from=uv /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -30,7 +30,7 @@ RUN set -a && . deploy/build.env && set +a \
     && /opt/venv/bin/python manage.py compilemessages \
     && /opt/venv/bin/python manage.py collectstatic --noinput
 
-FROM python:3.13-slim AS runtime
+FROM python:3.15-slim AS runtime
 # Debian security fixes on every build, without waiting for Docker to rebuild python:3.13-slim.
 # APT_REFRESH (the date, passed by deploy/server-deploy.sh) expires the cached layer once a day;
 # CI builds on fresh runners, without a cache. Error-Mode=any: an unreachable mirror fails the
