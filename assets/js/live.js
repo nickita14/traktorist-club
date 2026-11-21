@@ -13,6 +13,9 @@
  *   without this script it stays visible and the server ignores it for cash.
  * - "Поделиться табло" opens the phone's share sheet with the display link (Web Share API);
  *   without it, the link is copied and a toast says so.
+ * - A toast goes away on "×", on Escape while focus is inside it, on a sideways swipe and at the
+ *   end of its fade. Each removes the element, so it never catches a tap afterwards. A drag that
+ *   starts on a toast never clicks "отменить" or whatever lies under it.
  */
 (() => {
   "use strict";
@@ -103,7 +106,13 @@
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && sheet().childElementCount > 0) {
+    if (event.key !== "Escape") {
+      return;
+    }
+    const box = document.activeElement?.closest(".toast");
+    if (box) {
+      box.remove(); // the toast first: one Escape closes one thing
+    } else if (sheet().childElementCount > 0) {
       closeSheet();
     }
   });
@@ -158,10 +167,130 @@
     box.className = warning ? "toast toast-warn" : "toast";
     box.setAttribute("role", "status");
     const span = document.createElement("span");
+    span.className = "toast-text";
     span.textContent = text;
-    box.append(span);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "toast-close";
+    close.dataset.toastClose = "";
+    close.setAttribute("aria-label", "Закрыть");
+    close.textContent = "×";
+    box.append(span, close);
     document.getElementById("toast").replaceChildren(box);
   }
+
+  // Dismissing a toast removes it (the #toast container stays for the next hx-swap-oob).
+  const SLOP = 10; // px: a smaller move is still a tap
+  const SWIPE = 96; // px, or 35% of the toast's width when that is less
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let drag = null; // the gesture that started on a toast: pointer, start, how it moved
+  let swallowClick = false; // true only between a drag's pointerup and the end of that task
+
+  function dismissToast(box, direction) {
+    if (!direction || reducedMotion.matches) {
+      box.remove();
+      return;
+    }
+    box.classList.add("toast-leaving");
+    box.addEventListener("transitionend", () => box.remove(), { once: true });
+    setTimeout(() => box.remove(), 400); // no transitionend when nothing moved
+    box.style.transform = `translateX(${direction * window.innerWidth}px)`;
+  }
+
+  document.addEventListener("pointerdown", (event) => {
+    swallowClick = false;
+    drag = null;
+    const box = event.target.closest(".toast");
+    if (box && event.isPrimary && event.button === 0) {
+      drag = {
+        box,
+        id: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        dx: 0,
+        moved: false,
+        horizontal: false,
+      };
+    }
+  });
+
+  document.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.id) {
+      return;
+    }
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (!drag.moved) {
+      if (Math.hypot(dx, dy) < SLOP) {
+        return;
+      }
+      drag.moved = true;
+      drag.horizontal = Math.abs(dx) > Math.abs(dy);
+      if (drag.horizontal) {
+        drag.box.setPointerCapture(event.pointerId);
+        drag.box.classList.add("toast-dragging");
+      }
+    }
+    if (drag.horizontal) {
+      drag.dx = dx;
+      drag.box.style.transform = `translateX(${dx}px)`;
+    }
+  });
+
+  function endDrag(event) {
+    if (event.type === "pointercancel") {
+      swallowClick = false; // the browser took the gesture (a scroll): no click follows
+    }
+    if (!drag || event.pointerId !== drag.id) {
+      return;
+    }
+    const { box, moved, horizontal, dx } = drag;
+    drag = null;
+    if (!moved) {
+      return; // a tap: its click goes through ("отменить", "×")
+    }
+    box.classList.remove("toast-dragging");
+    if (event.type === "pointercancel") {
+      box.style.transform = "";
+      return;
+    }
+    // Only the click this pointerup may produce, dispatched in the same task.
+    swallowClick = true;
+    setTimeout(() => {
+      swallowClick = false;
+    }, 0);
+    if (horizontal && Math.abs(dx) >= Math.min(SWIPE, box.offsetWidth * 0.35)) {
+      dismissToast(box, Math.sign(dx));
+    } else {
+      box.style.transform = "";
+    }
+  }
+
+  document.addEventListener("pointerup", endDrag);
+  document.addEventListener("pointercancel", endDrag);
+
+  window.addEventListener(
+    "click",
+    (event) => {
+      if (swallowClick) {
+        swallowClick = false;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      const close = event.target.closest("[data-toast-close]");
+      if (close) {
+        close.closest(".toast")?.remove();
+      }
+    },
+    true,
+  );
+
+  document.addEventListener("animationend", (event) => {
+    if (event.animationName === "toast-life" && event.target.matches(".toast")) {
+      event.target.remove();
+    }
+  });
 
   async function share(button) {
     const url = button.dataset.share;
