@@ -385,6 +385,39 @@ def test_lineup_collect_start_and_bust_confirmation(phone):
     assert_clean(page)
 
 
+def test_bust_while_rebuys_are_open(phone):
+    game = live_game(SeasonKind.TOUR, entry_price=100, rebuy_price=100)
+    alpha, *_ = seat(game, "Альфа", "Браво", "Чарли", "Дельта", "Эхо", "Фокстрот")
+    page = phone(reverse("live:board", args=[game.pk]))
+
+    # Six in game, three paid places: far from the money, but rebuys are open, so it asks.
+    page.get_by_label("Выбыл: Альфа").click()
+    sheet = page.locator(".sheet-panel")
+    expect(sheet).to_contain_text("Ребаи ещё открыты. Альфа выбывает без ребая?")
+    expect(sheet.locator(".bust-place-number")).to_have_text("6")
+    expect(sheet.get_by_role("button", name="Отмена")).to_be_focused()
+    assert_fits(page)
+
+    # "Ребай" instead: the sheet closes, the player stays in.
+    sheet.get_by_role("button", name="Ребай +100").click()
+    expect(page.locator(".toast")).to_contain_text("Ребай: Альфа")
+    expect(page.locator(".sheet-panel")).to_have_count(0)
+    alpha.refresh_from_db()
+    assert (alpha.rebuys, alpha.out_order) == (1, None)
+
+    # "Отмена" closes it without a write.
+    page.get_by_label("Выбыл: Альфа").click()
+    page.locator(".sheet-panel").get_by_role("button", name="Отмена").click()
+    expect(page.locator(".sheet-panel")).to_have_count(0)
+
+    page.get_by_label("Выбыл: Альфа").click()
+    page.locator(".sheet-panel").get_by_role("button", name="Выбыл · 6-е место").click()
+    expect(page.locator(".toast")).to_contain_text("Выбыл: Альфа")
+    alpha.refresh_from_db()
+    assert alpha.out_order == 1
+    assert_clean(page)
+
+
 def test_lineup_search_survives_polling(phone, settings):
     settings.LIVE_POLL_SECONDS = 1
     game = lineup_game(SeasonKind.CASH)
