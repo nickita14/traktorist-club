@@ -385,9 +385,10 @@ class TestBustConfirmation:
         return game, seat(game, *(f"Игрок {i}" for i in range(1, players + 1)))
 
     @pytest.mark.parametrize(("paid_places", "first_sheet"), [(3, 4), (2, 3)])
-    def test_sheet_only_near_the_money(self, org, paid_places, first_sheet):
+    def test_final_stage_sheet_only_near_the_money(self, org, paid_places, first_sheet):
         weights = ",".join(["1"] * paid_places)
         game, results = self.tournament(6, paid_places=paid_places, payout_weights=weights)
+        Game.objects.filter(pk=game.pk).update(live_stage=Game.Stage.FINAL)
         for result in results[: 6 - first_sheet - 1]:
             actions.eliminate(game.pk, key(), None, result.pk)
         # One above the threshold: the button acts at once and carries the place it shows.
@@ -399,6 +400,87 @@ class TestBustConfirmation:
 
         page = board(org, game)
         assert reverse("live:bust", args=[game.pk, results[-1].pk]) in page
+
+    def test_rebuy_stage_always_asks(self, org):
+        game, results = self.tournament(8)
+        page = board(org, game)
+        for result in results:
+            assert reverse("live:bust", args=[game.pk, result.pk]) in page
+        assert 'name="place" value="8"' not in page
+
+    def test_addon_stage_has_no_bust(self, org):
+        game, results = self.tournament(8)
+        Game.objects.filter(pk=game.pk).update(live_stage=Game.Stage.ADDON)
+        page = board(org, game)
+        assert reverse("live:bust", args=[game.pk, results[0].pk]) not in page
+        assert reverse("live:act", args=[game.pk, "eliminate"]) not in page
+
+    def test_rebuy_stage_far_from_the_money(self, org):
+        game, results = self.tournament(8, rebuy_price=50)
+        sheet = org.get(reverse("live:bust", args=[game.pk, results[0].pk])).text
+        words = text(sheet)
+        assert "Ребаи ещё открыты. Игрок 1 выбывает без ребая?" in words
+        assert '<span class="bust-place-number">8</span>' in sheet
+        assert "место." in words
+        assert "без выплаты" not in words and "в призах" not in words
+        assert 'Выбыл · <span class="font-num">8</span>-е место' in sheet
+        assert 'name="place" value="8"' in sheet
+        assert reverse("live:act", args=[game.pk, "rebuy"]) in sheet
+        assert 'Ребай <span class="font-num">+50</span>' in sheet
+        assert re.search(r"<button[^>]*data-close-sheet autofocus>Отмена</button>", sheet)
+        # Two fresh keys: the bust and the rebuy are separate requests.
+        keys = re.findall(r'name="key" value="([^"]+)"', sheet)
+        assert len(set(keys)) == 2
+
+    def test_rebuy_stage_near_the_money_one_sheet(self, org):
+        game, results = self.tournament(4)
+        words = text(org.get(reverse("live:bust", args=[game.pk, results[0].pk])).text)
+        assert "Ребаи ещё открыты. Игрок 1 выбывает без ребая?" in words
+        assert "место, первое без выплаты." in words
+        assert "В игре останутся трое, все в призах." in words
+
+    def test_label_is_the_nickname(self, org):
+        game = live_game(SeasonKind.TOUR)
+        player = make_player("Иван Тестов", nickname="Ваня")
+        result = actions.seat(game.pk, key(), None, player.pk, paid=False).action.result
+        seat(game, *(f"Игрок {i}" for i in range(1, 8)))
+        words = text(org.get(reverse("live:bust", args=[game.pk, result.pk])).text)
+        assert "Ребаи ещё открыты. Ваня выбывает без ребая?" in words
+
+    def test_final_stage_sheet_has_no_rebuy(self, org):
+        game, results = self.tournament(4)
+        Game.objects.filter(pk=game.pk).update(live_stage=Game.Stage.FINAL)
+        sheet = org.get(reverse("live:bust", args=[game.pk, results[0].pk])).text
+        assert "Ребаи ещё открыты" not in sheet
+        assert reverse("live:act", args=[game.pk, "rebuy"]) not in sheet
+        assert "autofocus" not in sheet
+
+    def test_rebuy_from_the_sheet(self, org):
+        game, results = self.tournament(8, rebuy_price=50)
+        before = results[0].buyin
+        response = act(org, game, "rebuy", result=results[0])
+        assert "toast-warn" not in response.text
+        results[0].refresh_from_db()
+        assert (results[0].buyin, results[0].rebuys) == (before + 50, 1)
+        assert results[0].out_order is None
+
+    def test_bust_from_the_sheet_far_from_the_money(self, org):
+        game, results = self.tournament(8)
+        act(org, game, "eliminate", result=results[0], place="8")
+        results[0].refresh_from_db()
+        assert results[0].out_order == 1
+
+    def test_rebuy_refused_after_the_stage_moved_on(self, org):
+        game, results = self.tournament(8)
+        sheet = org.get(reverse("live:bust", args=[game.pk, results[0].pk])).text
+        rebuy_key = re.findall(r'name="key" value="([^"]+)"', sheet)[1]
+        actions.advance_stage(game.pk, key(), None, Game.Stage.REBUYS)
+        before = (results[0].buyin, results[0].rebuys)
+        response = act(org, game, "rebuy", result=results[0], key=rebuy_key)
+        assert "toast-warn" in response.text and "Ребаи закрыты." in response.text
+        assert 'id="board"' in response.text
+        results[0].refresh_from_db()
+        assert (results[0].buyin, results[0].rebuys) == before
 
     def test_first_place_without_payout(self, org):
         game, results = self.tournament(4)
@@ -450,10 +532,18 @@ class TestBustConfirmation:
         (12, 11, ("место, первое без выплаты.", "В игре останутся 11 игроков, все в призах.")),
         (3, 3, ("место, в призах.", "")),
         (2, 3, ("место, в призах.", "")),
+        (5, 3, ("место.", "")),
+        (12, 3, ("место.", "")),
     ],
 )
 def test_bust_lines(place, paid_places, expected):
-    assert bust_lines(place, paid_places) == expected
+    assert bust_lines(place, paid_places) == (*expected, "")
+
+
+def test_bust_lines_while_rebuys_are_open():
+    lines = bust_lines(4, 3, rebuys_open=True, label="Марина")
+    assert lines.rebuy == "Ребаи ещё открыты. Марина выбывает без ребая?"
+    assert lines.line == "место, первое без выплаты."
 
 
 class TestSeatingAfterTheStart:

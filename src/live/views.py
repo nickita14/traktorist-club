@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from itertools import islice
 from types import SimpleNamespace
+from typing import NamedTuple
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -189,9 +190,12 @@ def board_context(game: Game, query: str = "") -> dict:
         "timer": timer,
         "clock": timer_clock(timer, now),
         "totals": totals,
-        # The place the next bust gets; near the money "ВЫБЫЛ" asks first.
+        # The place the next bust gets. "ВЫБЫЛ" asks first near the money and while rebuys are
+        # open (a bust without a rebuy is rare there, and the display announces it).
         "bust_place": totals.in_game,
-        "confirm_bust": totals.in_game <= game.season.paid_places + 1,
+        "confirm_bust": (
+            game.live_stage == Game.Stage.REBUYS or totals.in_game <= game.season.paid_places + 1
+        ),
         "playing": [result for result in results if result.out_order is None],
         # Latest out first: that is the one a "вернуть" is most likely for.
         "out": sorted(
@@ -1131,31 +1135,56 @@ COLLECTIVE = {
 PLAYER_FORMS = ("игрок", "игрока", "игроков")
 
 
-def bust_lines(place: int, paid_places: int) -> tuple[str, str]:
-    """What the bust sheet says next to the place: the main line and a quiet one."""
+class BustLines(NamedTuple):
+    line: str  # next to the place
+    note: str  # quiet, under it
+    rebuy: str  # the question while rebuys are open
+
+
+def bust_lines(
+    place: int, paid_places: int, *, rebuys_open: bool = False, label: str = ""
+) -> BustLines:
+    """What the bust sheet says: the line next to the place, a quiet note, and while rebuys are
+    open the question whether the player really leaves without one (``label`` is
+    ``Player.label``, in the nominative)."""
+    rebuy = f"Ребаи ещё открыты. {label} выбывает без ребая?" if rebuys_open else ""
     if place <= paid_places:
-        return "место, в призах.", ""
+        return BustLines("место, в призах.", "", rebuy)
+    if place > paid_places + 1:
+        return BustLines("место.", "", rebuy)
     remaining = place - 1
     who = COLLECTIVE.get(remaining) or f"{remaining} {ru_plural(remaining, PLAYER_FORMS)}"
     verb = ru_plural(remaining, ("останется", "останутся", "останутся"))
     every = "все " if remaining > 1 else ""
-    return "место, первое без выплаты.", f"В игре {verb} {who}, {every}в призах."
+    return BustLines("место, первое без выплаты.", f"В игре {verb} {who}, {every}в призах.", rebuy)
 
 
 @organizer_required
 @require_GET
 def bust_sheet(request, pk: int, result_pk: int):
-    """ "ВЫБЫЛ" near the money: the place it gives, confirmed before it is recorded."""
+    """ "ВЫБЫЛ" near the money or while rebuys are open: the place it gives, confirmed before it
+    is recorded; in the rebuy stage the sheet also offers the rebuy instead."""
     game = _sheet_game(pk)
     if game.season.kind != SeasonKind.TOUR:
         raise Http404
     result = get_object_or_404(Result.objects.select_related("player"), pk=result_pk, game=game)
     place = game.results.filter(out_order__isnull=True).count()
-    line, note = bust_lines(place, game.season.paid_places)
+    rebuys_open = game.live_stage == Game.Stage.REBUYS
+    lines = bust_lines(
+        place, game.season.paid_places, rebuys_open=rebuys_open, label=result.player.label
+    )
     return render(
         request,
         "live/_bust_sheet.html",
-        {"game": game, "result": result, "place": place, "line": line, "note": note},
+        {
+            "game": game,
+            "season": game.season,
+            "result": result,
+            "place": place,
+            "line": lines.line,
+            "note": lines.note,
+            "rebuy_line": lines.rebuy,
+        },
     )
 
 
