@@ -1,4 +1,5 @@
-"""No currency word on the public site and the live screens (the admin keeps units in labels).
+"""No currency word on the public site and the live screens (the admin keeps units in labels), and
+no Django comment marker leaking into them as text.
 
 Every public page and every live screen is rendered on invented data, and every template under
 ``templates/club/`` and ``templates/live/`` must have been rendered by at least one of them, so
@@ -28,6 +29,17 @@ CURRENCY = re.compile(r"(?<![а-яё])ле(?:й|я|ях)(?![а-яё])", re.IGNOR
 
 TEMPLATE_DIRS = ("club", "live")
 
+# A Django comment marker in the output: a {# #} comment that wrapped onto a second line is
+# rendered as text (see test_template_comments.py).
+COMMENT_MARKERS = ("{#", "#}")
+
+
+def assert_no_comment_markers(where: str, html: str) -> None:
+    for marker in COMMENT_MARKERS:
+        at = html.find(marker)
+        assert at == -1, (where, html[max(at - 80, 0) : at + 80])
+
+
 # Templates that only a POST response renders; they are checked by rendering them directly.
 POST_ONLY = {"live/_toast.html"}
 
@@ -55,6 +67,7 @@ class Pages:
         html = response.content.decode()
         found = CURRENCY.search(html)
         assert found is None, (url, html[max(found.start() - 80, 0) : found.end() + 20])
+        assert_no_comment_markers(url, html)
         return html
 
 
@@ -161,6 +174,7 @@ def test_public_and_live_pages(organizer_client, client, club, award_rules):
     for name in POST_ONLY:
         html = render_to_string(name, {"toast": "Пока вы смотрели, этап сменился."})
         assert CURRENCY.search(html) is None, name
+        assert_no_comment_markers(name, html)
         pages.rendered.add(name)
 
     client.logout()

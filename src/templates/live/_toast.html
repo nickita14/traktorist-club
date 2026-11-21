@@ -1,5 +1,5 @@
-{# Out-of-band: what just happened, with "отменить" for a few seconds (CSS hides it). "×", a
-   sideways swipe or Escape removes it earlier (assets/js/live.js). #}
+{% comment %}Out-of-band: what just happened, with "отменить" for a few seconds (CSS hides it). "×", a
+sideways swipe or Escape removes it earlier (assets/js/live.js).{% endcomment %}
 <div id="toast" hx-swap-oob="true">
   {% if toast_message %}
     <div class="toast{% if toast_warning %} toast-warn{% endif %}" role="status">
